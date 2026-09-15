@@ -1,105 +1,232 @@
-+		_, _ = readOnePDU(peerConn, registry) // consume enquire_link but never answer it
++			peerErr <- err
++			return
++		}
++		_ = conn.SetReadDeadline(time.Time{})
++		close(readySecond)
++
++		second, err := readClientPDU(conn, registry)
++		if err != nil {
++			peerErr <- err
++			return
++		}
++		if second.Header.CommandID != protocol.CommandSubmitSM {
++			peerErr <- errors.New("expected second submit_sm")
++			return
++		}
++		body := second.Body.(protocol.SubmitSM)
++		if string(body.DestinationAddr) != "222" {
++			peerErr <- errors.New("unexpected second destination")
++			return
++		}
++		frame, err := codec.EncodePDU(nil, codec.ResponseHeader(second.Header, protocol.CommandSubmitSMResp, protocol.StatusOK), protocol.SubmitSMResp{MessageID: []byte("second")}, registry)
++		if err != nil {
++			peerErr <- err
++			return
++		}
++		peerErr <- transport.WriteFull(conn, frame)
 +	}()
-+	sess, err := New(clientConn, Config{
-+		Role:                RoleESME,
-+		SessionInitTimeout:  time.Second,
-+		EnquireLinkInterval: 30 * time.Millisecond,
-+		EnquireLinkTimeout:  35 * time.Millisecond,
-+		InactivityTimeout:   time.Second,
++
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	c, err := Dial(ctx, Config{
++		Address: listener.Addr().String(),
++		SessionConfig: session.Config{
++			WindowSize: 1, ResponseTimeout: 500 * time.Millisecond,
++			SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: -1,
++		},
++		Reconnect: ReconnectPolicy{Enabled: true, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 20 * time.Millisecond, BindTimeout: time.Second},
 +	})
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	defer sess.Close()
-+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-+	defer cancel()
-+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++	defer func() { _ = c.Close(); c.Wait() }()
++	bindReq := protocol.BindRequest{SystemID: []byte("esme"), Password: []byte("pw"), InterfaceVersion: protocol.InterfaceVersion34}
++	if _, err := c.BindTransceiver(ctx, bindReq); err != nil {
 +		t.Fatal(err)
 +	}
++
++	firstResult := make(chan error, 1)
++	go func() {
++		_, err := c.SubmitSM(ctx, protocol.SubmitSM{DestinationAddr: []byte("111")})
++		firstResult <- err
++	}()
 +	select {
-+	case <-sess.Done():
-+	case <-time.After(time.Second):
-+		t.Fatal("unresponsive enquire_link peer was not closed")
++	case <-firstSeen:
++	case <-ctx.Done():
++		t.Fatal("peer did not see first submit")
 +	}
-+	var timeout *TimeoutError
-+	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutEnquireLink {
-+		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
++	var loss *session.LossError
++	if err := <-firstResult; !errors.As(err, &loss) {
++		t.Fatalf("first request error=%T %v, want session loss", err, err)
++	}
++
++	select {
++	case <-readySecond:
++	case <-ctx.Done():
++		t.Fatal("client did not reconnect/rebind")
++	}
++	if err := c.WaitConnected(ctx); err != nil {
++		t.Fatal(err)
++	}
++	if c.ReconnectCount() != 1 {
++		t.Fatalf("reconnect count=%d", c.ReconnectCount())
++	}
++	if got := c.Session().Window().InUse; got != 0 {
++		t.Fatalf("window leaked across reconnect: %d", got)
++	}
++
++	resp, err := c.SubmitSM(ctx, protocol.SubmitSM{DestinationAddr: []byte("222")})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(resp.MessageID) != "second" {
++		t.Fatalf("message id=%q", resp.MessageID)
++	}
++	if err := <-peerErr; err != nil {
++		t.Fatal(err)
 +	}
 +}
 +
-+func TestInactivityTimeoutClosesBoundSession(t *testing.T) {
-+	clientConn, peerConn := net.Pipe()
-+	defer peerConn.Close()
++func TestClientReconnectPreservesFatalProtocolLossReason(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
 +	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
++	rebound := make(chan struct{})
 +	go func() {
-+		bind, err := readOnePDU(peerConn, registry)
++		conn, err := listener.Accept()
 +		if err != nil {
 +			return
 +		}
-+		frame, _ := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{}, registry)
-+		_ = transport.WriteFull(peerConn, frame)
++		if peerBindTRX(conn, registry) != nil {
++			return
++		}
++		bad := make([]byte, codec.HeaderSize)
++		binary.BigEndian.PutUint32(bad[:4], 7)
++		_, _ = conn.Write(bad)
++		_ = conn.Close()
++		conn, err = listener.Accept()
++		if err != nil {
++			return
++		}
++		defer conn.Close()
++		if peerBindTRX(conn, registry) != nil {
++			return
++		}
++		close(rebound)
++		<-time.After(100 * time.Millisecond)
 +	}()
-+	sess, err := New(clientConn, Config{
-+		Role:                RoleESME,
-+		SessionInitTimeout:  time.Second,
-+		EnquireLinkInterval: -1,
-+		InactivityTimeout:   45 * time.Millisecond,
++
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	c, err := Dial(ctx, Config{
++		Address:       listener.Addr().String(),
++		SessionConfig: session.Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: -1},
++		Reconnect:     ReconnectPolicy{Enabled: true, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 20 * time.Millisecond, BindTimeout: time.Second},
 +	})
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	defer sess.Close()
-+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-+	defer cancel()
-+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++	defer func() { _ = c.Close(); c.Wait() }()
++	if _, err := c.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
 +		t.Fatal(err)
 +	}
 +	select {
-+	case <-sess.Done():
-+	case <-time.After(time.Second):
-+		t.Fatal("inactivity timeout did not close session")
++	case <-rebound:
++	case <-ctx.Done():
++		t.Fatal("fatal-protocol connection was not replaced")
 +	}
-+	var timeout *TimeoutError
-+	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutInactivity {
-+		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
++	if err := c.WaitConnected(ctx); err != nil {
++		t.Fatal(err)
++	}
++	var fatal *protocol.FatalError
++	if !errors.As(c.LastLoss(), &fatal) {
++		t.Fatalf("last loss=%T %v, want fatal protocol error", c.LastLoss(), c.LastLoss())
 +	}
 +}
 +
-+func TestResponseAndTimeoutBoundaryHasOneWinner(t *testing.T) {
-+	for i := 0; i < 50; i++ {
-+		done := make(chan struct{})
-+		table := newPendingTable(1)
-+		var releases atomic.Int64
-+		request := &pendingRequest{requestID: protocol.CommandSubmitSM, expectedID: protocol.CommandSubmitSMResp, done: make(chan requestResult, 1), releaseWindow: func() { releases.Add(1) }}
-+		manager := newDeadlineManager(done, func(item *deadlineItem) {
-+			table.completeError(item.sequence, &TimeoutError{Kind: item.kind, Command: item.command, Sequence: item.sequence, After: item.after})
-+		})
-+		go manager.run()
-+		if err := table.insert(7, request); err != nil {
-+			t.Fatal(err)
-+		}
-+		item := manager.schedule(3*time.Millisecond, TimeoutResponse, protocol.CommandSubmitSM, 7)
-+		request.attachDeadline(manager, item)
-+		go func() {
-+			time.Sleep(3 * time.Millisecond)
-+			if p, ok := table.takeResponse(7, protocol.CommandSubmitSMResp); ok {
-+				p.done <- requestResult{pdu: codec.DecodedPDU{Header: codec.Header{SequenceNumber: 7}}}
-+			}
-+		}()
-+		select {
-+		case <-request.done:
-+		case <-time.After(time.Second):
-+			t.Fatal("no terminal winner")
-+		}
-+		close(done)
-+		if got := releases.Load(); got != 1 {
-+			t.Fatalf("iteration %d releases=%d want 1", i, got)
-+		}
-+		if table.len() != 0 {
-+			t.Fatalf("iteration %d pending leaked", i)
-+		}
++func TestClientCloseStopsReconnectBackoff(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
 +	}
++	defer listener.Close()
++	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
++	if err != nil {
++		t.Fatal(err)
++	}
++	closedFirst := make(chan struct{})
++	go func() {
++		conn, err := listener.Accept()
++		if err != nil {
++			return
++		}
++		if peerBindTRX(conn, registry) != nil {
++			return
++		}
++		_ = conn.Close()
++		close(closedFirst)
++	}()
++	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++	defer cancel()
++	c, err := Dial(ctx, Config{
++		Address:       listener.Addr().String(),
++		SessionConfig: session.Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: -1},
++		Reconnect:     ReconnectPolicy{Enabled: true, InitialBackoff: 300 * time.Millisecond, MaxBackoff: 300 * time.Millisecond},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := c.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++		t.Fatal(err)
++	}
++	<-closedFirst
++	deadline := time.Now().Add(time.Second)
++	for c.LastLoss() == nil && time.Now().Before(deadline) {
++		time.Sleep(time.Millisecond)
++	}
++	if err := c.Close(); err != nil {
++		t.Fatal(err)
++	}
++	c.Wait()
++	if c.ReconnectCount() != 0 {
++		t.Fatalf("reconnect count after Close=%d", c.ReconnectCount())
++	}
++}
++
++func peerBindTRX(conn net.Conn, registry *codec.Registry) error {
++	bind, err := readClientPDU(conn, registry)
++	if err != nil {
++		return err
++	}
++	if bind.Header.CommandID != protocol.CommandBindTransceiver {
++		return errors.New("expected bind_transceiver")
++	}
++	frame, err := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{SystemID: []byte("smsc")}, registry)
++	if err != nil {
++		return err
++	}
++	return transport.WriteFull(conn, frame)
++}
++
++func readClientPDU(conn net.Conn, registry *codec.Registry) (codec.DecodedPDU, error) {
++	prefix := make([]byte, 4)
++	if _, err := io.ReadFull(conn, prefix); err != nil {
++		return codec.DecodedPDU{}, err
++	}
++	length := binary.BigEndian.Uint32(prefix)
++	if length < codec.HeaderSize {
++		return codec.DecodedPDU{}, errors.New("invalid frame")
++	}
++	frame := make([]byte, int(length))
++	copy(frame, prefix)
++	if _, err := io.ReadFull(conn, frame[4:]); err != nil {
++		return codec.DecodedPDU{}, err
++	}
++	return codec.DecodePDU(frame, registry)
 +}
