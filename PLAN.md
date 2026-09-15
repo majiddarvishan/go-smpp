@@ -21,6 +21,9 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Define minimal-dependency and no-`unsafe` initial policy.
 - [x] Define transport/TLS strategy.
 - [x] Define extensible PDU/TLV registry and vendor-TLV support.
+- [x] Define configurable request-response timeout semantics.
+- [x] Require Enquire Link, inactivity timeout and Session Init timeout behavior.
+- [x] Require concurrent/thread-safe public APIs and race-free internals.
 - [x] Create repository planning/context files.
 
 ## Phase 1 — Module skeleton and protocol primitives
@@ -30,7 +33,8 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Create package skeleton with dependency-direction tests/review.
 - [ ] Define `CommandID`, `CommandStatus`, `SequenceNumber`, TON, NPI, data-coding and session-state types.
 - [ ] Define SMPP 3.4 and 5.0 capability/profile types without duplicating the core.
-- [ ] Define protocol errors separately from transport/session errors.
+- [ ] Define protocol errors separately from transport/session/timeout errors.
+- [ ] Define typed timeout error metadata for command, sequence and timeout kind.
 - [ ] Add unit tests for primitive encodings and constants.
 - [ ] Add baseline benchmarks for primitive encode/decode helpers.
 
@@ -54,6 +58,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Support vendor-specific TLV registration.
 - [ ] Support vendor-specific command registration without editing core switch statements throughout the codebase.
 - [ ] Define strict vs compatible handling for unknown/unsupported fields.
+- [ ] Make registry construction/mutation safe for concurrent callers or freeze registries into immutable read-only snapshots before session hot-path use.
 - [ ] Add registry concurrency and duplicate-registration tests.
 
 ## Phase 4 — Essential SMPP 3.4 PDUs
@@ -76,6 +81,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement client and server role semantics on the same session core.
 - [ ] Keep codec independent from session state.
 - [ ] Implement clean bind/unbind lifecycle.
+- [ ] Make state transitions race-free under concurrent send/receive/close/timeout activity.
 - [ ] Add state-transition and invalid-state tests.
 
 ## Phase 6 — Transport layer and TLS
@@ -95,24 +101,35 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement bounded pending-request tracking.
 - [ ] Expose synchronous/context-aware public submit APIs without goroutine-per-message architecture.
 - [ ] Ensure inbound `deliver_sm` can be processed while outbound submit requests are outstanding.
+- [ ] Guarantee public `Client`, `Server`, `Session` and request APIs documented as concurrent-safe can be called from multiple goroutines at the same time.
+- [ ] Ensure request completion is exactly-once when response, timeout, cancellation and session loss race each other.
 - [ ] Add race tests and high-concurrency correlation tests.
+- [ ] Run `go test -race` for concurrent session/client/server scenarios.
 
 ## Phase 8 — Windowing and backpressure
 
 - [ ] Implement configurable maximum outstanding-request window.
 - [ ] Implement blocking/context-cancellable acquisition for synchronous API calls.
 - [ ] Implement explicit overload/backpressure errors rather than unbounded queues.
+- [ ] Ensure timeout/cancellation/session-loss paths always release window capacity exactly once.
 - [ ] Record window utilization metrics/hooks.
 - [ ] Benchmark different window sizes against RTT profiles.
 - [ ] Avoid hard-coding the historical SMPP 3.4 recommendation of 10 outstanding requests.
 
-## Phase 9 — Efficient timer subsystem
+## Phase 9 — Efficient timer and liveness subsystem
 
-- [ ] Implement response deadlines without one `time.Timer` per request.
-- [ ] Implement Session Init timeout.
-- [ ] Implement Enquire Link scheduling.
-- [ ] Implement inactivity handling.
+- [ ] Implement a configurable per-request response timeout for outbound SMPP requests.
+- [ ] Start the protocol response timeout when the request PDU has been fully dispatched to the transport; time spent waiting for window/TX capacity remains governed by the caller context/deadline.
+- [ ] On response timeout, atomically remove/expire the pending request, release its window slot and return a typed timeout error to the synchronous caller.
+- [ ] Treat a response arriving after its request expired as a late/unmatched response; it must never complete an unrelated request.
+- [ ] Implement response deadlines without one independent `time.Timer` per request in the final high-throughput design.
+- [ ] Implement configurable Session Init timeout for connection-to-bind/session-establishment lifecycle.
+- [ ] Implement configurable Enquire Link interval/scheduling after SMPP inactivity.
+- [ ] Correlate `enquire_link` / `enquire_link_resp` through the same safe request/response machinery and apply a response timeout.
+- [ ] Implement configurable inactivity timeout based on session activity and define deterministic close/unbind behavior on expiry.
+- [ ] Ensure liveness timers are reset/update-safe under simultaneous RX and TX traffic.
 - [ ] Evaluate deadline buckets, heap batching, and/or timer wheel by benchmark.
+- [ ] Add boundary-race tests where response and timeout occur at nearly the same instant.
 - [ ] Add timeout-storm benchmark and memory-bound tests.
 
 ## Phase 10 — Client auto-reconnect
@@ -122,6 +139,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Fail pending requests from the lost session deterministically.
 - [ ] Never silently auto-resubmit requests whose delivery state is ambiguous.
 - [ ] Expose enough error metadata for application-level resubmission decisions.
+- [ ] Ensure reconnect, close and timeout transitions are race-free.
 - [ ] Add reconnect-during-full-window tests.
 
 ## Phase 11 — Server/SMSC mode
@@ -129,8 +147,10 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement TCP/TLS listener lifecycle.
 - [ ] Implement bind authentication hook/interface.
 - [ ] Implement per-session state and sequence spaces.
+- [ ] Enforce Session Init timeout for accepted connections that do not establish a valid SMPP session in time.
 - [ ] Implement inbound `submit_sm` dispatch and synchronous response path.
 - [ ] Implement outbound `deliver_sm` from server to bound RX/TRX sessions.
+- [ ] Apply outbound request response-timeout behavior to server-originated requests such as `deliver_sm`.
 - [ ] Add configurable connection/session limits.
 - [ ] Add slow-client and malicious-frame protection tests.
 
@@ -171,7 +191,7 @@ This file is the source of truth for implementation progress. Every completed ph
 ## Phase 15 — Observability without hot-path logging
 
 - [ ] Define zero/low-overhead counters and event hooks.
-- [ ] Expose requests sent/received, responses, timeouts, outstanding window, RTT, reconnects and decode failures.
+- [ ] Expose requests sent/received, responses, response timeouts, session-init timeouts, inactivity expirations, enquire-link activity, outstanding window, RTT, reconnects and decode failures.
 - [ ] Expose congestion-state data when available.
 - [ ] Provide optional packet tracing outside the default hot path.
 - [ ] Keep per-PDU logging disabled by default.
@@ -185,6 +205,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Add TLS benchmarks separately from plain TCP.
 - [ ] Add single-session bidirectional benchmark first.
 - [ ] Add 2-, 4-, and higher-session benchmarks only as needed to find the minimum session count meeting target.
+- [ ] Add request-timeout and liveness-timer overhead benchmarks under high outstanding counts.
 - [ ] Measure CPU, allocations, heap, GC, mutex contention and scheduler behavior.
 - [ ] Persist benchmark methodology/results in `.codex/PERFORMANCE.md` or dedicated reports.
 
@@ -195,6 +216,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Determine and document the minimum practical connection/session count for the benchmark scenario.
 - [ ] Verify bounded memory under sustained load.
 - [ ] Verify no goroutine-per-message growth pattern.
+- [ ] Verify configured timeout tracking remains bounded and does not become a throughput bottleneck.
 - [ ] Profile before every significant optimization.
 - [ ] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
 
@@ -205,14 +227,18 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Test malformed, oversized and truncated PDUs.
 - [ ] Test duplicate/unexpected sequence numbers.
 - [ ] Test disconnect during bind, idle state and full outstanding window.
-- [ ] Test delayed responses and timeout storms.
+- [ ] Test delayed responses, late responses and timeout storms.
+- [ ] Test Session Init timeout, Enquire Link timeout/liveness and inactivity timeout scenarios.
+- [ ] Test simultaneous response-vs-timeout, timeout-vs-close and reconnect-vs-close races.
 - [ ] Test slow peers and application handlers.
 - [ ] Run `go test -race` scenarios.
-- [ ] Run sustained soak tests.
+- [ ] Run sustained soak tests with concurrent API callers.
 
 ## Phase 19 — Release readiness
 
 - [ ] Freeze and document public API compatibility policy.
+- [ ] Document concurrency guarantees for every public mutable type.
+- [ ] Document timeout/liveness configuration and exact semantics.
 - [ ] Add examples for ESME client and SMSC/server.
 - [ ] Complete package documentation.
 - [ ] Document interoperability quirks and vendor-extension APIs.
