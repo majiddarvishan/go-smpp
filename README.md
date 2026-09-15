@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Implementation is in progress. Phase 0 through Phase 4 are complete. Phases 5–7 are currently being implemented together: shared session state machine, TCP/TLS transport boundary, and asynchronous pipelined request/response engine with synchronous context-aware APIs.
+Phase 0 through Phase 7 are complete and verified. The next implementation phase is Phase 8: configurable request windowing and backpressure.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -26,7 +26,7 @@ See `PLAN.md` for detailed implementation progress and `.codex/` for architectur
 
 ## Implemented protocol foundation
 
-The repository already includes:
+The repository includes:
 
 - fixed 16-byte SMPP header encode/decode
 - TCP stream framing with fragmented/coalesced PDU handling
@@ -41,17 +41,23 @@ The repository already includes:
 - `short_message` / `message_payload` exclusivity checks
 - specification-driven codec vectors and race-tested registry code
 
-## Session and transport work
+## Session and transport core
 
-The active implementation work adds:
+The shared runtime now includes:
 
-- shared ESME/SMSC state validation
+- ESME/SMSC state validation for Open, Outbound, Bound_TX, Bound_RX, Bound_TRX, Unbound and Closed
+- race-safe bind/unbind lifecycle
 - plain TCP dial/listen and TLS-over-TCP adapters
 - caller-supplied `net.Conn` support
-- independent long-lived RX/TX session paths
-- bounded pending correlation
-- synchronous `Bind*`, `SubmitSM`, `DeliverSM`, `EnquireLink`, and `Unbind` APIs
-- race-safe concurrent requests and out-of-order response correlation
-- fatal protocol diagnostic logging followed by connection close
+- exactly two long-lived RX/TX paths per active session, not one goroutine per request
+- bounded pending-request correlation
+- session-local outbound sequence generation with wrap inside `1..0x7fffffff`
+- inbound interoperability sequence handling through `0xffffffff`
+- synchronous/context-aware `Bind*`, `SubmitSM`, `DeliverSM`, `EnquireLink`, `Unbind`, and generic request APIs over the asynchronous engine
+- out-of-order response correlation and concurrent request safety
+- simultaneous inbound `deliver_sm` while outbound `submit_sm` remains outstanding
+- exactly-once terminal request completion across response, caller cancellation, future timeout completion, fatal protocol failure, and session loss
+- mandatory structured fatal-protocol logging followed by closing the offending TCP connection
+- tests for fragmented reads, short writes, TLS-over-TCP, blocked TX interruption, high-concurrency correlation, invalid state operations, and race safety
 
-Request response timers, Session Init, Enquire Link scheduling, inactivity timers, window/backpressure tuning, reconnect/rebind, and the full SMSC server policy remain in later phases.
+The current `MaxPending` and TX queue bounds are defensive safety limits, not the final SMPP request-window policy. Configurable window acquisition/backpressure is Phase 8. The actual response-timeout scheduler, Session Init timer, Enquire Link scheduling, and inactivity timer remain Phase 9 work.
