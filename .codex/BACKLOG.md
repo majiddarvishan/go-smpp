@@ -18,13 +18,19 @@ These are mandatory for the SMPP 3.4 completeness phase even though they are def
 
 ## Message/encoding features
 
-- [ ] GSM 7-bit encode/decode and packing
-- [ ] UCS-2 helpers
+- [ ] GSM 03.38/GSM 7-bit default alphabet encode/decode
+- [ ] GSM 7-bit extension table
+- [ ] GSM 7-bit septet packing/unpacking
+- [ ] strict UCS-2/BMP encode/decode helpers
+- [ ] UTF-16BE Unicode encode/decode with surrogate-pair support for supplementary characters such as emoji
+- [ ] encoding selection helper: prefer GSM 7-bit when representable, otherwise use configured Unicode behavior
+- [ ] keep strict UCS-2 distinct from UTF-16BE-with-surrogates so peer/carrier emoji compatibility is explicit
 - [ ] binary message convenience API
-- [ ] UDH concatenation/segmentation
+- [ ] UDH concatenation/segmentation using encoded septet/code-unit length rather than Go rune count
 - [ ] SAR TLV segmentation
 - [ ] multipart reassembly
 - [ ] delivery-receipt convenience parsing/format helpers
+- [ ] conformance tests for GSM extension characters, Unicode BMP text, surrogate pairs/emoji, and multipart boundaries
 
 Encoding/message logic belongs in separate packages in this repository and must not be required by the low-level PDU codec.
 
@@ -49,6 +55,7 @@ Encoding/message logic belongs in separate packages in this repository and must 
 - [ ] registry examples for vendor-specific commands
 - [ ] optional peer-quirk profiles after real interoperability data is available
 - [ ] strict vs compatible decoder/session modes informed by real peers
+- [ ] document peers/carriers that accept UTF-16 surrogate pairs for emoji under SMPP Unicode/UCS-2 data coding
 
 ## Operations and observability
 
@@ -76,3 +83,4 @@ Only pursue these after profiling identifies a need:
 - [ ] examples for common ESME transmitter/receiver/transceiver roles
 - [ ] examples for SMSC/server role
 - [ ] vendor extension guide
+- [ ] GSM 7-bit and Unicode/emoji encoding guide
