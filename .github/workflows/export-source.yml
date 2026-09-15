@@ -14,10 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Pack source
-        run: tar --exclude=.git -czf source.tar.gz .
+        run: tar --exclude=.git --exclude=source.tar.gz -czf /tmp/source.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
           name: go-smpp-source
-          path: source.tar.gz
+          path: /tmp/source.tar.gz
           if-no-files-found: error
           retention-days: 1
