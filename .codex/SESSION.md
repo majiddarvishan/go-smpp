@@ -4,51 +4,61 @@
 
 Branch: `main`
 
-Phase 0 and Phase 1 are complete. Phase 2 has not started.
+Phase 0, Phase 1 and Phase 2 are complete. Phase 3 has not started.
 
-The project now has a Go module and package skeleton, protocol primitives, initial error taxonomy, tests/benchmarks, and Go 1.26 CI. Network transport is TCP; X.25 is out of scope. Optional TLS will be layered over TCP.
+Phase 2 implementation baseline commit: `690fd060f0bc507c3e38f3842884e005165126e8`.
 
-## Phase 1 completed
+Network transport is TCP; X.25 is out of scope. Optional TLS will be layered over TCP.
 
-- module: `github.com/majiddarvishan/go-smpp`
-- minimum Go version: 1.26
-- package boundary skeleton: root, `protocol`, `codec`, `session`, `transport`, `client`, `server`, `encoding`, `message`
-- automated dependency-direction test
-- SMPP 3.4 command IDs and command-status constants
-- `SequenceNumber`, TON, NPI, `DataCoding`, session state primitives
-- shared SMPP 3.4 / 5.0 profile model (`0x34` / `0x50`)
-- network-order uint32 primitive helpers
-- recoverable semantic protocol error type
-- fatal structural/framing error categories
-- typed session timeout metadata (`response`, `session_init`, `enquire_link`, `inactivity`)
-- primitive unit tests and allocation benchmarks
-- CI workflow using Go 1.26 with unit/race tests and primitive benchmarks
+## Phase 2 completed
+
+- fixed 16-octet SMPP header encode/decode
+- receive-side sequence-number interoperability through `0xffffffff`; local outbound generation remains limited to `0x7fffffff`
+- TCP byte-stream framer driven by `command_length`
+- fragmented and coalesced stream handling
+- zero-copy emission for complete PDUs already present in one input buffer
+- bounded buffering for fragmented PDUs
+- configurable maximum PDU size; default 1 MiB
+- 1/2/4-octet integer field helpers
+- C-Octet String and Octet String helpers
+- ordered TLV scanning/encoding with duplicate tag preservation
+- zero-allocation TLV scan API
+- fatal malformed/framing classification for invalid lengths and structural corruption
+- framer poisoning after fatal framing or fatal body-decode error; later bytes cannot be resynchronized/interpreted on that connection
+- partial-frame detection on stream finalization
+- malformed-frame, fragmentation/coalescing and high-sequence tests
+- fuzz seeds for stream framing
+- codec microbenchmarks
+
+The codec does not own sockets or logging. The mandatory `fatal protocol error -> structured log -> close offending TCP connection` integration remains explicitly assigned to the later session/transport/observability phases.
 
 ## Validation performed
 
-Local environment provides Go 1.23.2, so the code was smoke-tested by temporarily lowering only the local `go` directive to 1.23; repository `go.mod` remains Go 1.26. The code uses no language/API feature newer than that local compiler in Phase 1.
-
-Commands passed locally:
+GitHub Actions ran with Go 1.26.8 on Linux/amd64 and passed:
 
 ```text
 go test ./...
 go test -race ./...
-go test -bench=. -benchmem ./protocol
+go test -run '^$' -bench=. -benchmem ./protocol ./codec
 ```
 
-Primitive benchmark snapshot on the available Linux/amd64 EPYC environment:
+CI codec benchmark snapshot on the GitHub runner (AMD EPYC 7763):
 
 ```text
-BenchmarkPutUint32           ~0.28 ns/op   0 B/op   0 allocs/op
-BenchmarkReadUint32          ~0.29 ns/op   0 B/op   0 allocs/op
-BenchmarkCommandResponseID   ~0.29 ns/op   0 B/op   0 allocs/op
+BenchmarkDecodeHeader          0.3131 ns/op     0 B/op   0 allocs/op
+BenchmarkFramerCompletePDU    10.29 ns/op       0 B/op   0 allocs/op
+                               7774.27 MB/s
+BenchmarkScanTLVs             27.49 ns/op       0 B/op   0 allocs/op
+                               2328.12 MB/s
 ```
 
-These numbers are only a Phase 1 microbenchmark baseline, not a throughput claim.
+These are microbenchmarks, not the end-to-end 100k request-PDU/s acceptance result.
 
 ## Important requirements to preserve
 
 - 100k aggregate bidirectional request-PDU/s target on 8 cores / 10 GB RAM with minimum practical TCP connection count.
+- locally generated sequence numbers: `1..0x7fffffff`.
+- inbound sequence interoperability: accept `1..0xffffffff` and preserve the exact value in responses.
 - synchronous/context-aware public API over an asynchronous pipelined engine.
 - thread-safe active runtime APIs; no goroutine-per-message model.
 - configurable request-response timeout; Session Init, Enquire Link and inactivity handling.
@@ -59,8 +69,6 @@ These numbers are only a Phase 1 microbenchmark baseline, not a throughput claim
 
 ## Exact next task
 
-Start **Phase 2 — Binary framing and codec foundation** from `PLAN.md`.
+Start **Phase 3 — Extensible registries** from `PLAN.md`.
 
-Begin with the fixed 16-byte header and a TCP-stream framer driven by `command_length`. The framer must handle fragmented/coalesced reads and must classify unsafe structural framing errors as fatal so the owning session can log and close the connection later.
-
-Do not start session networking or PDU business logic before the codec/framing foundation is tested and benchmarked.
+Implement explicit PDU-command and TLV registries, including vendor-specific registration. Prefer immutable/frozen registry snapshots for active-session hot paths. Registry behavior must be concurrency-safe and must not weaken the fatal framing rules already implemented in the codec.
