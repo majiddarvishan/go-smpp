@@ -42,15 +42,21 @@ func TestResponseIDs(t *testing.T) {
 	}
 }
 
-func TestSequenceRange(t *testing.T) {
-	if SequenceNumber(0).Valid() {
+func TestSequenceRanges(t *testing.T) {
+	if SequenceNumber(0).ValidInbound() || SequenceNumber(0).ValidOutbound() {
 		t.Fatal("zero sequence must be invalid")
 	}
-	if !SequenceMin.Valid() || !SequenceMax.Valid() {
-		t.Fatal("sequence range endpoints must be valid")
+	if !SequenceMin.ValidInbound() || !SequenceMin.ValidOutbound() {
+		t.Fatal("minimum sequence must be valid")
 	}
-	if SequenceNumber(uint32(SequenceMax) + 1).Valid() {
-		t.Fatal("sequence above maximum must be invalid")
+	if !SequenceOutboundMax.ValidOutbound() {
+		t.Fatal("SMPP outbound maximum must be valid for local generation")
+	}
+	if SequenceNumber(uint32(SequenceOutboundMax) + 1).ValidOutbound() {
+		t.Fatal("locally generated sequence must remain within 0x7fffffff")
+	}
+	if !SequenceInboundMax.ValidInbound() || !SequenceInboundMax.Valid() {
+		t.Fatal("received sequence 0xffffffff must be accepted for interoperability")
 	}
 }
 

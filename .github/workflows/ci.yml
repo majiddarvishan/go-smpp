@@ -27,5 +27,5 @@ jobs:
       - name: Race tests
         run: go test -race ./...
 
-      - name: Primitive benchmarks
-        run: go test -run '^$' -bench=. -benchmem ./protocol
+      - name: Protocol and codec benchmarks
+        run: go test -run '^$' -bench=. -benchmem ./protocol ./codec
