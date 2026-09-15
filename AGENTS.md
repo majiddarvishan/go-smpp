@@ -1,0 +1,46 @@
+# Agent Instructions
+
+This repository is a performance-sensitive SMPP implementation. Before changing code or plans, read these files in order:
+
+1. `PLAN.md`
+2. `.codex/PROJECT_CONTEXT.md`
+3. `.codex/DECISIONS.md`
+4. `.codex/ARCHITECTURE.md`
+5. `.codex/PERFORMANCE.md`
+6. `.codex/BACKLOG.md`
+7. `.codex/SESSION.md`
+
+## Mandatory working rules
+
+- `PLAN.md` is the implementation progress source of truth. When a step is completed and verified, change its checkbox to `[x]` in the same commit.
+- Do not start a later phase by bypassing architectural constraints from earlier phases unless the plan and decision log are explicitly updated.
+- SMPP 3.4 is the first complete compatibility target; the core must remain SMPP 5.0-aware and must not become a 3.4-only design.
+- Client/ESME and server/SMSC must share the same protocol/session core wherever protocol semantics are common.
+- Public API is synchronous/context-aware, but the engine underneath must be asynchronous and pipelined.
+- Do not create a goroutine per message/request.
+- Do not introduce unbounded queues or unbounded pending-request growth.
+- Do not automatically resubmit requests after an ambiguous connection failure.
+- Prefer Go standard library. Any external dependency requires a documented reason in `.codex/DECISIONS.md`.
+- Do not use `unsafe` unless profiling proves a need and the decision is recorded/reviewed first.
+- Codec and PDU packages must not depend on session/network packages.
+- TLS belongs in the transport layer and must remain independent from SMPP PDU/session semantics.
+- Unknown/vendor TLVs must be preservable; vendor-specific TLVs and commands must be extensible through registries.
+- Avoid per-PDU logging in hot paths. Prefer counters, hooks and optional tracing.
+- Performance optimizations must be profile-driven and backed by benchmarks.
+
+## Performance contract
+
+Primary reference target:
+
+- 100,000 aggregate bidirectional request PDUs/s (`requests sent + requests received`).
+- Required response encoding/decoding/correlation is additional processing and must be included in end-to-end tests.
+- Reference machine: Linux/amd64, 8 CPU cores, 10 GB RAM.
+- Optimize for the minimum practical number of SMPP sessions/connections. Benchmark one session first, then increase only when necessary.
+
+Do not reinterpret the target as 100k total PDUs/s unless the project owner explicitly changes the requirement.
+
+## Scope discipline
+
+The first functional milestone focuses on bind/session management plus `submit_sm` and `deliver_sm` request/response paths. Other SMPP 3.4 operations remain required for 3.4 completeness and are tracked in `PLAN.md` and `.codex/BACKLOG.md`.
+
+When handing work to another session/system, update `.codex/SESSION.md` with current branch/commit, completed work, tests/benchmarks run, known problems and the exact next task.
