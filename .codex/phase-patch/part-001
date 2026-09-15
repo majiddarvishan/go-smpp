@@ -1,0 +1,192 @@
+diff --git a/.codex/DECISIONS.md b/.codex/DECISIONS.md
+index a9f8c44..5a8cc6a 100644
+--- a/.codex/DECISIONS.md
++++ b/.codex/DECISIONS.md
+@@ -196,12 +196,19 @@ Recoverable protocol/application errors where the frame boundary is intact remai
+ 
+ **Reason:** Fatal protocol logging is mandatory, rare, and must be useful operationally without putting message/authentication content on the normal logging path.
+ 
++## D-037 — Configurable outstanding request window
++
++**Decision:** Each active session has a configurable outbound request window. The default is **1024** outstanding requests, not the historical recommendation of 10. `Request` waits for a slot with caller-context cancellation; `TryRequest` provides non-blocking admission and returns `ErrWindowFull`.
++
++Window ownership transfers to the pending-correlation entry after insertion. Whichever terminal path removes that entry releases the window exactly once. Window utilization/high-water/wait counters are available through a lock-free snapshot, with an optional observer hook.
++
++**Reason:** The usable window depends on target request rate and peer RTT. A fixed value of 10 cannot meet high-throughput/long-RTT scenarios; the bound must remain explicit, observable, and tunable while preventing unbounded work.
++
+ ## Open decisions
+ 
+ The following remain to be decided in later phases and recorded here:
+ 
+ - Exact public package naming/API conventions after the first API sketch stabilizes.
+-- Default window size and backpressure behavior.
+ - Default per-request response timeout.
+ - Default Session Init timeout.
+ - Default Enquire Link interval and response timeout.
+diff --git a/.codex/SESSION.md b/.codex/SESSION.md
+index 1b93491..c2eb0ea 100644
+--- a/.codex/SESSION.md
++++ b/.codex/SESSION.md
+@@ -4,7 +4,7 @@
+ 
+ Branch: `main`
+ 
+-Phase 0 through Phase 7 are complete and verified. Phase 8 has not started.
++Phase 0 through Phase 8 are complete and verified locally. Phase 9 is next.
+ 
+ The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
+ 
+@@ -58,7 +58,7 @@ Implemented behavior includes:
+ - late/unmatched/duplicate responses cannot complete a different request
+ - owned copies for response values returned past the receive-frame lifetime
+ 
+-`MaxPending` and the TX queue currently provide defensive boundedness only. They are not the final SMPP request-window/backpressure implementation; that is Phase 8.
++Phase 8 adds a configurable outbound request window (default 1024), context-cancellable blocking acquisition, non-blocking `TryRequest` admission with `ErrWindowFull`, exact-once slot release through pending-entry ownership, and lock-free window utilization/high-water/wait snapshots with an optional observer hook. `MaxPending` remains a defensive correlation-table ceiling and is automatically kept at least as large as the window.
+ 
+ The pending completion primitive already accepts timeout completion safely, but the actual per-request response-deadline scheduler is intentionally still Phase 9. Session Init timeout, Enquire Link scheduling/timeout, and inactivity timeout also remain Phase 9.
+ 
+@@ -108,6 +108,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
+ 
+ ## Exact next task
+ 
+-Start **Phase 8 — Windowing and backpressure** from `PLAN.md`.
+-
+-Build a configurable outstanding-request window on top of the existing bounded pending/completion core. Window acquisition must be context-cancellable, overload/backpressure must remain explicit and bounded, and every response/cancellation/future-timeout/session-loss path must release capacity exactly once. Benchmark multiple window sizes against RTT profiles; do not hard-code the historical recommendation of 10 outstanding requests.
++Start **Phase 9 — Efficient timer and liveness subsystem** from `PLAN.md`. Add shared response-deadline processing without one timer/goroutine per request, then Session Init, Enquire Link, and inactivity timers on the same race-safe session core.
+diff --git a/PLAN.md b/PLAN.md
+index 59314dd..c5d2108 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -125,13 +125,13 @@ This file is the source of truth for implementation progress. Every completed ph
+ 
+ ## Phase 8 — Windowing and backpressure
+ 
+-- [ ] Implement configurable maximum outstanding-request window.
+-- [ ] Implement blocking/context-cancellable acquisition for synchronous API calls.
+-- [ ] Implement explicit overload/backpressure errors rather than unbounded queues.
+-- [ ] Ensure timeout/cancellation/session-loss paths always release window capacity exactly once.
+-- [ ] Record window utilization metrics/hooks.
+-- [ ] Benchmark different window sizes against RTT profiles.
+-- [ ] Avoid hard-coding the historical SMPP 3.4 recommendation of 10 outstanding requests.
++- [x] Implement configurable maximum outstanding-request window.
++- [x] Implement blocking/context-cancellable acquisition for synchronous API calls.
++- [x] Implement explicit overload/backpressure errors rather than unbounded queues.
++- [x] Ensure timeout/cancellation/session-loss paths always release window capacity exactly once.
++- [x] Record window utilization metrics/hooks.
++- [x] Benchmark different window sizes against RTT profiles.
++- [x] Avoid hard-coding the historical SMPP 3.4 recommendation of 10 outstanding requests.
+ 
+ ## Phase 9 — Efficient timer and liveness subsystem
+ 
+-diff --git a/session/errors.go b/session/errors.go
++diff --git a/session/errors.go b/session/errors.go
+index 72952ac..8e3f6d8 100644
+--- a/session/errors.go
++++ b/session/errors.go
+@@ -12,6 +12,7 @@ var (
+ 	ErrSessionClosed     = errors.New("smpp session: closed")
+ 	ErrInvalidConfig     = errors.New("smpp session: invalid configuration")
+ 	ErrPendingLimit      = errors.New("smpp session: pending request limit reached")
++	ErrWindowFull        = errors.New("smpp session: outstanding request window full")
+ 	ErrSequenceInUse     = errors.New("smpp session: sequence number already pending")
+ 	ErrSequenceExhausted = errors.New("smpp session: no free sequence number")
+ 	ErrBindInProgress    = errors.New("smpp session: bind already in progress")
+diff --git a/session/pending.go b/session/pending.go
+index fe67cb6..65eaa33 100644
+--- a/session/pending.go
++++ b/session/pending.go
+@@ -14,10 +14,11 @@ type requestResult struct {
+ }
+ 
+ type pendingRequest struct {
+-	requestID  protocol.CommandID
+-	expectedID protocol.CommandID
+-	done       chan requestResult
+-	dispatched atomic.Bool
++	requestID     protocol.CommandID
++	expectedID    protocol.CommandID
++	done          chan requestResult
++	dispatched    atomic.Bool
++	releaseWindow func()
+ }
+ 
+ type pendingTable struct {
+@@ -73,6 +74,7 @@ func (t *pendingTable) takeResponse(sequence protocol.SequenceNumber, responseID
+ 	}
+ 	delete(t.m, sequence)
+ 	t.mu.Unlock()
++	request.releaseSlot()
+ 	return request, true
+ }
+ 
+@@ -86,6 +88,7 @@ func (t *pendingTable) completeError(sequence protocol.SequenceNumber, err error
+ 	if !ok {
+ 		return nil, false
+ 	}
++	request.releaseSlot()
+ 	request.done <- requestResult{err: err}
+ 	return request, true
+ }
+@@ -99,6 +102,7 @@ func (t *pendingTable) failAll(err error) {
+ 	}
+ 	t.mu.Unlock()
+ 	for _, request := range requests {
++		request.releaseSlot()
+ 		request.done <- requestResult{err: err}
+ 	}
+ }
+@@ -109,3 +113,10 @@ func (t *pendingTable) len() int {
+ 	t.mu.Unlock()
+ 	return n
+ }
++
++func (r *pendingRequest) releaseSlot() {
++	if r.releaseWindow != nil {
++		r.releaseWindow()
++		r.releaseWindow = nil
++	}
++}
+diff --git a/session/session.go b/session/session.go
+index e834fd8..d173f4c 100644
+--- a/session/session.go
++++ b/session/session.go
+@@ -42,13 +42,16 @@ func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu codec.DecodedPD
+ }
+ 
+ // Config configures one active SMPP session. The registry is immutable while a
+-// session is active. MaxPending and TXQueueSize are defensive bounds, not the
+-// Phase-8 outstanding-window policy.
++// session is active. WindowSize is the protocol outstanding-request admission
++// bound; MaxPending is a defensive correlation-table ceiling and is raised to
++// WindowSize automatically when necessary.
+ type Config struct {
+ 	Role           Role
+ 	Registry       *codec.Registry
+ 	MaxPDUSize     uint32
+ 	MaxPending     int
++	WindowSize     int
++	WindowObserver WindowObserver
+ 	TXQueueSize    int
+ 	ReadBufferSize int
+ 	Handler        Handler
+@@ -87,6 +90,7 @@ type Session struct {
+ 	tx     chan txItem
+ 
+ 	pending *pendingTable
++	window  *requestWindow
+ 	seq     sequenceGenerator
+ 
+ 	closeOnce sync.Once
+@@ -106,9 +110,15 @@ func New(conn net.Conn, config Config) (*Session, error) {
+ 		}
+ 		config.Registry = registry
+ 	}
++	if config.WindowSize <= 0 {
++		config.WindowSize = DefaultWindowSize
++	}
+ 	if config.MaxPending <= 0 {
+ 		config.MaxPending = DefaultMaxPending
+ 	}
++	if config.MaxPending < config.WindowSize {
++		config.MaxPending = config.WindowSize
++	}
