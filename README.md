@@ -8,12 +8,27 @@ A high-performance SMPP stack for Go, designed for both ESME/client and SMSC/ser
 - SMPP 3.4 complete support first, with an architecture that is SMPP 5.0-aware from day one.
 - Initial production hot path: `submit_sm` / `submit_sm_resp` and `deliver_sm` / `deliver_sm_resp`.
 - Synchronous public API backed by an asynchronous, pipelined protocol engine.
+- Configurable per-request response timeout after a request is sent.
+- SMPP Session Init timeout, Enquire Link liveness handling and inactivity timeout.
+- Thread-safe/concurrent-safe active client, server and session APIs for documented concurrent operations.
 - Automatic reconnect without hidden automatic resubmission of ambiguous requests.
 - Extensible PDU/TLV registry, including vendor-specific TLVs.
 - Encoding support in separate packages within this repository.
 - Minimal external dependencies; prefer the Go standard library.
 - Primary target: Linux/amd64.
 - No `unsafe` in the initial implementation.
+
+## Timeout and liveness model
+
+Outbound SMPP requests that expect responses have a configurable protocol response timeout. The timeout starts after the request PDU has been fully dispatched to the active transport; time spent waiting for local window/TX capacity is controlled separately by the caller context/deadline.
+
+A request may complete by response, timeout, cancellation or session loss, but local completion and window release must happen exactly once. Late responses after timeout are treated as late/unmatched and must not complete another request.
+
+The session layer also provides configurable Session Init timeout, Enquire Link scheduling/response handling and inactivity timeout.
+
+## Concurrency model
+
+The wire protocol core is asynchronous and bidirectional even though the public request API is synchronous. Active runtime objects are designed to be safely shared by multiple goroutines where documented. Sequence allocation, pending correlation, session state, window accounting, timers, close and reconnect paths must be data-race free. The implementation must not use a goroutine per message/request.
 
 ## Performance target
 
