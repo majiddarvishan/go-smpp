@@ -1,0 +1,268 @@
+ 	if config.TXQueueSize <= 0 {
+ 		config.TXQueueSize = DefaultTXQueueSize
+ 	}
+@@ -136,6 +146,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
+ 		config: config, logger: logger, ctx: ctx, cancel: cancel,
+ 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
+ 		pending: newPendingTable(config.MaxPending),
++		window:  newRequestWindow(config.WindowSize, config.WindowObserver),
+ 	}
+ 	s.wg.Add(2)
+ 	go s.rxLoop()
+@@ -146,10 +157,13 @@ func New(conn net.Conn, config Config) (*Session, error) {
+ func (s *Session) Role() Role                   { return s.machine.Role() }
+ func (s *Session) State() protocol.SessionState { return s.machine.State() }
+ func (s *Session) BindMode() BindMode           { return s.machine.BindMode() }
+-func (s *Session) Done() <-chan struct{}         { return s.done }
+-func (s *Session) Pending() int                  { return s.pending.len() }
+-func (s *Session) LocalAddr() net.Addr           { return s.conn.LocalAddr() }
+-func (s *Session) RemoteAddr() net.Addr          { return s.conn.RemoteAddr() }
++func (s *Session) Done() <-chan struct{}        { return s.done }
++func (s *Session) Pending() int                 { return s.pending.len() }
++
++// Window returns current bounded-outstanding-request utilization.
++func (s *Session) Window() WindowSnapshot { return s.window.snapshot() }
++func (s *Session) LocalAddr() net.Addr    { return s.conn.LocalAddr() }
++func (s *Session) RemoteAddr() net.Addr   { return s.conn.RemoteAddr() }
+ 
+ // Err returns the terminal session error after Done is closed.
+ func (s *Session) Err() error {
+@@ -171,8 +185,20 @@ func (s *Session) Close() error {
+ }
+ 
+ // Request synchronously waits for one response while the underlying session
+-// remains asynchronous and may carry many other requests concurrently.
++// remains asynchronous and may carry many other requests concurrently. If the
++// outstanding request window is full, Request waits until capacity is released,
++// the caller context ends, or the session closes.
+ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error) {
++	return s.request(ctx, command, body, true)
++}
++
++// TryRequest is the non-blocking admission variant. It returns ErrWindowFull
++// instead of waiting when the configured outstanding request window is full.
++func (s *Session) TryRequest(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error) {
++	return s.request(ctx, command, body, false)
++}
++
++func (s *Session) request(ctx context.Context, command protocol.CommandID, body any, waitWindow bool) (codec.DecodedPDU, error) {
+ 	if ctx == nil {
+ 		ctx = context.Background()
+ 	}
+@@ -184,6 +210,18 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body
+ 		return codec.DecodedPDU{}, s.requestCloseError()
+ 	default:
+ 	}
++	if err := s.window.acquire(ctx, s.done, waitWindow); err != nil {
++		if errors.Is(err, ErrSessionClosed) {
++			return codec.DecodedPDU{}, s.requestCloseError()
++		}
++		return codec.DecodedPDU{}, err
++	}
++	windowOwned := true
++	defer func() {
++		if windowOwned {
++			s.window.release()
++		}
++	}()
+ 
+ 	if err := s.machine.BeginOutbound(command); err != nil {
+ 		return codec.DecodedPDU{}, err
+@@ -195,7 +233,7 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body
+ 		}
+ 	}()
+ 
+-	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1)}
++	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1), releaseWindow: s.window.release}
+ 	var sequence protocol.SequenceNumber
+ 	inserted := false
+ 	for attempts := 0; attempts <= s.config.MaxPending; attempts++ {
+@@ -213,6 +251,7 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body
+ 	if !inserted {
+ 		return codec.DecodedPDU{}, ErrSequenceExhausted
+ 	}
++	windowOwned = false // pendingRequest now owns the slot until terminal removal.
+ 
+ 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
+ 	frame, err := codec.EncodePDU(nil, header, body, s.registry)
+diff --git a/session/window.go b/session/window.go
+new file mode 100644
+index 0000000..2dee2da
+--- /dev/null
++++ b/session/window.go
+@@ -0,0 +1,101 @@
++package session
++
++import (
++	"context"
++	"sync/atomic"
++)
++
++const DefaultWindowSize = 1024
++
++// WindowSnapshot is a lock-free operational snapshot of the outbound request
++// window. HighWater is the highest observed number of simultaneously acquired
++// request slots since the session was created.
++type WindowSnapshot struct {
++	Capacity  uint32
++	InUse     uint32
++	HighWater uint32
++	Acquired  uint64
++	Waits     uint64
++}
++
++// WindowObserver is called after successful acquire/release operations when
++// configured. It must return quickly and must not call back into a blocking
++// session operation.
++type WindowObserver func(WindowSnapshot)
++
++type requestWindow struct {
++	tokens   chan struct{}
++	capacity uint32
++	inUse    atomic.Uint32
++	high     atomic.Uint32
++	acquired atomic.Uint64
++	waits    atomic.Uint64
++	observer WindowObserver
++}
++
++func newRequestWindow(size int, observer WindowObserver) *requestWindow {
++	return &requestWindow{tokens: make(chan struct{}, size), capacity: uint32(size), observer: observer}
++}
++
++func (w *requestWindow) acquire(ctx context.Context, sessionDone <-chan struct{}, wait bool) error {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	select {
++	case w.tokens <- struct{}{}:
++		w.afterAcquire()
++		return nil
++	default:
++	}
++	if !wait {
++		return ErrWindowFull
++	}
++	w.waits.Add(1)
++	select {
++	case w.tokens <- struct{}{}:
++		w.afterAcquire()
++		return nil
++	case <-ctx.Done():
++		return ctx.Err()
++	case <-sessionDone:
++		return ErrSessionClosed
++	}
++}
++
++func (w *requestWindow) afterAcquire() {
++	inUse := w.inUse.Add(1)
++	w.acquired.Add(1)
++	for {
++		old := w.high.Load()
++		if inUse <= old || w.high.CompareAndSwap(old, inUse) {
++			break
++		}
++	}
++	w.notify()
++}
++
++func (w *requestWindow) release() {
++	select {
++	case <-w.tokens:
++		w.inUse.Add(^uint32(0)) // subtract one without a signed atomic
++		w.notify()
++	default:
++		panic("smpp session: outbound window released without acquisition")
++	}
++}
++
++func (w *requestWindow) snapshot() WindowSnapshot {
++	return WindowSnapshot{
++		Capacity:  w.capacity,
++		InUse:     w.inUse.Load(),
++		HighWater: w.high.Load(),
++		Acquired:  w.acquired.Load(),
++		Waits:     w.waits.Load(),
++	}
++}
++
++func (w *requestWindow) notify() {
++	if w.observer != nil {
++		w.observer(w.snapshot())
++	}
++}
+diff --git a/session/window_test.go b/session/window_test.go
+new file mode 100644
+index 0000000..5fa5954
+--- /dev/null
++++ b/session/window_test.go
+@@ -0,0 +1,90 @@
++package session
++
++import (
++	"context"
++	"errors"
++	"testing"
++	"time"
++)
++
++func TestRequestWindowBlocksAndReleases(t *testing.T) {
++	w := newRequestWindow(1, nil)
++	done := make(chan struct{})
++	if err := w.acquire(context.Background(), done, true); err != nil {
++		t.Fatal(err)
++	}
++	if got := w.snapshot(); got.InUse != 1 || got.HighWater != 1 || got.Capacity != 1 {
++		t.Fatalf("snapshot after acquire: %+v", got)
++	}
++	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
++	defer cancel()
++	if err := w.acquire(ctx, done, true); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("blocked acquire error = %v", err)
++	}
++	if err := w.acquire(context.Background(), done, false); !errors.Is(err, ErrWindowFull) {
++		t.Fatalf("nonblocking acquire error = %v", err)
++	}
++	w.release()
++	if err := w.acquire(context.Background(), done, false); err != nil {
++		t.Fatalf("acquire after release: %v", err)
++	}
++	w.release()
++	if got := w.snapshot(); got.InUse != 0 || got.Waits != 1 || got.Acquired != 2 {
++		t.Fatalf("final snapshot: %+v", got)
++	}
++}
++
++func TestPendingTerminalPathsReleaseWindowExactlyOnce(t *testing.T) {
++	w := newRequestWindow(1, nil)
++	done := make(chan struct{})
++	if err := w.acquire(context.Background(), done, true); err != nil {
++		t.Fatal(err)
++	}
++	req := &pendingRequest{done: make(chan requestResult, 1), releaseWindow: w.release}
++	table := newPendingTable(1)
++	if err := table.insert(1, req); err != nil {
++		t.Fatal(err)
++	}
++	if _, won := table.completeError(1, errors.New("x")); !won {
++		t.Fatal("first completion lost")
++	}
++	if _, won := table.completeError(1, errors.New("y")); won {
++		t.Fatal("second completion won")
++	}
++	if got := w.snapshot().InUse; got != 0 {
++		t.Fatalf("in use = %d", got)
++	}
++}
++
++func BenchmarkRequestWindowAcquireRelease(b *testing.B) {
++	for _, size := range []int{1, 10, 100, 1000, 5000} {
++		b.Run(windowBenchmarkName(size), func(b *testing.B) {
++			w := newRequestWindow(size, nil)
++			done := make(chan struct{})
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				if err := w.acquire(context.Background(), done, true); err != nil {
++					b.Fatal(err)
