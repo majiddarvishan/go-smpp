@@ -94,6 +94,39 @@ Reference hardware: Linux/amd64, 8 cores, 10 GB RAM.
 
 **Decision:** Optimize after measurement. Every non-obvious performance optimization must be supported by a benchmark/profile showing the bottleneck and benefit.
 
+## D-019 — Request response timeout semantics
+
+**Decision:** Every outbound SMPP request that expects a response supports a configurable protocol response timeout. The response timeout starts after the request PDU has been fully dispatched to the active transport. Time spent waiting for window capacity or local TX admission is controlled separately by the caller context/deadline.
+
+On expiry, the pending request is completed exactly once with a typed response-timeout error, removed from correlation state, and its window capacity is released exactly once. A later response for the expired request is treated as late/unmatched and must not complete a different request.
+
+**Reason:** The public API is synchronous, but the wire engine is pipelined. Timeout ownership must therefore be explicit and race-safe without blocking the entire session.
+
+## D-020 — SMPP liveness timers
+
+**Decision:** The session engine must support configurable Session Init timeout, Enquire Link scheduling/response timeout and inactivity timeout for both relevant client and server session lifecycles.
+
+- Session Init timeout bounds connection-to-valid-session establishment.
+- Enquire Link is scheduled after configured SMPP inactivity and uses normal request/response correlation plus a response deadline.
+- Inactivity timeout observes session activity and triggers deterministic session shutdown/unbind behavior according to configuration.
+- Timer state updates must remain correct while RX and TX activity occur concurrently.
+
+**Reason:** These timers are part of SMPP session management and are necessary for predictable failure detection and resource cleanup.
+
+## D-021 — Concurrency/thread-safety contract
+
+**Decision:** Public mutable types that represent active runtime objects (`Client`, `Server`, `Session`, and documented request/send APIs) must be safe for concurrent use by multiple goroutines. Internal state transitions, pending correlation, sequence allocation, window accounting, timeout completion, close and reconnect must be data-race free.
+
+Registries/configuration should avoid hot-path mutable global state. Prefer explicit registry instances that are either concurrency-safe during construction or frozen into immutable snapshots before sessions use them.
+
+**Reason:** The target workload is inherently concurrent and bidirectional. Thread safety cannot be left to application-level serialization without undermining the library API and throughput goals.
+
+## D-022 — Exactly-once local request completion
+
+**Decision:** For each locally originated request, only one terminal event may win: matching response, caller cancellation/deadline, protocol response timeout, or session/transport loss. All losing paths must observe the completed state and must not double-release window capacity, double-notify the caller or mutate reused request state.
+
+**Reason:** Response/timeout/close races are normal under load and are a primary correctness risk in an asynchronous SMPP engine.
+
 ## Open decisions
 
 The following must be decided before or during Phase 1 and recorded here:
@@ -102,5 +135,9 @@ The following must be decided before or during Phase 1 and recorded here:
 - Exact public package naming/API conventions after the first API sketch.
 - Default maximum PDU size.
 - Default window size and backpressure behavior.
+- Default per-request response timeout.
+- Default Session Init timeout.
+- Default Enquire Link interval and response timeout.
+- Default inactivity timeout and exact graceful-close policy.
 - Default reconnect/backoff policy.
 - Borrowed-vs-owned PDU exposure rules at the public boundary.
