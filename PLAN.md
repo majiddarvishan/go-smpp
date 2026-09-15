@@ -62,13 +62,14 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 3 — Extensible registries
 
-- [ ] Implement central PDU command registry.
-- [ ] Implement central TLV registry.
-- [ ] Support vendor-specific TLV registration.
-- [ ] Support vendor-specific command registration without editing core switch statements throughout the codebase.
-- [ ] Define strict vs compatible handling for unknown/unsupported fields; compatibility mode must not override fatal framing-safety rules.
-- [ ] Make registry construction/mutation safe for concurrent callers or freeze registries into immutable read-only snapshots before session hot-path use.
-- [ ] Add registry concurrency and duplicate-registration tests.
+- [x] Implement central PDU command registry.
+- [x] Implement central TLV registry.
+- [x] Support vendor-specific TLV registration.
+- [x] Support vendor-specific command registration without editing core switch statements throughout the codebase.
+- [x] Define strict vs compatible handling for unknown/unsupported fields; compatibility mode must not override fatal framing-safety rules.
+- [x] Make registry construction/mutation safe for concurrent callers and freeze registries into immutable read-only snapshots before session hot-path use.
+- [x] Add registry concurrency and duplicate-registration tests.
+- [x] Add registry lookup microbenchmarks and verify the frozen lookup path is allocation-free.
 
 ## Phase 4 — Essential SMPP 3.4 PDUs
 
@@ -173,13 +174,17 @@ This file is the source of truth for implementation progress. Every completed ph
 ## Phase 12 — Message and encoding packages
 
 - [ ] Create encoding packages separate from protocol/session core.
-- [ ] Implement GSM 7-bit support.
-- [ ] Implement UCS-2 support.
+- [ ] Implement GSM 03.38/GSM 7-bit default alphabet encode/decode.
+- [ ] Implement GSM 7-bit extension-table characters and septet packing/unpacking.
+- [ ] Implement strict UCS-2/BMP encoding and decoding helpers.
+- [ ] Implement UTF-16BE Unicode encoding with surrogate-pair support for supplementary-plane characters such as emoji.
+- [ ] Provide a message-encoding selection helper that can prefer GSM 7-bit when representable and fall back to Unicode when required/configured.
+- [ ] Keep strict UCS-2 and UTF-16BE-with-surrogates behavior distinguishable so applications can match peer/carrier capabilities instead of silently emitting unsupported emoji.
 - [ ] Support binary payloads.
-- [ ] Implement UDH-based multipart segmentation/reassembly.
+- [ ] Implement UDH-based multipart segmentation/reassembly with limits calculated from encoded septets/code units, not Go rune count.
 - [ ] Implement SAR-TLV multipart support.
 - [ ] Keep message-content decoding optional on the protocol hot path.
-- [ ] Add conformance and boundary tests.
+- [ ] Add conformance and boundary tests for GSM 7-bit, extension characters, Unicode BMP text, surrogate pairs/emoji, and multipart boundaries.
 
 ## Phase 13 — SMPP 3.4 completeness
 
@@ -263,6 +268,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Add examples for ESME client and SMSC/server.
 - [ ] Complete package documentation.
 - [ ] Document interoperability quirks and vendor-extension APIs.
+- [ ] Document GSM 7-bit and Unicode/emoji interoperability behavior and peer-capability caveats.
 - [ ] Publish reproducible performance results for the reference machine.
 - [ ] Tag the first production-ready release.
 
