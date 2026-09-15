@@ -28,6 +28,9 @@ Current requirements have been captured in `PLAN.md`, `AGENTS.md` and the `.code
 - No hidden auto-resubmit of ambiguous requests.
 - Active public runtime objects/APIs must be safe for concurrent use by multiple goroutines where documented.
 - Internal state, correlation, window accounting, timers, close and reconnect paths must be data-race free.
+- Fatal structural/framing corruption (for example invalid `command_length` or impossible body/TLV length) terminates the current connection/session; the decoder does not attempt byte-stream resynchronization.
+- Every fatal malformed-PDU termination emits a structured diagnostic error log with safe metadata and without credentials/full message payload by default.
+- Server-side malformed input only closes the offending session; unrelated sessions and the listener remain alive.
 - Minimal dependencies; standard library preferred.
 - Linux/amd64 primary target.
 - No `unsafe` initially.
@@ -43,11 +46,12 @@ Before coding Phase 1:
 
 1. Decide/pin the minimum supported Go version.
 2. Sketch the public API names sufficiently to avoid package naming conflicts.
-3. Define timeout error categories/types early enough that later session code does not collapse protocol response timeout into generic `context.DeadlineExceeded`.
-4. Initialize the module as `github.com/majiddarvishan/go-smpp`.
-5. Create only the package directories needed for Phase 1; avoid speculative package sprawl.
-6. Add primitive unit tests and microbenchmarks with the first code.
-7. Mark each completed Phase 1 checklist item `[x]` in `PLAN.md` in the same commit.
+3. Define timeout and fatal-protocol/framing error categories/types early enough that later session code does not collapse distinct failures into generic errors.
+4. Decide the logging interface/default behavior for mandatory fatal-protocol diagnostics while keeping per-PDU logging disabled by default.
+5. Initialize the module as `github.com/majiddarvishan/go-smpp`.
+6. Create only the package directories needed for Phase 1; avoid speculative package sprawl.
+7. Add primitive unit tests and microbenchmarks with the first code.
+8. Mark each completed Phase 1 checklist item `[x]` in `PLAN.md` in the same commit.
 
 ## Implementation cautions
 
@@ -56,11 +60,13 @@ Before coding Phase 1:
 - Do not use a goroutine-per-message or goroutine-per-timeout model.
 - Do not use one independent `time.Timer` per pending request as the final high-throughput timeout architecture.
 - Do not treat one TCP read as one SMPP PDU.
+- Do not attempt to recover stream alignment after a fatal malformed frame; close the connection instead.
+- Do not suppress the diagnostic log when a malformed frame causes a connection close.
 - Do not hard-code a window of 10.
 - Do not add automatic resubmission to reconnect logic later.
 - Do not count response PDUs toward the stated 100k request-PDU/s target, although they must be processed during benchmarks.
 - Do not make correctness depend on callers serializing access to a session.
-- Any response/timeout/cancel/session-loss race must result in exactly one local completion and one window release.
+- Any response/timeout/cancel/fatal-protocol/session-loss race must result in exactly one local completion and one window release.
 - Run race-detector tests as concurrency code is introduced, not only at release time.
 
 ## Handoff update rule
