@@ -1,79 +1,57 @@
 # go-smpp
 
-A high-performance SMPP stack for Go, designed for both ESME/client and SMSC/server use cases.
+High-performance SMPP stack for Go, designed for both ESME/client and SMSC/server roles.
 
-## Project goals
+The project targets SMPP 3.4 first while keeping the core architecture ready for SMPP 5.0 extensions. The network transport is TCP; optional TLS is layered over TCP.
 
-- Shared protocol core for client and server roles.
-- SMPP 3.4 complete support first, with an architecture that is SMPP 5.0-aware from day one.
-- Initial production hot path: `submit_sm` / `submit_sm_resp` and `deliver_sm` / `deliver_sm_resp`.
-- Synchronous public API backed by an asynchronous, pipelined protocol engine.
-- Configurable per-request response timeout after a request is sent.
-- SMPP Session Init timeout, Enquire Link liveness handling and inactivity timeout.
-- Thread-safe/concurrent-safe active client, server and session APIs for documented concurrent operations.
-- Automatic reconnect without hidden automatic resubmission of ambiguous requests.
-- Extensible PDU/TLV registry, including vendor-specific TLVs.
-- Encoding support in separate packages within this repository, including GSM 03.38/GSM 7-bit and Unicode/emoji via explicit UTF-16BE surrogate-pair support where the peer permits it.
-- Minimal external dependencies; prefer the Go standard library.
-- Primary target: Linux/amd64.
-- No `unsafe` in the initial implementation.
+## Current status
 
-## Transport
+Implementation is in progress. Phase 0 through Phase 4 are complete. Phases 5–7 are currently being implemented together: shared session state machine, TCP/TLS transport boundary, and asynchronous pipelined request/response engine with synchronous context-aware APIs.
 
-The network transport is TCP. X.25 is out of scope. Optional TLS is layered over TCP using the Go standard library.
+See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
-## Sequence-number interoperability
+## Design targets
 
-Locally generated SMPP request sequence numbers remain in the specification range `0x00000001..0x7fffffff`. For receive-side interoperability, inbound PDU headers accept non-zero sequence numbers through `0xffffffff`, because some deployed peers use the upper half of the uint32 range. Responses must preserve the received sequence number exactly.
+- shared protocol/session core for client and server roles
+- TCP transport with optional TLS-over-TCP
+- SMPP 3.4 first, SMPP 5.0-aware architecture
+- synchronous/context-aware application API over an asynchronous wire engine
+- out-of-order response correlation by `sequence_number`
+- locally generated sequence numbers in `1..0x7fffffff`
+- inbound interoperability sequence range `1..0xffffffff`, echoed exactly in responses
+- fatal malformed/framing input closes only the offending TCP session and is logged structurally
+- bounded pending work; no goroutine-per-message architecture
+- GSM 03.38/GSM 7-bit plus Unicode/emoji support in the message/encoding layer
+- target: 100k aggregate bidirectional request PDUs/s on Linux/amd64, 8 cores / 10 GB RAM, using the minimum practical session count
 
-## Timeout and liveness model
+## Implemented protocol foundation
 
-Outbound SMPP requests that expect responses have a configurable protocol response timeout. The timeout starts after the request PDU has been fully dispatched to the active transport; time spent waiting for local window/TX capacity is controlled separately by the caller context/deadline.
+The repository already includes:
 
-A request may complete by response, timeout, cancellation or session loss, but local completion and window release must happen exactly once. Late responses after timeout are treated as late/unmatched and must not complete another request.
+- fixed 16-byte SMPP header encode/decode
+- TCP stream framing with fragmented/coalesced PDU handling
+- configurable maximum PDU size with a 1 MiB default
+- fatal framing/body corruption detection with poisoned-framer behavior
+- C-Octet String, Octet String and integer field helpers
+- ordered TLV scanning/encoding with duplicate and unknown/vendor TLV preservation
+- concurrency-safe registry builders and immutable frozen command/TLV lookup snapshots
+- vendor-specific command/TLV registration
+- SMPP 3.4 bind, unbind, enquire_link, generic_nack, submit_sm and deliver_sm request/response body codecs
+- response sequence preservation through `0xffffffff`
+- `short_message` / `message_payload` exclusivity checks
+- specification-driven codec vectors and race-tested registry code
 
-The session layer also provides configurable Session Init timeout, Enquire Link scheduling/response handling and inactivity timeout.
+## Session and transport work
 
-## Concurrency model
+The active implementation work adds:
 
-The wire protocol core is asynchronous and bidirectional even though the public request API is synchronous. Active runtime objects are designed to be safely shared by multiple goroutines where documented. Sequence allocation, pending correlation, session state, window accounting, timers, close and reconnect paths must be data-race free. The implementation must not use a goroutine per message/request.
+- shared ESME/SMSC state validation
+- plain TCP dial/listen and TLS-over-TCP adapters
+- caller-supplied `net.Conn` support
+- independent long-lived RX/TX session paths
+- bounded pending correlation
+- synchronous `Bind*`, `SubmitSM`, `DeliverSM`, `EnquireLink`, and `Unbind` APIs
+- race-safe concurrent requests and out-of-order response correlation
+- fatal protocol diagnostic logging followed by connection close
 
-## Performance target
-
-The reference target is **100,000 SMPP request PDUs per second aggregate, bidirectionally** (requests sent + requests received), while using the minimum practical number of SMPP connections/sessions. Mandatory SMPP responses are additional work and are included in end-to-end benchmark load.
-
-Reference machine:
-
-- CPU: 8 cores
-- RAM: 10 GB
-- OS/arch: Linux/amd64
-
-Performance work starts with a single-session benchmark and scales to the smallest session count required to sustain the target. No fixed claim is made that every peer/network can achieve the target on one session; RTT, peer window limits, throttling, and network conditions are part of the benchmark contract.
-
-## Protocol scope
-
-The design is based on:
-
-- SMPP v3.4, Issue 1.2, 12-Oct-1999
-- SMPP v5.0, 19-Feb-2003
-
-SMPP 3.4 is the first complete compatibility target. SMPP 5.0 features are added on the same core rather than as a separate stack.
-
-Phase 4 implements the first typed SMPP 3.4 PDU body codecs for bind/unbind/enquire-link, `generic_nack`, `submit_sm`, and `deliver_sm` request/response flows while preserving ordered optional TLVs and receive-side sequence-number interoperability.
-
-## TLS strategy
-
-The SMPP engine is transport-agnostic and works over a small `net.Conn`-compatible abstraction. Plain TCP and TLS are provided using the Go standard library (`net` and `crypto/tls`). TLS configuration stays in the transport layer and does not leak into PDU/session logic.
-
-## Planning and project context
-
-- [`PLAN.md`](PLAN.md) — phased implementation plan and progress checklist.
-- [`AGENTS.md`](AGENTS.md) — entry point for coding agents.
-- [`.codex/PROJECT_CONTEXT.md`](.codex/PROJECT_CONTEXT.md) — project goals and constraints.
-- [`.codex/DECISIONS.md`](.codex/DECISIONS.md) — architectural decisions.
-- [`.codex/ARCHITECTURE.md`](.codex/ARCHITECTURE.md) — target architecture and package boundaries.
-- [`.codex/PERFORMANCE.md`](.codex/PERFORMANCE.md) — performance contract and benchmark strategy.
-- [`.codex/BACKLOG.md`](.codex/BACKLOG.md) — deferred protocol/features backlog.
-- [`.codex/SESSION.md`](.codex/SESSION.md) — handoff/current-state notes.
-
-Phase 0 through Phase 4 are complete. Phase 5 (shared session state machine) is next.
+Request response timers, Session Init, Enquire Link scheduling, inactivity timers, window/backpressure tuning, reconnect/rebind, and the full SMSC server policy remain in later phases.
