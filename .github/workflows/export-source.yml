@@ -1,0 +1,23 @@
+name: Export source
+
+on:
+  push:
+    branches:
+      - codex/export-source
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Pack source
+        run: tar --exclude=.git -czf source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-smpp-source
+          path: source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
