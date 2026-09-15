@@ -78,8 +78,7 @@ index 59314dd..c5d2108 100644
  
  ## Phase 9 — Efficient timer and liveness subsystem
  
--diff --git a/session/errors.go b/session/errors.go
-+diff --git a/session/errors.go b/session/errors.go
+ diff --git a/session/errors.go b/session/errors.go
 index 72952ac..8e3f6d8 100644
 --- a/session/errors.go
 +++ b/session/errors.go
