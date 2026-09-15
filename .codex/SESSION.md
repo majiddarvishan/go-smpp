@@ -4,37 +4,44 @@
 
 Branch: `main`
 
-Phase 0, Phase 1 and Phase 2 are complete. Phase 3 has not started.
+Phases 0 through 3 are complete. Phase 4 has not started.
 
-Phase 2 implementation baseline commit: `690fd060f0bc507c3e38f3842884e005165126e8`.
+Phase 3 implementation commit: `2efd8d8ae5c554db11640f95be689655153c4848`.
 
 Network transport is TCP; X.25 is out of scope. Optional TLS will be layered over TCP.
 
-## Phase 2 completed
+## Phase 3 completed
 
-- fixed 16-octet SMPP header encode/decode
-- receive-side sequence-number interoperability through `0xffffffff`; local outbound generation remains limited to `0x7fffffff`
-- TCP byte-stream framer driven by `command_length`
-- fragmented and coalesced stream handling
-- zero-copy emission for complete PDUs already present in one input buffer
-- bounded buffering for fragmented PDUs
-- configurable maximum PDU size; default 1 MiB
-- 1/2/4-octet integer field helpers
-- C-Octet String and Octet String helpers
-- ordered TLV scanning/encoding with duplicate tag preservation
-- zero-allocation TLV scan API
-- fatal malformed/framing classification for invalid lengths and structural corruption
-- framer poisoning after fatal framing or fatal body-decode error; later bytes cannot be resynchronized/interpreted on that connection
-- partial-frame detection on stream finalization
-- malformed-frame, fragmentation/coalescing and high-sequence tests
-- fuzz seeds for stream framing
-- codec microbenchmarks
+- central command registry in `codec`
+- central TLV registry in `codec`
+- vendor-specific command registration
+- vendor-specific TLV registration
+- callback slots for command body encode/decode and typed TLV encode/decode
+- concurrency-safe `RegistryBuilder`
+- immutable frozen `Registry` snapshots for active hot paths
+- idempotent `Freeze`
+- explicit duplicate command/TLV registration errors
+- strict vs compatible unknown command/TLV handling
+- compatible unknown TLVs can remain in their raw ordered representation
+- registry policy applies only after framing/TLV structural validation; it cannot weaken fatal framing rules
+- concurrent configuration/read tests and race-detector coverage
+- zero-allocation registry lookup benchmarks
 
-The codec does not own sockets or logging. The mandatory `fatal protocol error -> structured log -> close offending TCP connection` integration remains explicitly assigned to the later session/transport/observability phases.
+## Encoding requirements added
+
+Message/encoding work remains scheduled for Phase 12, but the required scope is now explicit:
+
+- GSM 03.38/GSM 7-bit default alphabet
+- GSM 7-bit extension table and septet packing/unpacking
+- strict UCS-2/BMP helpers
+- UTF-16BE with surrogate-pair support for supplementary characters such as emoji
+- strict UCS-2 remains distinct from UTF-16BE-with-surrogates because peer/carrier emoji support varies
+- higher-level encoding selection may prefer GSM 7-bit when representable and use configured Unicode fallback otherwise
+- multipart sizing uses encoded septets/code units and UDH overhead, not Go rune count
 
 ## Validation performed
 
-GitHub Actions ran with Go 1.26.8 on Linux/amd64 and passed:
+GitHub Actions validated the Phase 3 implementation on Go 1.26.8 / Linux amd64:
 
 ```text
 go test ./...
@@ -42,15 +49,16 @@ go test -race ./...
 go test -run '^$' -bench=. -benchmem ./protocol ./codec
 ```
 
-CI codec benchmark snapshot on the GitHub runner (AMD EPYC 7763):
+All passed.
+
+Phase 3 registry benchmark snapshot on the GitHub runner (AMD EPYC 7763):
 
 ```text
-BenchmarkDecodeHeader          0.3131 ns/op     0 B/op   0 allocs/op
-BenchmarkFramerCompletePDU    10.29 ns/op       0 B/op   0 allocs/op
-                               7774.27 MB/s
-BenchmarkScanTLVs             27.49 ns/op       0 B/op   0 allocs/op
-                               2328.12 MB/s
+BenchmarkRegistryCommandLookup   3.441 ns/op   0 B/op   0 allocs/op
+BenchmarkRegistryTLVLookup      23.23  ns/op   0 B/op   0 allocs/op
 ```
+
+Existing Phase 2 hot paths remained allocation-free in the same run.
 
 These are microbenchmarks, not the end-to-end 100k request-PDU/s acceptance result.
 
@@ -64,11 +72,15 @@ These are microbenchmarks, not the end-to-end 100k request-PDU/s acceptance resu
 - configurable request-response timeout; Session Init, Enquire Link and inactivity handling.
 - auto-reconnect without hidden auto-resubmit.
 - fatal malformed/framing PDU => mandatory structured error log + close offending connection; no stream resynchronization.
+- active hot paths use frozen immutable registries, not mutable global registration state.
+- GSM 7-bit and Unicode/emoji support remains a required Phase 12 deliverable.
 - SMPP 3.4 complete first, architecture 5.0-aware.
 - no `unsafe` initially; minimal runtime dependencies.
 
 ## Exact next task
 
-Start **Phase 3 — Extensible registries** from `PLAN.md`.
+Start **Phase 4 — Essential SMPP 3.4 PDUs** from `PLAN.md`.
 
-Implement explicit PDU-command and TLV registries, including vendor-specific registration. Prefer immutable/frozen registry snapshots for active-session hot paths. Registry behavior must be concurrency-safe and must not weaken the fatal framing rules already implemented in the codec.
+Implement bind transmitter/receiver/transceiver, unbind, enquire_link, generic_nack, submit_sm/submit_sm_resp and deliver_sm/deliver_sm_resp on top of the existing codec and frozen registry infrastructure. Preserve optional TLVs and preserve inbound sequence numbers exactly, including values above `0x7fffffff` through `0xffffffff`.
+
+Do not begin session networking before the essential PDU encode/decode layer and specification-driven vectors are complete.
