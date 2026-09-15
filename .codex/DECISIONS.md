@@ -166,16 +166,44 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** SMPP 3.4 specifies that message data should be carried in one or the other, with `sm_length=0` when `message_payload` is used.
 
+## D-032 — Session execution model
+
+**Decision:** Each active SMPP session uses two long-lived transport goroutines: one RX path and one TX path. Request callers block synchronously on per-request completion state, but the library does not create a goroutine per request/message.
+
+**Reason:** This preserves full-duplex asynchronous SMPP behavior while keeping goroutine count proportional to sessions rather than outstanding messages.
+
+## D-033 — Full transport dispatch boundary
+
+**Decision:** A PDU is considered fully dispatched only after the transport write helper has successfully written every octet, including handling short writes. Pending request state records dispatch only after that point.
+
+**Reason:** Phase 9 response-timeout accounting must start at a deterministic boundary and must not charge requests for time spent queued locally or partially written.
+
+## D-034 — Pending correlation owns terminal completion
+
+**Decision:** Pending request correlation is bounded and session-local. Removing a pending entry is the ownership transition for a terminal event. Matching response, cancellation, future timeout completion, fatal protocol failure, and session loss compete for the same entry; only the winner notifies the caller.
+
+**Reason:** This gives the timeout/window phases a single exact-once primitive instead of duplicating completion flags across paths.
+
+## D-035 — Receive-buffer ownership at public boundaries
+
+**Decision:** Inbound Handler PDUs may expose borrowed byte slices valid only for the handler call unless copied by the application. Values returned from synchronous request APIs that outlive receive-frame processing are copied into owned storage for the currently supported response types.
+
+**Reason:** Borrowing avoids unnecessary hot-path copies for immediate inbound processing while synchronous callers need stable results after the RX callback returns.
+
+## D-036 — Fatal diagnostic logger
+
+**Decision:** Session configuration accepts a `*slog.Logger`; when omitted, `slog.Default()` is used. Fatal protocol diagnostics include safe structural/session metadata and the connection-close action but do not include passwords, `short_message`, `message_payload`, or raw full PDUs by default.
+
+**Reason:** Fatal protocol logging is mandatory, rare, and must be useful operationally without putting message/authentication content on the normal logging path.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
 
-- Exact public package naming/API conventions after the first API sketch.
+- Exact public package naming/API conventions after the first API sketch stabilizes.
 - Default window size and backpressure behavior.
 - Default per-request response timeout.
 - Default Session Init timeout.
 - Default Enquire Link interval and response timeout.
 - Default inactivity timeout and exact graceful-close policy.
 - Default reconnect/backoff policy.
-- Exact logging interface/default logger behavior for mandatory fatal-protocol diagnostics.
-- Borrowed-vs-owned PDU exposure rules at the public boundary.
