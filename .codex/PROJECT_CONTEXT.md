@@ -85,6 +85,9 @@ The project benchmarks one session first, then increases connection count only i
 - TLV optional parameters are the primary extension mechanism and unknown/vendor TLVs must not force a closed type system.
 - Supported SMPP 3.4 PDU decoders preserve ordered optional TLVs, including duplicates and unknown/vendor tags.
 - `short_message` and `message_payload` are mutually exclusive carriers of message user data for the supported submit/deliver path.
+- Active sessions use independent long-lived RX and TX paths over `net.Conn`; there is no goroutine per request/message.
+- Bounded pending correlation supports out-of-order response completion and exact-once terminal ownership.
+- A successful full `WriteFull` call is the transport boundary after which future protocol response-timeout accounting may start.
 
 ## Concurrency correctness rules
 
@@ -97,4 +100,6 @@ The project benchmarks one session first, then increases connection count only i
 
 ## Current implementation state
 
-Phase 0 through Phase 3 are complete. Phase 4 is in progress: typed SMPP 3.4 bodies and codecs are being added for bind/unbind/enquire-link, `generic_nack`, `submit_sm`, and `deliver_sm` request/response flows, with specification vectors and receive-side sequence-number preservation tests. Session/transport integration that turns a fatal codec error into the mandatory structured log plus TCP close remains intentionally assigned to later session/transport phases so codec remains independent of networking.
+Phase 0 through Phase 7 are complete and verified. The shared state machine, TCP/TLS-over-TCP transport boundary, long-lived RX/TX engine, synchronous/context-aware public request API, bounded pending correlation, out-of-order completion, high inbound sequence interoperability, fatal-protocol structured logging/connection close, and concurrent client/server/session lifecycle are implemented.
+
+Phase 8 is next and will add the real configurable SMPP outstanding-request window/backpressure policy. The existing `MaxPending` and TX queue bounds are defensive safety bounds, not a substitute for Phase 8. The actual response timeout scheduler, Session Init timer, Enquire Link scheduling/timeout, and inactivity timer remain Phase 9 work. Auto-reconnect remains Phase 10. Full SMSC/server policy remains Phase 11. GSM 7-bit and Unicode/emoji encoding remains Phase 12.
