@@ -73,17 +73,17 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 4 — Essential SMPP 3.4 PDUs
 
-- [ ] Implement `bind_transmitter` / response.
-- [ ] Implement `bind_receiver` / response.
-- [ ] Implement `bind_transceiver` / response.
-- [ ] Implement `unbind` / response.
-- [ ] Implement `enquire_link` / response.
-- [ ] Implement `generic_nack`.
-- [ ] Implement `submit_sm` / `submit_sm_resp`.
-- [ ] Implement `deliver_sm` / `deliver_sm_resp`.
-- [ ] Preserve optional TLVs on supported PDUs.
-- [ ] Preserve inbound request sequence numbers exactly in responses, including interoperability values through `0xffffffff`.
-- [ ] Add specification-driven encode/decode vectors.
+- [x] Implement `bind_transmitter` / response.
+- [x] Implement `bind_receiver` / response.
+- [x] Implement `bind_transceiver` / response.
+- [x] Implement `unbind` / response.
+- [x] Implement `enquire_link` / response.
+- [x] Implement `generic_nack`.
+- [x] Implement `submit_sm` / `submit_sm_resp`.
+- [x] Implement `deliver_sm` / `deliver_sm_resp`.
+- [x] Preserve optional TLVs on supported PDUs.
+- [x] Preserve inbound request sequence numbers exactly in responses, including interoperability values through `0xffffffff`.
+- [x] Add specification-driven encode/decode vectors.
 
 ## Phase 5 — Shared session state machine
 
