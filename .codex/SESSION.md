@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 9 are complete and verified locally. Phase 10 is next.
+Phase 0 through Phase 10 are complete and verified locally. Phase 11 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -62,6 +62,8 @@ Phase 8 adds a configurable outbound request window (default 1024), context-canc
 
 Phase 9 adds configurable response deadlines that begin only after full PDU dispatch, a cancellable shared deadline heap with one reusable timer/goroutine per session, typed response/enquire timeouts, Session Init timeout, automatic Enquire Link after idle periods, and inactivity shutdown. Deadline cancellation is coupled to the exact-once pending terminal path so window capacity and timer state are released together.
 
+Phase 10 adds opt-in automatic reconnect/rebind for dialed clients with bounded exponential backoff, persistent bind-profile copies, fresh sequence/pending state per replacement session, typed unavailable/loss metadata, retained fatal-protocol loss cause, and explicit Close cancellation. No ambiguous submit/deliver request is replayed.
+
 A basic concurrent server listener/session wrapper now exists to exercise and expose the shared core, but **Phase 11 remains incomplete**: bind authentication policy, Session Init enforcement, connection/session limits, slow-handler policy, and the remaining SMSC/server acceptance work still belong there.
 
 ## Validation performed
@@ -108,4 +110,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 10 — Client auto-reconnect** from `PLAN.md`. Reconnect/rebind must create a fresh session, fail old pending work deterministically, never replay ambiguous requests automatically, and remain race-safe with explicit Close and timeout paths.
+Start **Phase 11 — Server/SMSC mode** from `PLAN.md`. Add listener/session limits and authentication policy on top of the shared SMSC session core while keeping malformed/slow clients isolated from other sessions.

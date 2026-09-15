@@ -151,14 +151,14 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 10 — Client auto-reconnect
 
-- [ ] Implement configurable reconnect policy/backoff.
-- [ ] Re-bind automatically after reconnect.
-- [ ] Fail pending requests from the lost session deterministically.
-- [ ] Never silently auto-resubmit requests whose delivery state is ambiguous.
-- [ ] Treat fatal malformed-PDU closure like transport/session loss for reconnect policy, while preserving the protocol-failure reason in diagnostics.
-- [ ] Expose enough error metadata for application-level resubmission decisions.
-- [ ] Ensure reconnect, close and timeout transitions are race-free.
-- [ ] Add reconnect-during-full-window tests.
+- [x] Implement configurable reconnect policy/backoff.
+- [x] Re-bind automatically after reconnect.
+- [x] Fail pending requests from the lost session deterministically.
+- [x] Never silently auto-resubmit requests whose delivery state is ambiguous.
+- [x] Treat fatal malformed-PDU closure like transport/session loss for reconnect policy, while preserving the protocol-failure reason in diagnostics.
+- [x] Expose enough error metadata for application-level resubmission decisions.
+- [x] Ensure reconnect, close and timeout transitions are race-free.
+- [x] Add reconnect-during-full-window tests.
 
 ## Phase 11 — Server/SMSC mode
 

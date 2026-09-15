@@ -214,9 +214,16 @@ Session Init and liveness checks are handled by one additional long-lived per-se
 
 **Reason:** The design keeps timer/goroutine count proportional to sessions, starts protocol timing at the required full-dispatch boundary, supports exact-once completion/window release, and gives a simple measurable heap baseline before more complex timer-wheel work is justified by profiling.
 
+## D-039 — Reconnect creates a fresh session and never replays requests
+
+**Decision:** Dialed clients may enable automatic reconnect/rebind. The client keeps exactly one lifecycle/reconnect goroutine, redials with exponential backoff (default 100ms initial, 5s maximum, multiplier 2), creates a fresh `Session`, and replays only the successful bind profile. Application requests from the lost session fail and are never automatically resubmitted.
+
+The client retains the most recent terminal session-loss cause separately from transient reconnect errors so fatal protocol corruption remains diagnosable after a successful reconnect. New calls made while disconnected return `ErrUnavailable`; calls already attached to the lost session receive that session's typed loss error. Explicit `Close` cancels dial/backoff and cannot be followed by a reconnect resurrection.
+
+**Reason:** SMPP reconnect establishes a new sequence/correlation domain. Replaying a submit whose remote outcome is unknown risks duplicate message delivery, while automatic rebind is safe session establishment work.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
-- Default reconnect/backoff policy.
