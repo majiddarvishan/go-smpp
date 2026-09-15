@@ -12,8 +12,8 @@ A high-performance SMPP stack for Go, designed for both ESME/client and SMSC/ser
 - SMPP Session Init timeout, Enquire Link liveness handling and inactivity timeout.
 - Thread-safe/concurrent-safe active client, server and session APIs for documented concurrent operations.
 - Automatic reconnect without hidden automatic resubmission of ambiguous requests.
-- Extensible PDU/TLV registry, including vendor-specific TLVs.
-- Encoding support in separate packages within this repository.
+- Extensible PDU/TLV registry, including vendor-specific TLVs and commands.
+- Encoding support in separate packages within this repository, including GSM 7-bit and Unicode/emoji-capable encoding.
 - Minimal external dependencies; prefer the Go standard library.
 - Primary target: Linux/amd64.
 - No `unsafe` in the initial implementation.
@@ -26,6 +26,12 @@ The network transport is TCP. X.25 is out of scope. Optional TLS is layered over
 
 Locally generated SMPP request sequence numbers remain in the specification range `0x00000001..0x7fffffff`. For receive-side interoperability, inbound PDU headers accept non-zero sequence numbers through `0xffffffff`, because some deployed peers use the upper half of the uint32 range. Responses must preserve the received sequence number exactly.
 
+## Message encoding direction
+
+Message-content encoding lives above the low-level SMPP PDU codec. The planned encoding layer includes GSM 03.38/GSM 7-bit (including extension-table characters and septet packing), strict UCS-2 helpers, and UTF-16BE Unicode with surrogate-pair support for supplementary characters such as emoji.
+
+Strict UCS-2 and UTF-16BE-with-surrogates remain distinguishable because peer/carrier support for emoji is not universal. Higher-level helpers may prefer GSM 7-bit when the text is representable and fall back to Unicode when configured.
+
 ## Timeout and liveness model
 
 Outbound SMPP requests that expect responses have a configurable protocol response timeout. The timeout starts after the request PDU has been fully dispatched to the active transport; time spent waiting for local window/TX capacity is controlled separately by the caller context/deadline.
@@ -37,6 +43,8 @@ The session layer also provides configurable Session Init timeout, Enquire Link 
 ## Concurrency model
 
 The wire protocol core is asynchronous and bidirectional even though the public request API is synchronous. Active runtime objects are designed to be safely shared by multiple goroutines where documented. Sequence allocation, pending correlation, session state, window accounting, timers, close and reconnect paths must be data-race free. The implementation must not use a goroutine per message/request.
+
+Registry configuration is concurrency-safe before freeze; active hot paths use immutable frozen registry snapshots so command/TLV lookups require no mutation lock.
 
 ## Performance target
 
@@ -74,4 +82,4 @@ The SMPP engine is transport-agnostic and works over a small `net.Conn`-compatib
 - [`.codex/BACKLOG.md`](.codex/BACKLOG.md) — deferred protocol/features backlog.
 - [`.codex/SESSION.md`](.codex/SESSION.md) — handoff/current-state notes.
 
-Phase 1 is complete. Phase 2 (binary framing and codec foundation) is in progress.
+Phase 1 and Phase 2 are complete. Phase 3 implements the extensible command/TLV registry foundation; Phase 4 is the next protocol-PDU milestone.
