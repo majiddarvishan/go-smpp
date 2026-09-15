@@ -105,6 +105,36 @@ The implementation must handle:
 - lengths above configured limit
 - connection close in the middle of a frame
 
+### Fail-closed structural error policy
+
+Framing correctness is a connection-level invariant. When the decoder discovers an unrecoverable structural violation that makes continued byte-stream alignment or trustworthy decoding unsafe, it reports a **fatal protocol/frame error** to the owning session. The owning session then closes that transport and fails the session exactly once.
+
+Examples include:
+
+- `command_length < 16`
+- `command_length` above the configured maximum
+- body layout that cannot fit inside the declared PDU frame
+- mandatory variable-length/C-Octet fields that cannot terminate within the declared frame
+- TLV header/value lengths that run past the declared PDU boundary
+- another structural decode condition where continuing would require guessing where the next PDU begins
+
+The implementation must not scan for a plausible next header or otherwise attempt heuristic resynchronization on the same TCP stream. Any bytes following the corrupt frame are discarded with that connection. This deliberately favors deterministic safety over trying to salvage a corrupted stream.
+
+A distinction is required between **fatal structural/framing errors** and **recoverable protocol/application errors**. For example, a syntactically framed PDU with an unsupported command or invalid parameter value may still be answerable with the applicable SMPP status/generic_nack behavior; compatibility mode must never convert a framing-safety violation into a recoverable condition.
+
+### Fatal protocol diagnostics
+
+Before/while terminating a session for structural corruption, emit a structured error diagnostic. Include safe context when available:
+
+- error category/reason
+- session identifier and current state
+- local/remote endpoint
+- declared `command_length`
+- `command_id`
+- `sequence_number`
+
+Do not dump passwords, full message payloads, or arbitrary PDU bodies by default. Fatal-protocol diagnostics are mandatory operational logs, distinct from optional packet tracing and per-PDU logging.
+
 ### Decode model
 
 Prefer low-copy parsing. The codec may expose internal borrowed views whose fields reference the frame buffer. Public APIs that allow data to outlive the callback/frame lifetime must use owned copies or make lifetime constraints explicit.
@@ -125,7 +155,9 @@ A session owns:
 - RX processing loop
 - TX serialization/queueing strategy
 - reconnect state for client sessions
-- event/metric hooks
+- event/metric/logging hooks
+
+The RX path is authoritative for fatal decode/framing failures. Once such a failure is raised, session shutdown/transport close must be idempotent and safe against concurrent TX, timeout, caller `Close`, or reconnect activity. Pending requests are failed under the same exactly-once completion rules used for ordinary session loss.
 
 ### Bidirectional operation
 
@@ -146,7 +178,7 @@ fail-all-on-session-loss
 
 Do not commit early to a single global mutex map as the permanent design. Start with the simplest correct bounded implementation that can be benchmarked, then compare sharding/fixed-slot alternatives under realistic windows.
 
-Each pending request has exactly one terminal completion. A matching response, caller cancellation/deadline, protocol response timeout, or session loss may race, but only one path may remove the pending entry, release window capacity and wake the synchronous caller.
+Each pending request has exactly one terminal completion. A matching response, caller cancellation/deadline, protocol response timeout, fatal protocol/frame failure, or session loss may race, but only one path may remove the pending entry, release window capacity and wake the synchronous caller.
 
 ### Public synchronous API
 
@@ -206,7 +238,7 @@ Recommended configuration must keep Enquire Link timing meaningfully below the i
 
 ### Timer concurrency
 
-RX traffic, TX traffic, timeout expiry, caller cancellation, `Close`, and reconnect may all happen concurrently. Timer state and pending completion therefore require explicit synchronization/ownership rules. No timer callback may directly perform an uncoordinated second completion of a request.
+RX traffic, TX traffic, timeout expiry, caller cancellation, `Close`, fatal protocol failure, and reconnect may all happen concurrently. Timer state and pending completion therefore require explicit synchronization/ownership rules. No timer callback may directly perform an uncoordinated second completion of a request.
 
 ## Concurrency and thread-safety contract
 
@@ -219,10 +251,11 @@ In Go terms, the library must be safe for concurrent use by multiple goroutines 
 - sequence allocation is race-free,
 - session state transitions are race-free,
 - pending insert/response/timeout/cancel/session-loss operations are race-free,
+- fatal decoder shutdown is race-free with normal close/reconnect/timeout paths,
 - window acquire/release accounting is exact under races,
 - `Close` is idempotent/concurrent-safe,
 - auto-reconnect does not race with explicit close into resurrecting a closed client,
-- event/metrics hooks must not force unsafe access to internal mutable state.
+- event/metrics/logging hooks must not force unsafe access to internal mutable state.
 
 The project must use `go test -race` continuously for concurrency scenarios, not only at release time.
 
@@ -243,6 +276,9 @@ A server session can:
 - originate `deliver_sm` on RX/TRX sessions
 - correlate `deliver_sm_resp`
 - apply request response timeouts to server-originated operations
+- terminate only the offending session when fatal structural corruption is received
+
+A malformed client connection must not terminate the listener or affect unrelated sessions.
 
 Application handlers must be isolated so a slow handler cannot cause unbounded core memory growth.
 
@@ -257,7 +293,8 @@ A client session can:
 - send requests synchronously through the asynchronous engine
 - apply per-request response timeouts
 - receive inbound requests and dispatch handlers
-- reconnect/rebind after transport loss
+- terminate a corrupted session on fatal malformed inbound PDU
+- reconnect/rebind after transport loss or fatal protocol connection loss according to reconnect policy
 
 A lost session fails its pending requests. Reconnect does not replay them automatically.
 
@@ -312,6 +349,7 @@ Target rules:
 - pools are introduced only after benchmark evidence
 - every pool has bounded retention behavior and tests for oversized-buffer retention
 - timed-out/cancelled requests release all references that would otherwise retain request/PDU buffers
+- fatal protocol shutdown releases/discards the corrupt receive buffer and does not recycle an untrusted parse state into another session
 
 ## Concurrency model
 
@@ -337,8 +375,8 @@ Keep these distinguishable:
 - protocol request response timeout
 - Session Init timeout
 - inactivity/liveness failure
-- SMPP response `command_status` errors
-- protocol/decode errors
+- fatal protocol/framing/decode corruption
+- recoverable SMPP response `command_status` / semantic protocol errors
 - local overload/window errors
 - reconnect/session-loss ambiguity
 
