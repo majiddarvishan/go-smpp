@@ -39,6 +39,9 @@ The specifications are protocol references, not source-code dependencies. Do not
 - Never silently auto-resubmit an ambiguous request after connection loss.
 - Public active runtime objects and request APIs must be safe for concurrent use by multiple goroutines where documented.
 - Internal sequence allocation, session state, pending correlation, window accounting, timeout/cancel/close/reconnect paths must be data-race free.
+- If an inbound PDU has an unrecoverable structural/framing error that can make subsequent TCP bytes unsafe to interpret (for example an invalid `command_length` or impossible field/TLV length), close that connection/session immediately after recording the failure. Do not attempt byte-stream resynchronization on the same connection.
+- Fatal malformed-PDU closure must be logged with safe structured diagnostic metadata. Do not dump credentials or full message payload by default.
+- A server must isolate this failure to the offending connection; the listener and unrelated sessions continue normally.
 - Minimize external dependencies; prefer the standard library.
 - Initial target is Linux/amd64.
 - Initial implementation must not use `unsafe`.
@@ -67,6 +70,7 @@ Timeout/deadline tracking is part of the hot path and must be benchmarked at rea
 
 - SMPP runs over a byte-stream transport; a single TCP read is not one PDU.
 - Every PDU has a fixed 16-byte header and uses `command_length` for framing.
+- Framing trust is connection-scoped: if a structural decode error makes alignment unsafe, the connection is discarded rather than heuristically resynchronized.
 - SMPP is asynchronous: several requests may be outstanding and responses may arrive out of order.
 - Request/response correlation is session-local and based on `sequence_number`.
 - A reconnect establishes a new session; pending operations from a lost session cannot be correlated with the new session.
@@ -79,10 +83,25 @@ Timeout/deadline tracking is part of the hot path and must be benchmarked at rea
 
 - Do not require application-level serialization around an active session for normal concurrent sends.
 - A response and timeout racing for the same request must have one winner only.
-- Timeout, context cancellation, close and session loss must not double-release a window slot or double-notify a caller.
+- Timeout, context cancellation, fatal decoder failure, close and session loss must not double-release a window slot or double-notify a caller.
 - `Close` must be safe to call concurrently and must not race with reconnect into reviving a deliberately closed client.
 - Registries should avoid mutable global hot-path state; prefer immutable/frozen session-visible snapshots.
 - `go test -race` is part of normal development for session/client/server concurrency tests.
+
+## Fatal malformed-PDU policy
+
+Structural errors are treated more severely than ordinary SMPP semantic/status errors. If the decoder cannot safely trust the frame boundary, it must stop using that byte stream. Typical examples are invalid `command_length`, body/mandatory-field lengths that cannot fit in the declared frame, TLV lengths that overrun the PDU, or another corruption that would require guessing the next PDU boundary.
+
+Required behavior:
+
+1. classify the failure as a fatal protocol/framing error,
+2. emit a structured error log with safe metadata when available,
+3. stop reading/decoding additional PDUs from that connection,
+4. close the transport/session exactly once,
+5. fail pending requests according to normal session-loss rules,
+6. do not attempt to locate a plausible next SMPP header in the remaining byte stream.
+
+Recoverable protocol/application errors where framing remains trustworthy may still be handled with SMPP response status or `generic_nack` as appropriate.
 
 ## Non-goals for the first implementation milestone
 
