@@ -14,10 +14,11 @@ type requestResult struct {
 }
 
 type pendingRequest struct {
-	requestID  protocol.CommandID
-	expectedID protocol.CommandID
-	done       chan requestResult
-	dispatched atomic.Bool
+	requestID     protocol.CommandID
+	expectedID    protocol.CommandID
+	done          chan requestResult
+	dispatched    atomic.Bool
+	releaseWindow func()
 }
 
 type pendingTable struct {
@@ -73,6 +74,7 @@ func (t *pendingTable) takeResponse(sequence protocol.SequenceNumber, responseID
 	}
 	delete(t.m, sequence)
 	t.mu.Unlock()
+	request.releaseSlot()
 	return request, true
 }
 
@@ -86,6 +88,7 @@ func (t *pendingTable) completeError(sequence protocol.SequenceNumber, err error
 	if !ok {
 		return nil, false
 	}
+	request.releaseSlot()
 	request.done <- requestResult{err: err}
 	return request, true
 }
@@ -99,6 +102,7 @@ func (t *pendingTable) failAll(err error) {
 	}
 	t.mu.Unlock()
 	for _, request := range requests {
+		request.releaseSlot()
 		request.done <- requestResult{err: err}
 	}
 }
@@ -108,4 +112,11 @@ func (t *pendingTable) len() int {
 	n := len(t.m)
 	t.mu.Unlock()
 	return n
+}
+
+func (r *pendingRequest) releaseSlot() {
+	if r.releaseWindow != nil {
+		r.releaseWindow()
+		r.releaseWindow = nil
+	}
 }

@@ -42,13 +42,16 @@ func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu codec.DecodedPD
 }
 
 // Config configures one active SMPP session. The registry is immutable while a
-// session is active. MaxPending and TXQueueSize are defensive bounds, not the
-// Phase-8 outstanding-window policy.
+// session is active. WindowSize is the protocol outstanding-request admission
+// bound; MaxPending is a defensive correlation-table ceiling and is raised to
+// WindowSize automatically when necessary.
 type Config struct {
 	Role           Role
 	Registry       *codec.Registry
 	MaxPDUSize     uint32
 	MaxPending     int
+	WindowSize     int
+	WindowObserver WindowObserver
 	TXQueueSize    int
 	ReadBufferSize int
 	Handler        Handler
@@ -87,6 +90,7 @@ type Session struct {
 	tx     chan txItem
 
 	pending *pendingTable
+	window  *requestWindow
 	seq     sequenceGenerator
 
 	closeOnce sync.Once
@@ -106,8 +110,14 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		}
 		config.Registry = registry
 	}
+	if config.WindowSize <= 0 {
+		config.WindowSize = DefaultWindowSize
+	}
 	if config.MaxPending <= 0 {
 		config.MaxPending = DefaultMaxPending
+	}
+	if config.MaxPending < config.WindowSize {
+		config.MaxPending = config.WindowSize
 	}
 	if config.TXQueueSize <= 0 {
 		config.TXQueueSize = DefaultTXQueueSize
@@ -136,6 +146,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		config: config, logger: logger, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
 		pending: newPendingTable(config.MaxPending),
+		window:  newRequestWindow(config.WindowSize, config.WindowObserver),
 	}
 	s.wg.Add(2)
 	go s.rxLoop()
@@ -146,10 +157,13 @@ func New(conn net.Conn, config Config) (*Session, error) {
 func (s *Session) Role() Role                   { return s.machine.Role() }
 func (s *Session) State() protocol.SessionState { return s.machine.State() }
 func (s *Session) BindMode() BindMode           { return s.machine.BindMode() }
-func (s *Session) Done() <-chan struct{}         { return s.done }
-func (s *Session) Pending() int                  { return s.pending.len() }
-func (s *Session) LocalAddr() net.Addr           { return s.conn.LocalAddr() }
-func (s *Session) RemoteAddr() net.Addr          { return s.conn.RemoteAddr() }
+func (s *Session) Done() <-chan struct{}        { return s.done }
+func (s *Session) Pending() int                 { return s.pending.len() }
+
+// Window returns current bounded-outstanding-request utilization.
+func (s *Session) Window() WindowSnapshot { return s.window.snapshot() }
+func (s *Session) LocalAddr() net.Addr    { return s.conn.LocalAddr() }
+func (s *Session) RemoteAddr() net.Addr   { return s.conn.RemoteAddr() }
 
 // Err returns the terminal session error after Done is closed.
 func (s *Session) Err() error {
@@ -171,8 +185,20 @@ func (s *Session) Close() error {
 }
 
 // Request synchronously waits for one response while the underlying session
-// remains asynchronous and may carry many other requests concurrently.
+// remains asynchronous and may carry many other requests concurrently. If the
+// outstanding request window is full, Request waits until capacity is released,
+// the caller context ends, or the session closes.
 func (s *Session) Request(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error) {
+	return s.request(ctx, command, body, true)
+}
+
+// TryRequest is the non-blocking admission variant. It returns ErrWindowFull
+// instead of waiting when the configured outstanding request window is full.
+func (s *Session) TryRequest(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error) {
+	return s.request(ctx, command, body, false)
+}
+
+func (s *Session) request(ctx context.Context, command protocol.CommandID, body any, waitWindow bool) (codec.DecodedPDU, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -184,6 +210,18 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body 
 		return codec.DecodedPDU{}, s.requestCloseError()
 	default:
 	}
+	if err := s.window.acquire(ctx, s.done, waitWindow); err != nil {
+		if errors.Is(err, ErrSessionClosed) {
+			return codec.DecodedPDU{}, s.requestCloseError()
+		}
+		return codec.DecodedPDU{}, err
+	}
+	windowOwned := true
+	defer func() {
+		if windowOwned {
+			s.window.release()
+		}
+	}()
 
 	if err := s.machine.BeginOutbound(command); err != nil {
 		return codec.DecodedPDU{}, err
@@ -195,7 +233,7 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body 
 		}
 	}()
 
-	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1)}
+	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1), releaseWindow: s.window.release}
 	var sequence protocol.SequenceNumber
 	inserted := false
 	for attempts := 0; attempts <= s.config.MaxPending; attempts++ {
@@ -213,6 +251,7 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body 
 	if !inserted {
 		return codec.DecodedPDU{}, ErrSequenceExhausted
 	}
+	windowOwned = false // pendingRequest now owns the slot until terminal removal.
 
 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
 	frame, err := codec.EncodePDU(nil, header, body, s.registry)

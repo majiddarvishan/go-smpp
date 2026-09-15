@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 7 are complete and verified. Phase 8 has not started.
+Phase 0 through Phase 8 are complete and verified locally. Phase 9 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -58,7 +58,7 @@ Implemented behavior includes:
 - late/unmatched/duplicate responses cannot complete a different request
 - owned copies for response values returned past the receive-frame lifetime
 
-`MaxPending` and the TX queue currently provide defensive boundedness only. They are not the final SMPP request-window/backpressure implementation; that is Phase 8.
+Phase 8 adds a configurable outbound request window (default 1024), context-cancellable blocking acquisition, non-blocking `TryRequest` admission with `ErrWindowFull`, exact-once slot release through pending-entry ownership, and lock-free window utilization/high-water/wait snapshots with an optional observer hook. `MaxPending` remains a defensive correlation-table ceiling and is automatically kept at least as large as the window.
 
 The pending completion primitive already accepts timeout completion safely, but the actual per-request response-deadline scheduler is intentionally still Phase 9. Session Init timeout, Enquire Link scheduling/timeout, and inactivity timeout also remain Phase 9.
 
@@ -108,6 +108,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 8 — Windowing and backpressure** from `PLAN.md`.
-
-Build a configurable outstanding-request window on top of the existing bounded pending/completion core. Window acquisition must be context-cancellable, overload/backpressure must remain explicit and bounded, and every response/cancellation/future-timeout/session-loss path must release capacity exactly once. Benchmark multiple window sizes against RTT profiles; do not hard-code the historical recommendation of 10 outstanding requests.
+Start **Phase 9 — Efficient timer and liveness subsystem** from `PLAN.md`. Add shared response-deadline processing without one timer/goroutine per request, then Session Init, Enquire Link, and inactivity timers on the same race-safe session core.
