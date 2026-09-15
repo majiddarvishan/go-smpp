@@ -1,0 +1,185 @@
+# Performance Contract and Benchmark Strategy
+
+Performance is a first-class requirement and must be measured throughout implementation, not only before release.
+
+## Reference target
+
+Reference platform:
+
+- Linux/amd64
+- 8 CPU cores
+- 10 GB RAM
+
+Throughput target:
+
+> Sustain **100,000 aggregate bidirectional SMPP request PDUs per second**, where aggregate request rate is `requests sent + requests received`.
+
+Examples that satisfy the request-count definition:
+
+- 100k outbound request/s and 0 inbound request/s
+- 50k outbound request/s and 50k inbound request/s
+- 20k outbound request/s and 80k inbound request/s
+
+Required SMPP responses are not counted as request throughput, but they are mandatory processing and must be present in end-to-end benchmarks. Therefore a 100k request/s scenario can require roughly another 100k response PDUs/s, and additional traffic such as enquire-link or receipts can raise total PDU rate further.
+
+## Connection-count goal
+
+The requirement is to meet the target with the **minimum practical number of SMPP sessions/connections**.
+
+Benchmark order:
+
+1. one session/connection
+2. two sessions if one is insufficient
+3. four sessions if two are insufficient
+4. increase only when measurement requires it
+
+Final benchmark reports must state the smallest session count that sustained the target under the documented scenario.
+
+Do not promise that an arbitrary real SMSC can do 100k requests/s on one connection. Peer-side window limits, throttling, RTT and network capacity are external constraints.
+
+## Why window/RTT matters
+
+For a request/response workload, a useful lower-bound approximation is:
+
+```text
+required outstanding window ~= request_rate * response_RTT_seconds
+```
+
+Examples at 100k request/s:
+
+```text
+1 ms RTT   -> ~100 outstanding
+10 ms RTT  -> ~1,000 outstanding
+50 ms RTT  -> ~5,000 outstanding
+100 ms RTT -> ~10,000 outstanding
+```
+
+This is a planning approximation, not an SMPP protocol limit. Benchmarks must measure real behavior.
+
+## Benchmark layers
+
+### 1. Primitive/codec microbenchmarks
+
+Measure:
+
+- header encode/decode
+- C-Octet scanning
+- TLV scanning and typed lookup
+- `submit_sm` encode/decode
+- `deliver_sm` encode/decode
+- allocation count and bytes/op
+
+Goal: identify codec regressions without involving networking.
+
+### 2. Correlation/window benchmarks
+
+Measure:
+
+- pending insert/complete/timeout throughput
+- contention at realistic outstanding counts
+- window acquisition/release cost
+- out-of-order completion patterns
+- timeout storms
+
+### 3. In-memory session benchmark
+
+Use in-memory/full-duplex transports to measure session machinery without kernel TCP cost.
+
+### 4. Localhost TCP benchmark
+
+Measure realistic framing, syscalls and scheduler behavior with a minimal peer simulator.
+
+### 5. TLS benchmark
+
+Run separately so TLS cost is visible rather than mixed with plain-TCP baseline.
+
+### 6. Bidirectional benchmark
+
+Simultaneously originate requests in both directions. This is the acceptance-relevant workload because the target explicitly includes requests sent and received at the same time.
+
+## Required workload profiles
+
+At minimum:
+
+- outbound submit-heavy
+- inbound submit-heavy in server mode
+- balanced bidirectional request traffic
+- outbound `deliver_sm` + inbound `submit_sm` in server TRX-style operation where applicable
+- response arrival in order
+- response arrival deliberately out of order
+- low RTT / high RTT simulation
+- small and large outstanding windows
+- plain TCP and TLS
+
+## Allocation goals
+
+The initial optimization target for common codec paths is 0–2 allocations/PDU where practical. This is a target, not a correctness criterion.
+
+At 100k request/s plus responses, even small per-PDU allocation counts can produce large allocation rates. Every benchmark report should include:
+
+- allocs/op
+- bytes/op
+- heap profile under sustained load
+- GC frequency/pause contribution
+
+## Memory goals
+
+Memory use must remain bounded by configuration and active workload. Track at least:
+
+- receive buffers
+- transmit buffers
+- pending requests
+- queued handler work
+- timer/deadline records
+- pooled objects/buffers
+
+Avoid pools that retain arbitrarily large buffers indefinitely.
+
+## CPU and contention goals
+
+Profile:
+
+- CPU samples by package/function
+- mutex/block profile
+- scheduler/goroutine count
+- syscall contribution
+- GC CPU
+
+Do not replace a simple correct implementation with a complex one until a profile demonstrates the bottleneck.
+
+## Goroutine policy
+
+The library must not create a goroutine per message/request. Benchmark runs should record goroutine count during sustained load and verify it remains tied to sessions/workers rather than message volume.
+
+## Logging policy
+
+Performance tests run with per-PDU logs disabled. Optional tracing must be benchmarked separately and is not part of the base acceptance target.
+
+## Acceptance criteria for the 100k milestone
+
+All of the following must be true on the reference machine:
+
+- sustained >= 100,000 aggregate bidirectional **request** PDUs/s for the defined run duration
+- required request/response processing is enabled and successful
+- session count is documented and is the smallest count found by the benchmark sequence
+- no unbounded memory growth
+- no unbounded goroutine growth
+- error/timeout rate is within the benchmark's declared success threshold
+- CPU, memory, GC and contention profiles are captured
+- exact build version, Go version, kernel/environment and benchmark configuration are recorded
+
+The sustained run duration and acceptable error threshold will be fixed before Phase 17 and added here.
+
+## Performance regression policy
+
+Once stable baselines exist, CI or scheduled benchmark reports should flag meaningful regressions in:
+
+- ns/op
+- allocs/op
+- bytes/op
+- throughput
+- p50/p95/p99 response latency
+- CPU usage
+- memory at a fixed outstanding window
+
+Exact regression thresholds are deferred until stable benchmark noise is measured.
