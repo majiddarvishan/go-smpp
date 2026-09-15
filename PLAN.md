@@ -24,6 +24,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Define configurable request-response timeout semantics.
 - [x] Require Enquire Link, inactivity timeout and Session Init timeout behavior.
 - [x] Require concurrent/thread-safe public APIs and race-free internals.
+- [x] Define fail-closed handling for unrecoverable malformed/framing PDUs and mandatory error logging.
 - [x] Create repository planning/context files.
 
 ## Phase 1 — Module skeleton and protocol primitives
@@ -35,6 +36,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Define SMPP 3.4 and 5.0 capability/profile types without duplicating the core.
 - [ ] Define protocol errors separately from transport/session/timeout errors.
 - [ ] Define typed timeout error metadata for command, sequence and timeout kind.
+- [ ] Define fatal framing/decode error categories separately from recoverable SMPP command/status errors.
 - [ ] Add unit tests for primitive encodings and constants.
 - [ ] Add baseline benchmarks for primitive encode/decode helpers.
 
@@ -46,7 +48,11 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement TLV scanning/encoding with unknown-TLV preservation.
 - [ ] Support duplicate vendor/standard TLVs without forcing a `map[tag]value` representation.
 - [ ] Add configurable maximum PDU size and malformed-frame protection.
+- [ ] Classify unrecoverable structural/framing violations as fatal to the current connection/session (for example invalid `command_length`, impossible field/TLV lengths, or decode state that cannot preserve frame boundaries).
+- [ ] On a fatal structural/framing error, stop consuming that byte stream, emit a structured error log, close the transport, fail the session, and never attempt byte-stream resynchronization on the same connection.
+- [ ] Ensure fatal-protocol logging includes useful safe metadata (reason, peer/session/state, declared length and command/sequence when available) without dumping credentials or message payload by default.
 - [ ] Add fragmentation/coalescing tests for arbitrary TCP read boundaries.
+- [ ] Add malformed-length tests proving a corrupt frame cannot cause subsequent bytes to be interpreted as valid PDUs on the same connection.
 - [ ] Add codec fuzz tests.
 - [ ] Establish allocation and throughput baselines.
 - [ ] Target common-path decode/encode at 0–2 allocations/PDU where practical, verified by benchmark.
@@ -57,7 +63,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement central TLV registry.
 - [ ] Support vendor-specific TLV registration.
 - [ ] Support vendor-specific command registration without editing core switch statements throughout the codebase.
-- [ ] Define strict vs compatible handling for unknown/unsupported fields.
+- [ ] Define strict vs compatible handling for unknown/unsupported fields; compatibility mode must not override fatal framing-safety rules.
 - [ ] Make registry construction/mutation safe for concurrent callers or freeze registries into immutable read-only snapshots before session hot-path use.
 - [ ] Add registry concurrency and duplicate-registration tests.
 
@@ -81,6 +87,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement client and server role semantics on the same session core.
 - [ ] Keep codec independent from session state.
 - [ ] Implement clean bind/unbind lifecycle.
+- [ ] Make fatal decoder/framing errors transition the owning session to failure/closed exactly once.
 - [ ] Make state transitions race-free under concurrent send/receive/close/timeout activity.
 - [ ] Add state-transition and invalid-state tests.
 
@@ -91,6 +98,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement TLS client/server adapters using `crypto/tls`.
 - [ ] Keep TLS configuration outside SMPP PDU/session packages.
 - [ ] Support caller-supplied `net.Conn` compatible transports.
+- [ ] Ensure protocol-fatal close interrupts blocked RX/TX operations and is idempotent/concurrent-safe.
 - [ ] Add partial-read, partial-write and connection-close tests.
 
 ## Phase 7 — Asynchronous engine with synchronous public API
@@ -102,7 +110,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Expose synchronous/context-aware public submit APIs without goroutine-per-message architecture.
 - [ ] Ensure inbound `deliver_sm` can be processed while outbound submit requests are outstanding.
 - [ ] Guarantee public `Client`, `Server`, `Session` and request APIs documented as concurrent-safe can be called from multiple goroutines at the same time.
-- [ ] Ensure request completion is exactly-once when response, timeout, cancellation and session loss race each other.
+- [ ] Ensure request completion is exactly-once when response, timeout, cancellation, fatal protocol error and session loss race each other.
 - [ ] Add race tests and high-concurrency correlation tests.
 - [ ] Run `go test -race` for concurrent session/client/server scenarios.
 
@@ -138,6 +146,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Re-bind automatically after reconnect.
 - [ ] Fail pending requests from the lost session deterministically.
 - [ ] Never silently auto-resubmit requests whose delivery state is ambiguous.
+- [ ] Treat fatal malformed-PDU closure like transport/session loss for reconnect policy, while preserving the protocol-failure reason in diagnostics.
 - [ ] Expose enough error metadata for application-level resubmission decisions.
 - [ ] Ensure reconnect, close and timeout transitions are race-free.
 - [ ] Add reconnect-during-full-window tests.
@@ -151,6 +160,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement inbound `submit_sm` dispatch and synchronous response path.
 - [ ] Implement outbound `deliver_sm` from server to bound RX/TRX sessions.
 - [ ] Apply outbound request response-timeout behavior to server-originated requests such as `deliver_sm`.
+- [ ] Close only the offending connection/session on a fatal malformed PDU; keep the listener and unrelated sessions healthy.
 - [ ] Add configurable connection/session limits.
 - [ ] Add slow-client and malicious-frame protection tests.
 
@@ -192,6 +202,7 @@ This file is the source of truth for implementation progress. Every completed ph
 
 - [ ] Define zero/low-overhead counters and event hooks.
 - [ ] Expose requests sent/received, responses, response timeouts, session-init timeouts, inactivity expirations, enquire-link activity, outstanding window, RTT, reconnects and decode failures.
+- [ ] Emit mandatory structured error logs for fatal malformed/framing PDUs before/while terminating the offending session; these rare error logs are distinct from disabled-by-default per-PDU tracing.
 - [ ] Expose congestion-state data when available.
 - [ ] Provide optional packet tracing outside the default hot path.
 - [ ] Keep per-PDU logging disabled by default.
@@ -225,6 +236,8 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Test fragmented and coalesced TCP streams.
 - [ ] Test out-of-order responses.
 - [ ] Test malformed, oversized and truncated PDUs.
+- [ ] Test invalid `command_length`, impossible mandatory-field lengths, invalid TLV lengths and corrupted frames; assert the offending connection closes and no byte-stream resynchronization is attempted.
+- [ ] Verify each fatal structural/framing rejection emits the required diagnostic log without exposing sensitive message/authentication content by default.
 - [ ] Test duplicate/unexpected sequence numbers.
 - [ ] Test disconnect during bind, idle state and full outstanding window.
 - [ ] Test delayed responses, late responses and timeout storms.
@@ -239,6 +252,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Freeze and document public API compatibility policy.
 - [ ] Document concurrency guarantees for every public mutable type.
 - [ ] Document timeout/liveness configuration and exact semantics.
+- [ ] Document fatal malformed-PDU connection-close and diagnostic logging policy.
 - [ ] Add examples for ESME client and SMSC/server.
 - [ ] Complete package documentation.
 - [ ] Document interoperability quirks and vendor-extension APIs.
