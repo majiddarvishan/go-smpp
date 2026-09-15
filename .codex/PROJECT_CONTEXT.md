@@ -28,8 +28,17 @@ The specifications are protocol references, not source-code dependencies. Do not
 - Provide encoding/message functionality as separate packages in the same repository.
 - Public API should be synchronous/context-aware.
 - Underlying protocol engine must still be asynchronous, pipelined and capable of out-of-order response correlation.
+- Every outbound request that expects a response must support a configurable response timeout.
+- The protocol response timeout starts after the request PDU has been fully dispatched to the transport; local queue/window waiting is governed separately by caller context/deadline.
+- A timed-out request must be completed exactly once, removed from pending correlation and release its window slot exactly once.
+- Late responses after timeout must be treated as late/unmatched and must not complete another request.
+- Session Init timeout is required.
+- Enquire Link scheduling and response-timeout handling are required.
+- Inactivity timeout is required.
 - Client must support automatic reconnect/rebind.
 - Never silently auto-resubmit an ambiguous request after connection loss.
+- Public active runtime objects and request APIs must be safe for concurrent use by multiple goroutines where documented.
+- Internal sequence allocation, session state, pending correlation, window accounting, timeout/cancel/close/reconnect paths must be data-race free.
 - Minimize external dependencies; prefer the standard library.
 - Initial target is Linux/amd64.
 - Initial implementation must not use `unsafe`.
@@ -52,6 +61,8 @@ Reference machine:
 
 The project should benchmark one session first. If peer/window/RTT/network constraints make one session insufficient, increase session count only as needed and record the smallest count that meets the target.
 
+Timeout/deadline tracking is part of the hot path and must be benchmarked at realistic outstanding-window sizes. The final design must not rely on one independent `time.Timer` per outstanding request if that prevents the performance target.
+
 ## SMPP implementation facts that drive the architecture
 
 - SMPP runs over a byte-stream transport; a single TCP read is not one PDU.
@@ -60,8 +71,18 @@ The project should benchmark one session first. If peer/window/RTT/network const
 - Request/response correlation is session-local and based on `sequence_number`.
 - A reconnect establishes a new session; pending operations from a lost session cannot be correlated with the new session.
 - TX, RX and TRX session modes must be supported.
+- SMPP sessions require liveness/session timers such as request response timeout, Session Init, Enquire Link and inactivity handling.
 - SMPP 5.0 adds useful flow-control information such as `congestion_state` and must fit into the same core.
 - TLV optional parameters are the primary extension mechanism and unknown/vendor TLVs must not force a closed type system.
+
+## Concurrency correctness rules
+
+- Do not require application-level serialization around an active session for normal concurrent sends.
+- A response and timeout racing for the same request must have one winner only.
+- Timeout, context cancellation, close and session loss must not double-release a window slot or double-notify a caller.
+- `Close` must be safe to call concurrently and must not race with reconnect into reviving a deliberately closed client.
+- Registries should avoid mutable global hot-path state; prefer immutable/frozen session-visible snapshots.
+- `go test -race` is part of normal development for session/client/server concurrency tests.
 
 ## Non-goals for the first implementation milestone
 
