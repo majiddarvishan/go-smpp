@@ -127,6 +127,24 @@ Registries/configuration should avoid hot-path mutable global state. Prefer expl
 
 **Reason:** Response/timeout/close races are normal under load and are a primary correctness risk in an asynchronous SMPP engine.
 
+## D-023 — Fail closed on unrecoverable structural/framing corruption
+
+**Decision:** If an inbound PDU is structurally malformed in a way that makes byte-stream alignment or trustworthy decoding unsafe, the current transport/session is considered corrupted and must be closed. Examples include an invalid `command_length`, a declared PDU size below the SMPP header size or above the configured maximum, impossible mandatory-field boundaries, a TLV length that escapes the declared PDU frame, or another decode failure where continuing could cause subsequent bytes to be interpreted at the wrong boundary.
+
+The decoder/session must **not** attempt heuristic byte-stream resynchronization and must not continue processing later PDUs on that same connection. Only the offending connection/session is terminated; a server listener and unrelated sessions remain alive.
+
+Recoverable protocol/application errors where the frame boundary is intact remain distinct and may use the appropriate SMPP response/status behavior rather than forcing connection closure.
+
+**Reason:** SMPP runs on a TCP byte stream. Once framing trust is lost, attempting to continue can turn the remainder of the stream into arbitrary false PDUs and create correctness/security problems.
+
+## D-024 — Mandatory diagnostic logging for fatal protocol corruption
+
+**Decision:** Every connection termination caused by an unrecoverable malformed/framing PDU must emit a structured error log through the library's logging/diagnostic facility. The event should include safe diagnostic metadata when available: failure reason/category, local/remote endpoint or session identifier, session state, declared `command_length`, `command_id`, and `sequence_number`.
+
+Credentials, message payloads and other sensitive body content are not dumped by default. This mandatory error event is separate from per-PDU packet logging, which remains disabled by default for performance.
+
+**Reason:** Closing a connection is intentionally severe behavior and must be diagnosable in production without enabling expensive packet-level tracing.
+
 ## Open decisions
 
 The following must be decided before or during Phase 1 and recorded here:
@@ -140,4 +158,5 @@ The following must be decided before or during Phase 1 and recorded here:
 - Default Enquire Link interval and response timeout.
 - Default inactivity timeout and exact graceful-close policy.
 - Default reconnect/backoff policy.
+- Exact logging interface/default logger behavior for mandatory fatal-protocol diagnostics.
 - Borrowed-vs-owned PDU exposure rules at the public boundary.
