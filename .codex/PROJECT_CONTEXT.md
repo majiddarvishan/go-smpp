@@ -13,7 +13,7 @@ Current implementation baseline: Go 1.26, Linux/amd64, TCP transport.
 Primary specifications supplied by the project owner:
 
 - Short Message Peer-to-Peer Protocol Specification v3.4, Issue 1.2, 12-Oct-1999.
-- Short Message Peer-to-Peer Protocol Specification v5.0, 19-Feb-2003.
+- Short Message Peer-to-Peer Protocol Specification v5.0, 19-February-2003.
 
 The specifications are protocol references, not source-code dependencies.
 
@@ -28,9 +28,8 @@ The specifications are protocol references, not source-code dependencies.
 - Network transport is TCP. X.25 is out of scope.
 - Optional TLS, when used, runs over TCP and stays in the transport layer.
 - Provide encoding/message functionality as separate packages in the same repository.
-- Encoding scope includes GSM 03.38/GSM 7-bit, its extension table and septet packing/unpacking.
-- Unicode scope includes strict UCS-2/BMP helpers and UTF-16BE with surrogate-pair support for supplementary characters such as emoji.
-- Strict UCS-2 and UTF-16BE-with-surrogates must remain distinguishable because peer/carrier emoji support varies.
+- GSM 03.38/GSM 7-bit encode/decode, extension-table handling, and septet packing/unpacking are required.
+- Unicode message support must distinguish strict UCS-2/BMP from UTF-16BE with surrogate pairs; emoji support uses the latter when the configured peer/carrier capability permits it.
 - Public API should be synchronous/context-aware.
 - Underlying protocol engine must still be asynchronous, pipelined and capable of out-of-order response correlation.
 - Every outbound request that expects a response must support a configurable response timeout.
@@ -52,7 +51,6 @@ The specifications are protocol references, not source-code dependencies.
 - Minimum supported Go version is 1.26.
 - Initial implementation must not use `unsafe`.
 - Extensible registry is required for vendor-specific TLVs and future/custom commands.
-- Active sessions use immutable/frozen registry snapshots; registry construction is concurrency-safe and duplicate registrations are explicit errors.
 
 ## Performance requirement
 
@@ -85,7 +83,8 @@ The project benchmarks one session first, then increases connection count only i
 - SMPP sessions require request-response timeout, Session Init, Enquire Link and inactivity handling.
 - SMPP 5.0 adds capabilities such as `congestion_state` that must fit into the same core.
 - TLV optional parameters are the primary extension mechanism and unknown/vendor TLVs must not force a closed type system.
-- Message encoding/segmentation lives above the low-level codec and must size multipart messages by encoded septets/code units plus UDH overhead.
+- Supported SMPP 3.4 PDU decoders preserve ordered optional TLVs, including duplicates and unknown/vendor tags.
+- `short_message` and `message_payload` are mutually exclusive carriers of message user data for the supported submit/deliver path.
 
 ## Concurrency correctness rules
 
@@ -93,9 +92,9 @@ The project benchmarks one session first, then increases connection count only i
 - A response and timeout racing for the same request must have one winner only.
 - Timeout, context cancellation, fatal decoder failure, close and session loss must not double-release a window slot or double-notify a caller.
 - `Close` must be safe to call concurrently and must not race with reconnect into reviving a deliberately closed client.
-- Registry builders are safe for concurrent configuration; frozen snapshots are immutable and lock-free for reads.
+- Registries should avoid mutable global hot-path state; prefer immutable/frozen session-visible snapshots.
 - `go test -race` is part of normal development for session/client/server concurrency tests.
 
 ## Current implementation state
 
-Phases 1 through 3 are implemented. Phase 2 provides the fixed header codec, TCP stream framer, primitive field helpers, ordered/duplicate-preserving TLV scanning, configurable maximum PDU size, fatal-framer poisoning/no-resync behavior, malformed-frame tests, fuzz seeds, and codec benchmarks. Phase 3 adds extensible command/TLV registries with vendor registration, strict/compatible unknown handling, concurrency-safe configuration, immutable frozen snapshots, duplicate-registration checks, and registry lookup benchmarks. Phase 4 is the next implementation milestone.
+Phase 0 through Phase 3 are complete. Phase 4 is in progress: typed SMPP 3.4 bodies and codecs are being added for bind/unbind/enquire-link, `generic_nack`, `submit_sm`, and `deliver_sm` request/response flows, with specification vectors and receive-side sequence-number preservation tests. Session/transport integration that turns a fatal codec error into the mandatory structured log plus TCP close remains intentionally assigned to later session/transport phases so codec remains independent of networking.

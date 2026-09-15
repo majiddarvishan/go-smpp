@@ -142,19 +142,29 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** SMPP framing uses a 32-bit length, so an explicit operational bound is required to prevent unbounded memory commitment from malformed or hostile peers. One MiB leaves substantial room above ordinary SMPP message payloads and vendor TLVs while retaining a defensive ceiling.
 
-## D-028 — Frozen extensible registries
+## D-028 — Immutable session registry snapshots
 
-**Decision:** Command and TLV registries are configured through a concurrency-safe builder and then frozen into immutable snapshots used by active sessions. Vendor commands and TLVs use the same registration mechanism as standard definitions. Duplicate registrations are rejected explicitly. Compatible mode may preserve/leave unknown structurally valid fields unresolved; strict mode reports them as unknown errors. Neither mode can downgrade a framing/length error into a recoverable registry miss.
+**Decision:** Command/TLV registration happens through a concurrency-safe builder. Active sessions use a frozen immutable registry snapshot. Vendor commands and TLVs must be added before the snapshot is frozen.
 
-**Reason:** Immutable hot-path lookups avoid mutation locks and global state surprises while keeping vendor extensions testable and deterministic.
+**Reason:** This keeps registry lookup lock-free for concurrent read access on the hot path while still allowing controlled extensibility during configuration.
 
-## D-029 — GSM 7-bit and Unicode/emoji encoding
+## D-029 — GSM 7-bit and emoji encoding policy
 
-**Decision:** Message-content encoding remains separate from the low-level PDU codec. The repository will support GSM 03.38/GSM 7-bit (default alphabet, extension table and septet packing), strict UCS-2/BMP encoding, and UTF-16BE Unicode with surrogate-pair support for supplementary-plane characters such as emoji.
+**Decision:** Message encoding is separate from protocol/session mechanics. The library must support GSM 03.38/GSM 7-bit including extension-table characters and septet packing/unpacking. Unicode support must expose strict UCS-2/BMP separately from UTF-16BE with surrogate pairs for supplementary-plane characters such as emoji.
 
-Strict UCS-2 and UTF-16BE-with-surrogates must remain distinguishable. Higher-level helpers may prefer GSM 7-bit when text is representable and otherwise use a configured Unicode strategy. Multipart sizing must be based on encoded septets/code units and UDH overhead, not Go rune count.
+**Reason:** Emoji cannot be represented by strict UCS-2. Some deployed SMSCs accept UTF-16BE surrogate pairs under data_coding 0x08 while others do not, so the library must not silently conflate these modes. Applications need an explicit capability/policy choice.
 
-**Reason:** GSM 7-bit provides efficient SMS payloads for representable text, while many emoji require Unicode code points outside the BMP and therefore surrogate pairs. Peer/carrier support for such payloads varies, so the library must not silently pretend every emoji is valid strict UCS-2.
+## D-030 — PDU optional-parameter preservation
+
+**Decision:** Typed supported PDUs preserve optional parameters as ordered TLVs, including duplicates and unknown/vendor tags. Typed interpretation can be layered through the registry without destroying the original order/value representation.
+
+**Reason:** SMPP and vendor extensions may repeat tags or rely on ordering relationships; preserving wire data supports interoperability and round-trip behavior.
+
+## D-031 — Message payload exclusivity
+
+**Decision:** On supported `submit_sm` and `deliver_sm` encode/decode paths, non-empty `short_message` and non-empty `message_payload` are treated as conflicting message-data carriers rather than silently preferring one.
+
+**Reason:** SMPP 3.4 specifies that message data should be carried in one or the other, with `sm_length=0` when `message_payload` is used.
 
 ## Open decisions
 

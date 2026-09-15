@@ -1,5 +1,5 @@
-// Package protocol defines SMPP wire-level primitive types and constants.
+// Package protocol contains SMPP wire-level types and PDU body models.
 //
-// It intentionally has no dependency on session, transport, client, or server
-// packages. Both SMPP client and server implementations share these types.
+// It intentionally has no dependency on codec, session, transport, client, or
+// server packages.
 package protocol

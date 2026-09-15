@@ -1,5 +1,3 @@
-// Package codec will provide SMPP framing, encoding, and decoding.
-//
-// Dependency direction: codec may depend on protocol; it must not depend on
-// session, transport, client, or server.
+// Package codec provides SMPP binary framing plus command/TLV encoding and
+// decoding. It depends only on protocol and does not own sockets or sessions.
 package codec
