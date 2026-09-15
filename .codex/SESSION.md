@@ -4,13 +4,15 @@
 
 Branch: `main`
 
-Phase 0 through Phase 3 are complete. Phase 4 implementation is now in progress.
+Phase 0 through Phase 4 are complete. Phase 5 has not started.
+
+Phase 4 implementation commit: `60719fb8cc2a08402491bc3d31e5ffe73470650c`.
 
 Network transport is TCP; X.25 is out of scope. Optional TLS will be layered over TCP.
 
-## Phase 4 work started
+## Phase 4 completed
 
-The initial Phase 4 implementation adds the shared SMPP 3.4 PDU body model and command codecs for:
+Typed SMPP 3.4 body models and encode/decode support are implemented for:
 
 - `bind_transmitter` / response
 - `bind_receiver` / response
@@ -21,21 +23,25 @@ The initial Phase 4 implementation adds the shared SMPP 3.4 PDU body model and c
 - `submit_sm` / `submit_sm_resp`
 - `deliver_sm` / `deliver_sm_resp`
 
-It also adds an SMPP 3.4 registry builder so vendor-specific commands/TLVs can still be registered before freezing the immutable session registry.
+The phase also adds:
 
-Important compatibility behavior being preserved:
+- generic single-frame `DecodePDU` / `EncodePDU` dispatch through the frozen command registry
+- an SMPP 3.4 registry builder that remains extensible for vendor commands/TLVs before freeze
+- ordered optional-TLV preservation, including duplicate and unknown/vendor tags
+- raw borrowed optional-parameter values with explicit lifetime documentation
+- `ResponseHeader` sequence echoing without truncating receive-side interoperability values through `0xffffffff`
+- `sm_length` validation with 255 rejected and `short_message` bounded to 254 octets
+- `short_message` versus non-empty `message_payload` exclusivity checks
+- bind response handling for `sc_interface_version`
+- specification-driven bind/submit vectors, header-only PDU tests, deliver round trips, duplicate-TLV preservation, high-sequence response tests and malformed-body tests
 
-- responses echo inbound sequence numbers exactly, including values through `0xffffffff`
-- optional TLVs remain ordered and duplicate-preserving
-- unknown/vendor TLVs on supported message PDUs are preserved raw
-- `short_message` and non-empty `message_payload` cannot both carry message data
-- `sm_length=255` is rejected as invalid for SMPP 3.4
-- malformed mandatory variable-length fields and invalid TLV framing remain structural/fatal errors; framing safety rules are not weakened by PDU support
-- `deliver_sm_resp` accepts a header-only response for deployed-peer interoperability, while the encoder emits the C-Octet NULL body defined by SMPP 3.4
+Interoperability note: SMPP 3.4 specifies an empty C-Octet `message_id` body in `deliver_sm_resp`. The encoder emits that form. The decoder also accepts a header-only `deliver_sm_resp` because this is seen in deployed peers; a present body is still structurally validated.
 
-## Validation required before Phase 4 can be marked complete
+Fatal structural errors remain distinct from recoverable semantic PDU errors. Phase 4 does not weaken the existing `fatal framing/body corruption -> poisoned framer -> later session closes TCP connection` rule.
 
-Run the GitHub Actions Go 1.26 pipeline and require all of the following to pass:
+## Validation performed
+
+GitHub Actions run `34983301401` used Go 1.26.8 on Linux/amd64 and passed all required checks:
 
 ```text
 go test ./...
@@ -43,7 +49,21 @@ go test -race ./...
 go test -run '^$' -bench=. -benchmem ./protocol ./codec
 ```
 
-Do not mark Phase 4 `[x]` until the new specification-vector and round-trip tests pass in CI.
+The Phase 4 codec tests passed under both normal and race builds.
+
+CI benchmark snapshot on the GitHub runner (AMD EPYC 9V74):
+
+```text
+BenchmarkDecodeHeader            0.2740 ns/op     0 B/op   0 allocs/op
+BenchmarkFramerCompletePDU       6.867 ns/op      0 B/op   0 allocs/op
+                                11649.48 MB/s
+BenchmarkScanTLVs                22.31 ns/op      0 B/op   0 allocs/op
+                                 2868.29 MB/s
+BenchmarkRegistryCommandLookup   2.732 ns/op      0 B/op   0 allocs/op
+BenchmarkRegistryTLVLookup       18.57 ns/op      0 B/op   0 allocs/op
+```
+
+These remain microbenchmarks and are not the end-to-end 100k request-PDU/s acceptance result.
 
 ## Important requirements to preserve
 
@@ -61,4 +81,6 @@ Do not mark Phase 4 `[x]` until the new specification-vector and round-trip test
 
 ## Exact next task
 
-Complete and validate **Phase 4 — Essential SMPP 3.4 PDUs**. Fix any CI/test failures, then mark the Phase 4 checklist `[x]` and update this handoff with the verified commit and test results.
+Start **Phase 5 — Shared session state machine** from `PLAN.md`.
+
+Implement race-free shared client/server session states and legal-operation validation first. Keep codec independent of session state. Bind/unbind lifecycle and fatal decoder/framing failure transitions must be idempotent and safe when concurrent send/receive/close/timeout activity races.
