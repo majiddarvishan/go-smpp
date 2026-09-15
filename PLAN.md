@@ -135,19 +135,19 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 9 — Efficient timer and liveness subsystem
 
-- [ ] Implement a configurable per-request response timeout for outbound SMPP requests.
-- [ ] Start the protocol response timeout when the request PDU has been fully dispatched to the transport; time spent waiting for window/TX capacity remains governed by the caller context/deadline.
-- [ ] On response timeout, atomically remove/expire the pending request, release its window slot and return a typed timeout error to the synchronous caller.
-- [ ] Treat a response arriving after its request expired as a late/unmatched response; it must never complete an unrelated request.
-- [ ] Implement response deadlines without one independent `time.Timer` per request in the final high-throughput design.
-- [ ] Implement configurable Session Init timeout for connection-to-bind/session-establishment lifecycle.
-- [ ] Implement configurable Enquire Link interval/scheduling after SMPP inactivity.
-- [ ] Correlate `enquire_link` / `enquire_link_resp` through the same safe request/response machinery and apply a response timeout.
-- [ ] Implement configurable inactivity timeout based on session activity and define deterministic close/unbind behavior on expiry.
-- [ ] Ensure liveness timers are reset/update-safe under simultaneous RX and TX traffic.
-- [ ] Evaluate deadline buckets, heap batching, and/or timer wheel by benchmark.
-- [ ] Add boundary-race tests where response and timeout occur at nearly the same instant.
-- [ ] Add timeout-storm benchmark and memory-bound tests.
+- [x] Implement a configurable per-request response timeout for outbound SMPP requests.
+- [x] Start the protocol response timeout when the request PDU has been fully dispatched to the transport; time spent waiting for window/TX capacity remains governed by the caller context/deadline.
+- [x] On response timeout, atomically remove/expire the pending request, release its window slot and return a typed timeout error to the synchronous caller.
+- [x] Treat a response arriving after its request expired as a late/unmatched response; it must never complete an unrelated request.
+- [x] Implement response deadlines without one independent `time.Timer` per request in the final high-throughput design.
+- [x] Implement configurable Session Init timeout for connection-to-bind/session-establishment lifecycle.
+- [x] Implement configurable Enquire Link interval/scheduling after SMPP inactivity.
+- [x] Correlate `enquire_link` / `enquire_link_resp` through the same safe request/response machinery and apply a response timeout.
+- [x] Implement configurable inactivity timeout based on session activity and define deterministic close/unbind behavior on expiry.
+- [x] Ensure liveness timers are reset/update-safe under simultaneous RX and TX traffic.
+- [x] Evaluate deadline buckets, heap batching, and/or timer wheel by benchmark.
+- [x] Add boundary-race tests where response and timeout occur at nearly the same instant.
+- [x] Add timeout-storm benchmark and memory-bound tests.
 
 ## Phase 10 — Client auto-reconnect
 

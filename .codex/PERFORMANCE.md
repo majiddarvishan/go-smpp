@@ -243,3 +243,9 @@ Once stable baselines exist, CI or scheduled benchmark reports should flag meani
 - memory at a fixed outstanding window
 
 Exact regression thresholds are deferred until stable benchmark noise is measured.
+
+## Phase 9 timer baseline
+
+The first response-deadline implementation uses a cancellable min-heap with one reusable timer and one long-lived goroutine per session. It intentionally avoids a `time.Timer`/goroutine per request. Completed/cancelled entries are removed immediately rather than retained until their original expiry.
+
+A local Linux/amd64 development benchmark on an AMD EPYC 9V74 (not the final 8-core/10-GB acceptance machine) measured the initial heap baseline at roughly 109 ns/op and 1 allocation for schedule+cancel; the timeout-storm benchmark exercises batched expiry. These values are implementation baselines, not Phase 17 acceptance results. Heap vs alternative shared deadline structures can be revisited only if end-to-end profiling shows timer bookkeeping is material.

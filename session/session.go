@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/majiddarvishan/go-smpp/codec"
 	"github.com/majiddarvishan/go-smpp/protocol"
@@ -15,9 +17,14 @@ import (
 )
 
 const (
-	DefaultMaxPending     = 1024
-	DefaultTXQueueSize    = 1024
-	DefaultReadBufferSize = 64 << 10
+	DefaultMaxPending          = 1024
+	DefaultTXQueueSize         = 1024
+	DefaultReadBufferSize      = 64 << 10
+	DefaultResponseTimeout     = 30 * time.Second
+	DefaultSessionInitTimeout  = 30 * time.Second
+	DefaultEnquireLinkInterval = 30 * time.Second
+	DefaultEnquireLinkTimeout  = 10 * time.Second
+	DefaultInactivityTimeout   = 2 * time.Minute
 )
 
 // Response is returned by an inbound request Handler. The response command ID
@@ -46,16 +53,21 @@ func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu codec.DecodedPD
 // bound; MaxPending is a defensive correlation-table ceiling and is raised to
 // WindowSize automatically when necessary.
 type Config struct {
-	Role           Role
-	Registry       *codec.Registry
-	MaxPDUSize     uint32
-	MaxPending     int
-	WindowSize     int
-	WindowObserver WindowObserver
-	TXQueueSize    int
-	ReadBufferSize int
-	Handler        Handler
-	Logger         *slog.Logger
+	Role                Role
+	Registry            *codec.Registry
+	MaxPDUSize          uint32
+	MaxPending          int
+	WindowSize          int
+	WindowObserver      WindowObserver
+	ResponseTimeout     time.Duration
+	SessionInitTimeout  time.Duration
+	EnquireLinkInterval time.Duration
+	EnquireLinkTimeout  time.Duration
+	InactivityTimeout   time.Duration
+	TXQueueSize         int
+	ReadBufferSize      int
+	Handler             Handler
+	Logger              *slog.Logger
 }
 
 type txKind uint8
@@ -89,9 +101,13 @@ type Session struct {
 	done   chan struct{}
 	tx     chan txItem
 
-	pending *pendingTable
-	window  *requestWindow
-	seq     sequenceGenerator
+	pending   *pendingTable
+	window    *requestWindow
+	deadlines *deadlineManager
+	seq       sequenceGenerator
+
+	createdAt    time.Time
+	lastActivity atomic.Int64
 
 	closeOnce sync.Once
 	wg        sync.WaitGroup
@@ -119,6 +135,11 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	if config.MaxPending < config.WindowSize {
 		config.MaxPending = config.WindowSize
 	}
+	config.ResponseTimeout = defaultDuration(config.ResponseTimeout, DefaultResponseTimeout)
+	config.SessionInitTimeout = defaultDuration(config.SessionInitTimeout, DefaultSessionInitTimeout)
+	config.EnquireLinkInterval = defaultDuration(config.EnquireLinkInterval, DefaultEnquireLinkInterval)
+	config.EnquireLinkTimeout = defaultDuration(config.EnquireLinkTimeout, DefaultEnquireLinkTimeout)
+	config.InactivityTimeout = defaultDuration(config.InactivityTimeout, DefaultInactivityTimeout)
 	if config.TXQueueSize <= 0 {
 		config.TXQueueSize = DefaultTXQueueSize
 	}
@@ -141,16 +162,22 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		logger = slog.Default()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now()
 	s := &Session{
 		conn: conn, registry: config.Registry, framer: framer, machine: machine,
 		config: config, logger: logger, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
-		pending: newPendingTable(config.MaxPending),
-		window:  newRequestWindow(config.WindowSize, config.WindowObserver),
+		pending:   newPendingTable(config.MaxPending),
+		window:    newRequestWindow(config.WindowSize, config.WindowObserver),
+		createdAt: now,
 	}
-	s.wg.Add(2)
+	s.lastActivity.Store(now.UnixNano())
+	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)
+	s.wg.Add(4)
 	go s.rxLoop()
 	go s.txLoop()
+	go func() { defer s.wg.Done(); s.deadlines.run() }()
+	go s.livenessLoop()
 	return s, nil
 }
 
@@ -368,6 +395,100 @@ func (s *Session) Unbind(ctx context.Context) error {
 	return nil
 }
 
+func defaultDuration(value, fallback time.Duration) time.Duration {
+	if value == 0 {
+		return fallback
+	}
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func (s *Session) responseTimeoutFor(command protocol.CommandID) (time.Duration, TimeoutKind) {
+	if command == protocol.CommandEnquireLink {
+		if s.config.EnquireLinkTimeout > 0 {
+			return s.config.EnquireLinkTimeout, TimeoutEnquireLink
+		}
+		return s.config.ResponseTimeout, TimeoutEnquireLink
+	}
+	return s.config.ResponseTimeout, TimeoutResponse
+}
+
+func (s *Session) expireDeadline(item *deadlineItem) {
+	if item == nil {
+		return
+	}
+	err := &TimeoutError{Kind: item.kind, Command: item.command, Sequence: item.sequence, After: item.after}
+	request, won := s.pending.completeError(item.sequence, err)
+	if won {
+		s.machine.CancelOutbound(request.requestID)
+	}
+}
+
+func (s *Session) noteActivity() {
+	s.lastActivity.Store(time.Now().UnixNano())
+}
+
+func (s *Session) lastActivityTime() time.Time {
+	return time.Unix(0, s.lastActivity.Load())
+}
+
+func isBoundState(state protocol.SessionState) bool {
+	return state == protocol.StateBoundTX || state == protocol.StateBoundRX || state == protocol.StateBoundTRX
+}
+
+func (s *Session) livenessLoop() {
+	defer s.wg.Done()
+	interval := s.livenessResolution()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case now := <-ticker.C:
+			state := s.State()
+			if (state == protocol.StateOpen || state == protocol.StateOutbound) && s.config.SessionInitTimeout > 0 && now.Sub(s.createdAt) >= s.config.SessionInitTimeout {
+				s.terminate(&TimeoutError{Kind: TimeoutSessionInit, After: s.config.SessionInitTimeout})
+				return
+			}
+			if !isBoundState(state) {
+				continue
+			}
+			idle := now.Sub(s.lastActivityTime())
+			if s.config.InactivityTimeout > 0 && idle >= s.config.InactivityTimeout {
+				s.terminate(&TimeoutError{Kind: TimeoutInactivity, After: s.config.InactivityTimeout})
+				return
+			}
+			if s.config.EnquireLinkInterval > 0 && idle >= s.config.EnquireLinkInterval {
+				if err := s.EnquireLink(s.ctx); err != nil {
+					select {
+					case <-s.done:
+						return
+					default:
+						s.terminate(err)
+						return
+					}
+				}
+			}
+		case <-s.done:
+			return
+		}
+	}
+}
+
+func (s *Session) livenessResolution() time.Duration {
+	resolution := 500 * time.Millisecond
+	for _, duration := range []time.Duration{s.config.SessionInitTimeout, s.config.EnquireLinkInterval, s.config.InactivityTimeout} {
+		if duration > 0 && duration/4 < resolution {
+			resolution = duration / 4
+		}
+	}
+	if resolution < 10*time.Millisecond {
+		return 10 * time.Millisecond
+	}
+	return resolution
+}
+
 func responseError(pdu codec.DecodedPDU) error {
 	if pdu.Header.CommandID == protocol.CommandGenericNACK || !pdu.Header.CommandStatus.OK() {
 		return &ResponseError{Command: pdu.Header.CommandID, Status: pdu.Header.CommandStatus, Sequence: pdu.Header.SequenceNumber}
@@ -426,8 +547,13 @@ func (s *Session) txLoop() {
 				s.terminate(err)
 				return
 			}
+			s.noteActivity()
 			if item.kind == txRequest {
-				s.pending.markDispatched(item.sequence)
+				if request, ok := s.pending.markDispatched(item.sequence); ok {
+					timeout, kind := s.responseTimeoutFor(item.requestID)
+					deadline := s.deadlines.schedule(timeout, kind, item.requestID, item.sequence)
+					request.attachDeadline(s.deadlines, deadline)
+				}
 				continue
 			}
 			if item.responseTo == protocol.CommandUnbind && item.status.OK() {
@@ -456,6 +582,7 @@ func (s *Session) processFrame(frame []byte) error {
 		_ = s.queueGenericNACK(header, protocol.StatusInvalidMessageLength)
 		return nil
 	}
+	s.noteActivity()
 	if pdu.Header.CommandID.IsResponse() {
 		s.handleResponse(pdu)
 		return nil

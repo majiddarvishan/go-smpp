@@ -19,6 +19,11 @@ type pendingRequest struct {
 	done          chan requestResult
 	dispatched    atomic.Bool
 	releaseWindow func()
+
+	deadlineMu sync.Mutex
+	deadline   *deadlineItem
+	deadlines  *deadlineManager
+	finished   bool
 }
 
 type pendingTable struct {
@@ -51,14 +56,14 @@ func (t *pendingTable) exists(sequence protocol.SequenceNumber) bool {
 	return ok
 }
 
-func (t *pendingTable) markDispatched(sequence protocol.SequenceNumber) bool {
+func (t *pendingTable) markDispatched(sequence protocol.SequenceNumber) (*pendingRequest, bool) {
 	t.mu.Lock()
 	request, ok := t.m[sequence]
 	if ok {
 		request.dispatched.Store(true)
 	}
 	t.mu.Unlock()
-	return ok
+	return request, ok
 }
 
 func (t *pendingTable) takeResponse(sequence protocol.SequenceNumber, responseID protocol.CommandID) (*pendingRequest, bool) {
@@ -74,7 +79,7 @@ func (t *pendingTable) takeResponse(sequence protocol.SequenceNumber, responseID
 	}
 	delete(t.m, sequence)
 	t.mu.Unlock()
-	request.releaseSlot()
+	request.finish()
 	return request, true
 }
 
@@ -88,7 +93,7 @@ func (t *pendingTable) completeError(sequence protocol.SequenceNumber, err error
 	if !ok {
 		return nil, false
 	}
-	request.releaseSlot()
+	request.finish()
 	request.done <- requestResult{err: err}
 	return request, true
 }
@@ -102,7 +107,7 @@ func (t *pendingTable) failAll(err error) {
 	}
 	t.mu.Unlock()
 	for _, request := range requests {
-		request.releaseSlot()
+		request.finish()
 		request.done <- requestResult{err: err}
 	}
 }
@@ -114,9 +119,39 @@ func (t *pendingTable) len() int {
 	return n
 }
 
-func (r *pendingRequest) releaseSlot() {
-	if r.releaseWindow != nil {
-		r.releaseWindow()
-		r.releaseWindow = nil
+func (r *pendingRequest) attachDeadline(manager *deadlineManager, item *deadlineItem) {
+	if item == nil {
+		return
+	}
+	r.deadlineMu.Lock()
+	if r.finished {
+		r.deadlineMu.Unlock()
+		manager.cancel(item)
+		return
+	}
+	r.deadlines = manager
+	r.deadline = item
+	r.deadlineMu.Unlock()
+}
+
+func (r *pendingRequest) finish() {
+	r.deadlineMu.Lock()
+	if r.finished {
+		r.deadlineMu.Unlock()
+		return
+	}
+	r.finished = true
+	manager := r.deadlines
+	item := r.deadline
+	r.deadline = nil
+	r.deadlines = nil
+	release := r.releaseWindow
+	r.releaseWindow = nil
+	r.deadlineMu.Unlock()
+	if manager != nil && item != nil {
+		manager.cancel(item)
+	}
+	if release != nil {
+		release()
 	}
 }

@@ -204,13 +204,19 @@ Window ownership transfers to the pending-correlation entry after insertion. Whi
 
 **Reason:** The usable window depends on target request rate and peer RTT. A fixed value of 10 cannot meet high-throughput/long-RTT scenarios; the bound must remain explicit, observable, and tunable while preventing unbounded work.
 
+## D-038 — Shared response-deadline and liveness timers
+
+**Decision:** Response deadlines are scheduled in one per-session min-heap managed by one long-lived goroutine and one reusable `time.Timer`; outstanding requests do not allocate an independent timer or goroutine. A deadline is attached only after the complete PDU write succeeds, and terminal pending removal cancels/removes the deadline so completed requests are not retained until their original timeout.
+
+Default protocol timings are: response timeout **30s**, Session Init **30s**, Enquire Link interval **30s**, Enquire Link response timeout **10s**, and inactivity timeout **2m**. A zero configuration value selects the default; a negative value disables that timer. Automatic Enquire Link uses the normal correlated request machinery and the same bounded request window.
+
+Session Init and liveness checks are handled by one additional long-lived per-session liveness loop, not by per-event goroutines. Fatal liveness failure closes the session; an ordinary request response timeout fails only that request.
+
+**Reason:** The design keeps timer/goroutine count proportional to sessions, starts protocol timing at the required full-dispatch boundary, supports exact-once completion/window release, and gives a simple measurable heap baseline before more complex timer-wheel work is justified by profiling.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
-- Default per-request response timeout.
-- Default Session Init timeout.
-- Default Enquire Link interval and response timeout.
-- Default inactivity timeout and exact graceful-close policy.
 - Default reconnect/backoff policy.
