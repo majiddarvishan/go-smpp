@@ -16,7 +16,14 @@ A high-performance SMPP stack for Go, designed for both ESME/client and SMSC/ser
 - Encoding support in separate packages within this repository.
 - Minimal external dependencies; prefer the Go standard library.
 - Primary target: Linux/amd64.
+- Minimum supported Go version: 1.26.
 - No `unsafe` in the initial implementation.
+
+## Network transport
+
+The SMPP network transport is **TCP**. X.25 is intentionally out of scope.
+
+Plain TCP is the baseline transport. TLS is optional and, when enabled, is layered over TCP using the Go standard library `crypto/tls`. The SMPP codec/session layers remain independent from TLS configuration.
 
 ## Timeout and liveness model
 
@@ -30,9 +37,13 @@ The session layer also provides configurable Session Init timeout, Enquire Link 
 
 The wire protocol core is asynchronous and bidirectional even though the public request API is synchronous. Active runtime objects are designed to be safely shared by multiple goroutines where documented. Sequence allocation, pending correlation, session state, window accounting, timers, close and reconnect paths must be data-race free. The implementation must not use a goroutine per message/request.
 
+## Malformed PDU policy
+
+If an inbound PDU has a fatal structural/framing error that makes the TCP stream boundary untrustworthy, the library logs the failure and closes that connection/session. It does not attempt byte-stream resynchronization. Recoverable SMPP semantic/status errors remain separate and may receive the appropriate protocol response.
+
 ## Performance target
 
-The reference target is **100,000 SMPP request PDUs per second aggregate, bidirectionally** (requests sent + requests received), while using the minimum practical number of SMPP connections/sessions. Mandatory SMPP responses are additional work and are included in end-to-end benchmark load.
+The reference target is **100,000 SMPP request PDUs per second aggregate, bidirectionally** (requests sent + requests received), while using the minimum practical number of TCP connections/sessions. Mandatory SMPP responses are additional work and are included in end-to-end benchmark load.
 
 Reference machine:
 
@@ -51,9 +62,9 @@ The design is based on:
 
 SMPP 3.4 is the first complete compatibility target. SMPP 5.0 features are added on the same core rather than as a separate stack.
 
-## TLS strategy
+## Current implementation status
 
-The SMPP engine is transport-agnostic and works over a small `net.Conn`-compatible abstraction. Plain TCP and TLS are provided using the Go standard library (`net` and `crypto/tls`). TLS configuration stays in the transport layer and does not leak into PDU/session logic.
+Phase 1 is complete. The repository now contains the Go module/package skeleton, protocol primitive types/constants, SMPP 3.4/5.0 profiles, typed timeout/fatal-protocol error categories, dependency-direction tests, unit tests, primitive benchmarks, and Go 1.26 CI. Binary PDU framing/codec implementation starts in Phase 2.
 
 ## Planning and project context
 
@@ -65,5 +76,3 @@ The SMPP engine is transport-agnostic and works over a small `net.Conn`-compatib
 - [`.codex/PERFORMANCE.md`](.codex/PERFORMANCE.md) — performance contract and benchmark strategy.
 - [`.codex/BACKLOG.md`](.codex/BACKLOG.md) — deferred protocol/features backlog.
 - [`.codex/SESSION.md`](.codex/SESSION.md) — handoff/current-state notes.
-
-No protocol implementation has been started yet. The repository is currently in the planning/bootstrap stage.

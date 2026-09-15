@@ -54,9 +54,9 @@ This file records decisions that should not be silently changed during implement
 
 ## D-010 — Transport/TLS boundary
 
-**Decision:** The protocol/session core works on a `net.Conn`-like transport boundary. Plain TCP uses `net`; TLS uses `crypto/tls`. Caller-supplied compatible connections are allowed.
+**Decision:** The network transport is TCP. X.25 is out of scope. The protocol/session core works on a `net.Conn`-like stream boundary. Plain TCP uses `net`; optional TLS is layered over TCP using `crypto/tls`. Caller-supplied compatible stream connections may be allowed where they preserve the same semantics.
 
-**Reason:** TLS should not affect PDU/session semantics, and standard-library TLS avoids unnecessary dependencies.
+**Reason:** TCP is the project transport requirement. Keeping TLS outside PDU/session semantics preserves a clean boundary and avoids an unnecessary runtime dependency.
 
 ## D-011 — Extensible registry
 
@@ -80,7 +80,7 @@ Reference hardware: Linux/amd64, 8 cores, 10 GB RAM.
 
 ## D-015 — Minimum connection count
 
-**Decision:** Optimize and benchmark one SMPP session first. Increase session count only as required by measured RTT/window/peer/CPU constraints. Acceptance reporting must state the smallest session count that reaches the target.
+**Decision:** Optimize and benchmark one SMPP session first. Increase TCP session count only as required by measured RTT/window/peer/CPU constraints. Acceptance reporting must state the smallest session count that reaches the target.
 
 ## D-016 — Timer strategy
 
@@ -100,18 +100,9 @@ Reference hardware: Linux/amd64, 8 cores, 10 GB RAM.
 
 On expiry, the pending request is completed exactly once with a typed response-timeout error, removed from correlation state, and its window capacity is released exactly once. A later response for the expired request is treated as late/unmatched and must not complete a different request.
 
-**Reason:** The public API is synchronous, but the wire engine is pipelined. Timeout ownership must therefore be explicit and race-safe without blocking the entire session.
-
 ## D-020 — SMPP liveness timers
 
 **Decision:** The session engine must support configurable Session Init timeout, Enquire Link scheduling/response timeout and inactivity timeout for both relevant client and server session lifecycles.
-
-- Session Init timeout bounds connection-to-valid-session establishment.
-- Enquire Link is scheduled after configured SMPP inactivity and uses normal request/response correlation plus a response deadline.
-- Inactivity timeout observes session activity and triggers deterministic session shutdown/unbind behavior according to configuration.
-- Timer state updates must remain correct while RX and TX activity occur concurrently.
-
-**Reason:** These timers are part of SMPP session management and are necessary for predictable failure detection and resource cleanup.
 
 ## D-021 — Concurrency/thread-safety contract
 
@@ -119,37 +110,30 @@ On expiry, the pending request is completed exactly once with a typed response-t
 
 Registries/configuration should avoid hot-path mutable global state. Prefer explicit registry instances that are either concurrency-safe during construction or frozen into immutable snapshots before sessions use them.
 
-**Reason:** The target workload is inherently concurrent and bidirectional. Thread safety cannot be left to application-level serialization without undermining the library API and throughput goals.
-
 ## D-022 — Exactly-once local request completion
 
 **Decision:** For each locally originated request, only one terminal event may win: matching response, caller cancellation/deadline, protocol response timeout, or session/transport loss. All losing paths must observe the completed state and must not double-release window capacity, double-notify the caller or mutate reused request state.
 
-**Reason:** Response/timeout/close races are normal under load and are a primary correctness risk in an asynchronous SMPP engine.
-
 ## D-023 — Fail closed on unrecoverable structural/framing corruption
 
-**Decision:** If an inbound PDU is structurally malformed in a way that makes byte-stream alignment or trustworthy decoding unsafe, the current transport/session is considered corrupted and must be closed. Examples include an invalid `command_length`, a declared PDU size below the SMPP header size or above the configured maximum, impossible mandatory-field boundaries, a TLV length that escapes the declared PDU frame, or another decode failure where continuing could cause subsequent bytes to be interpreted at the wrong boundary.
-
-The decoder/session must **not** attempt heuristic byte-stream resynchronization and must not continue processing later PDUs on that same connection. Only the offending connection/session is terminated; a server listener and unrelated sessions remain alive.
+**Decision:** If an inbound PDU is structurally malformed in a way that makes byte-stream alignment or trustworthy decoding unsafe, the current transport/session is considered corrupted and must be closed. The decoder must not attempt heuristic byte-stream resynchronization. Only the offending connection/session is terminated; a server listener and unrelated sessions remain alive.
 
 Recoverable protocol/application errors where the frame boundary is intact remain distinct and may use the appropriate SMPP response/status behavior rather than forcing connection closure.
 
-**Reason:** SMPP runs on a TCP byte stream. Once framing trust is lost, attempting to continue can turn the remainder of the stream into arbitrary false PDUs and create correctness/security problems.
-
 ## D-024 — Mandatory diagnostic logging for fatal protocol corruption
 
-**Decision:** Every connection termination caused by an unrecoverable malformed/framing PDU must emit a structured error log through the library's logging/diagnostic facility. The event should include safe diagnostic metadata when available: failure reason/category, local/remote endpoint or session identifier, session state, declared `command_length`, `command_id`, and `sequence_number`.
+**Decision:** Every connection termination caused by an unrecoverable malformed/framing PDU must emit a structured error log through the library's logging/diagnostic facility. Credentials, message payloads and other sensitive body content are not dumped by default.
 
-Credentials, message payloads and other sensitive body content are not dumped by default. This mandatory error event is separate from per-PDU packet logging, which remains disabled by default for performance.
+## D-025 — Minimum Go version
 
-**Reason:** Closing a connection is intentionally severe behavior and must be diagnosable in production without enabling expensive packet-level tracing.
+**Decision:** The minimum supported Go version is **Go 1.26**. The module is `github.com/majiddarvishan/go-smpp` and the `go.mod` directive is pinned accordingly.
+
+**Reason:** The project is new, performance-sensitive, and targets Linux/amd64. Supporting an actively supported modern Go baseline avoids carrying compatibility cost for older toolchains while leaving Go 1.27 usable by consumers.
 
 ## Open decisions
 
-The following must be decided before or during Phase 1 and recorded here:
+The following remain to be decided in later phases and recorded here:
 
-- Minimum supported Go version.
 - Exact public package naming/API conventions after the first API sketch.
 - Default maximum PDU size.
 - Default window size and backpressure behavior.

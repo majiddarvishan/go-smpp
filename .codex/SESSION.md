@@ -2,82 +2,65 @@
 
 ## Current state
 
-Repository bootstrap/planning is complete. No Go implementation has started yet.
+Branch: `main`
 
-Current requirements have been captured in `PLAN.md`, `AGENTS.md` and the `.codex` documents.
+Phase 0 and Phase 1 are complete. Phase 2 has not started.
 
-## Confirmed requirements
+The project now has a Go module and package skeleton, protocol primitives, initial error taxonomy, tests/benchmarks, and Go 1.26 CI. Network transport is TCP; X.25 is out of scope. Optional TLS will be layered over TCP.
 
-- Both ESME/client and SMSC/server are required.
-- One shared core for protocol/session logic.
-- SMPP 3.4 complete first; architecture is SMPP 5.0-aware from the beginning.
-- First functional path is bind/session + submit/deliver.
-- Other 3.4 operations are deferred but mandatory later.
-- Encoding/message functionality lives in separate packages in the same repository.
-- Public API is synchronous/context-aware.
-- Underlying engine is asynchronous and pipelined.
-- Every outbound request expecting a response has a configurable response timeout.
-- Response timeout starts after the request PDU is fully dispatched to the active transport.
-- Window/TX admission waiting is controlled separately by caller context/deadline.
-- Timeout completion must remove pending correlation and release the window exactly once.
-- Late responses after timeout must not complete an unrelated request.
-- Session Init timeout is required.
-- Enquire Link scheduling plus response-timeout handling is required.
-- Inactivity timeout is required.
-- Client auto-reconnect/rebind is required.
-- No hidden auto-resubmit of ambiguous requests.
-- Active public runtime objects/APIs must be safe for concurrent use by multiple goroutines where documented.
-- Internal state, correlation, window accounting, timers, close and reconnect paths must be data-race free.
-- Fatal structural/framing corruption (for example invalid `command_length` or impossible body/TLV length) terminates the current connection/session; the decoder does not attempt byte-stream resynchronization.
-- Every fatal malformed-PDU termination emits a structured diagnostic error log with safe metadata and without credentials/full message payload by default.
-- Server-side malformed input only closes the offending session; unrelated sessions and the listener remain alive.
-- Minimal dependencies; standard library preferred.
-- Linux/amd64 primary target.
-- No `unsafe` initially.
-- Plain TCP and TLS supported through transport abstraction.
-- Extensible registries for standard/vendor PDUs and TLVs.
-- Performance target is 100k aggregate bidirectional request PDUs/s on 8 cores / 10 GB RAM, with minimum practical connection count.
+## Phase 1 completed
 
-## Next task
+- module: `github.com/majiddarvishan/go-smpp`
+- minimum Go version: 1.26
+- package boundary skeleton: root, `protocol`, `codec`, `session`, `transport`, `client`, `server`, `encoding`, `message`
+- automated dependency-direction test
+- SMPP 3.4 command IDs and command-status constants
+- `SequenceNumber`, TON, NPI, `DataCoding`, session state primitives
+- shared SMPP 3.4 / 5.0 profile model (`0x34` / `0x50`)
+- network-order uint32 primitive helpers
+- recoverable semantic protocol error type
+- fatal structural/framing error categories
+- typed session timeout metadata (`response`, `session_init`, `enquire_link`, `inactivity`)
+- primitive unit tests and allocation benchmarks
+- CI workflow using Go 1.26 with unit/race tests and primitive benchmarks
 
-Start **Phase 1 — Module skeleton and protocol primitives** from `PLAN.md`.
+## Validation performed
 
-Before coding Phase 1:
+Local environment provides Go 1.23.2, so the code was smoke-tested by temporarily lowering only the local `go` directive to 1.23; repository `go.mod` remains Go 1.26. The code uses no language/API feature newer than that local compiler in Phase 1.
 
-1. Decide/pin the minimum supported Go version.
-2. Sketch the public API names sufficiently to avoid package naming conflicts.
-3. Define timeout and fatal-protocol/framing error categories/types early enough that later session code does not collapse distinct failures into generic errors.
-4. Decide the logging interface/default behavior for mandatory fatal-protocol diagnostics while keeping per-PDU logging disabled by default.
-5. Initialize the module as `github.com/majiddarvishan/go-smpp`.
-6. Create only the package directories needed for Phase 1; avoid speculative package sprawl.
-7. Add primitive unit tests and microbenchmarks with the first code.
-8. Mark each completed Phase 1 checklist item `[x]` in `PLAN.md` in the same commit.
+Commands passed locally:
 
-## Implementation cautions
+```text
+go test ./...
+go test -race ./...
+go test -bench=. -benchmem ./protocol
+```
 
-- Do not implement codec/session logic in Phase 1 beyond what is needed to define/test primitive types.
-- Do not introduce third-party dependencies without updating `.codex/DECISIONS.md`.
-- Do not use a goroutine-per-message or goroutine-per-timeout model.
-- Do not use one independent `time.Timer` per pending request as the final high-throughput timeout architecture.
-- Do not treat one TCP read as one SMPP PDU.
-- Do not attempt to recover stream alignment after a fatal malformed frame; close the connection instead.
-- Do not suppress the diagnostic log when a malformed frame causes a connection close.
-- Do not hard-code a window of 10.
-- Do not add automatic resubmission to reconnect logic later.
-- Do not count response PDUs toward the stated 100k request-PDU/s target, although they must be processed during benchmarks.
-- Do not make correctness depend on callers serializing access to a session.
-- Any response/timeout/cancel/fatal-protocol/session-loss race must result in exactly one local completion and one window release.
-- Run race-detector tests as concurrency code is introduced, not only at release time.
+Primitive benchmark snapshot on the available Linux/amd64 EPYC environment:
 
-## Handoff update rule
+```text
+BenchmarkPutUint32           ~0.28 ns/op   0 B/op   0 allocs/op
+BenchmarkReadUint32          ~0.29 ns/op   0 B/op   0 allocs/op
+BenchmarkCommandResponseID   ~0.29 ns/op   0 B/op   0 allocs/op
+```
 
-At the end of every meaningful implementation session, replace/update this file with:
+These numbers are only a Phase 1 microbenchmark baseline, not a throughput claim.
 
-- branch and latest commit
-- phases/steps completed
-- files changed
-- commands/tests/benchmarks executed and results
-- unresolved failures or performance concerns
-- exact next task
+## Important requirements to preserve
 
-This file should remain concise enough to resume work quickly on another machine/session.
+- 100k aggregate bidirectional request-PDU/s target on 8 cores / 10 GB RAM with minimum practical TCP connection count.
+- synchronous/context-aware public API over an asynchronous pipelined engine.
+- thread-safe active runtime APIs; no goroutine-per-message model.
+- configurable request-response timeout; Session Init, Enquire Link and inactivity handling.
+- auto-reconnect without hidden auto-resubmit.
+- fatal malformed/framing PDU => mandatory structured error log + close offending connection; no stream resynchronization.
+- SMPP 3.4 complete first, architecture 5.0-aware.
+- no `unsafe` initially; minimal runtime dependencies.
+
+## Exact next task
+
+Start **Phase 2 — Binary framing and codec foundation** from `PLAN.md`.
+
+Begin with the fixed 16-byte header and a TCP-stream framer driven by `command_length`. The framer must handle fragmented/coalesced reads and must classify unsafe structural framing errors as fatal so the owning session can log and close the connection later.
+
+Do not start session networking or PDU business logic before the codec/framing foundation is tested and benchmarked.
