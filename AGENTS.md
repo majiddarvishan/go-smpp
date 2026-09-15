@@ -26,7 +26,10 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 - Prefer the Go standard library. Document any runtime dependency before adding it.
 - Do not use `unsafe` unless profiling proves a need and the decision is recorded/reviewed first.
 - Codec/protocol packages must not depend on session/network packages.
-- Vendor-specific TLVs/commands must be extensible through registries; avoid mutable global hot-path registry state.
+- Vendor-specific TLVs/commands use the extensible registries. Configure through the concurrency-safe builder and use frozen immutable registry snapshots on active-session hot paths; do not add mutable global registry state.
+- Strict/compatible registry behavior applies only after framing/TLV boundaries are structurally valid and must never weaken fatal framing rules.
+- Message encoding belongs outside the low-level PDU codec. Required encoding support includes GSM 03.38/GSM 7-bit with extension table and septet packing, strict UCS-2/BMP, and UTF-16BE surrogate pairs for emoji/supplementary Unicode.
+- Keep strict UCS-2 distinct from UTF-16BE-with-surrogates because peer/carrier emoji support varies. Multipart sizing uses encoded septets/code units plus UDH overhead, not Go rune count.
 - Per-PDU logging is disabled by default; mandatory fatal-protocol diagnostic logging is an exception.
 - Performance optimizations must be profile-driven and benchmarked.
 
@@ -39,6 +42,6 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 
 ## Scope discipline
 
-The first production path is bind/session management plus `submit_sm` and `deliver_sm` request/response. Other SMPP 3.4 operations remain required and tracked in the plan/backlog.
+The first production path is bind/session management plus `submit_sm` and `deliver_sm` request/response. Other SMPP 3.4 operations remain required and tracked in the plan/backlog. GSM 7-bit and Unicode/emoji support are scheduled in the message/encoding phase and must remain decoupled from wire-level PDU framing.
 
 At the end of a meaningful implementation session, update `.codex/SESSION.md` with branch/commit, completed work, tests/benchmarks, unresolved issues, and exact next task.
