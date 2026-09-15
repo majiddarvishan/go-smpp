@@ -130,12 +130,23 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** The project is new, performance-sensitive, and targets Linux/amd64. Supporting an actively supported modern Go baseline avoids carrying compatibility cost for older toolchains while leaving Go 1.27 usable by consumers.
 
+## D-026 — Sequence-number receive interoperability
+
+**Decision:** Locally generated sequence numbers remain in the SMPP-defined request range `0x00000001..0x7fffffff`. Inbound PDUs accept any non-zero uint32 sequence number through `0xffffffff`. A response to an inbound request must preserve the received value exactly, including values above `0x7fffffff`.
+
+**Reason:** SMPP 3.4 documents `0x7fffffff` as the upper range, but deployed peers are known to transmit values in the upper uint32 half. Rejecting them would cause avoidable interoperability failures while accepting them does not affect framing or response correlation.
+
+## D-027 — Codec maximum PDU bound
+
+**Decision:** The codec/framer has a configurable maximum PDU size. The initial default is **1 MiB**, allocated lazily rather than reserved per connection. A declared `command_length` above the configured bound is a fatal framing error for that TCP connection.
+
+**Reason:** SMPP framing uses a 32-bit length, so an explicit operational bound is required to prevent unbounded memory commitment from malformed or hostile peers. One MiB leaves substantial room above ordinary SMPP message payloads and vendor TLVs while retaining a defensive ceiling.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch.
-- Default maximum PDU size.
 - Default window size and backpressure behavior.
 - Default per-request response timeout.
 - Default Session Init timeout.
