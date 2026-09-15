@@ -41,6 +41,8 @@ The specifications are protocol references, not source-code dependencies.
 - Never silently auto-resubmit an ambiguous request after connection loss.
 - Public active runtime objects and request APIs must be safe for concurrent use by multiple goroutines where documented.
 - Internal sequence allocation, session state, pending correlation, window accounting, timeout/cancel/close/reconnect paths must be data-race free.
+- Locally generated sequence numbers stay in `0x00000001..0x7fffffff`.
+- Received sequence numbers accept the interoperability range `0x00000001..0xffffffff`; responses must preserve the received sequence number exactly.
 - Fatal structural/framing corruption terminates the offending TCP connection/session after structured diagnostic logging; no byte-stream resynchronization is attempted.
 - A server must isolate malformed input to the offending connection; the listener and unrelated sessions continue normally.
 - Minimize external dependencies; prefer the standard library.
@@ -68,7 +70,10 @@ The project benchmarks one session first, then increases connection count only i
 
 - SMPP is processed as a TCP byte stream; a single TCP read is not one PDU.
 - Every PDU has a fixed 16-byte header and uses `command_length` for framing.
-- Framing trust is connection-scoped: if a structural decode error makes alignment unsafe, the connection is discarded rather than heuristically resynchronized.
+- The framer handles fragmented PDUs and multiple coalesced PDUs in one TCP read.
+- The framer can emit complete PDUs already present in an input buffer without copying; fragmented PDUs use bounded buffering.
+- The initial default maximum PDU size is 1 MiB and is configurable.
+- Framing trust is connection-scoped: if a structural decode error makes alignment unsafe, the framer is poisoned and the connection is discarded rather than heuristically resynchronized.
 - SMPP is asynchronous: several requests may be outstanding and responses may arrive out of order.
 - Request/response correlation is session-local and based on `sequence_number`.
 - A reconnect establishes a new session; pending operations from a lost session cannot be correlated with the new session.
@@ -88,4 +93,4 @@ The project benchmarks one session first, then increases connection count only i
 
 ## Current implementation state
 
-Phase 1 is complete: module/package skeleton, protocol primitive constants/types, 3.4/5.0 profiles, typed timeout and fatal protocol error categories, dependency-direction test, unit tests, primitive benchmarks and Go 1.26 CI are present. Phase 2 begins the binary framing/codec implementation.
+Phase 1 is complete. Phase 2 codec/framing work is implemented and validated: fixed header codec, TCP stream framer, primitive field helpers, ordered/duplicate-preserving TLV scanning, configurable maximum PDU size, fatal-framer poisoning/no-resync behavior, malformed-frame tests, fuzz seeds, and codec benchmarks. Session/transport integration that turns a fatal codec error into the mandatory structured log plus TCP close is intentionally implemented in the later session/transport phases so codec remains independent of networking.
