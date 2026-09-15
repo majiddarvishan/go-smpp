@@ -56,6 +56,47 @@ Examples at 100k request/s:
 
 This is a planning approximation, not an SMPP protocol limit. Benchmarks must measure real behavior.
 
+## Timeout performance contract
+
+Timeout processing is part of the hot path, not an administrative side feature.
+
+The library must support:
+
+- configurable per-request protocol response deadlines,
+- Session Init timeout,
+- Enquire Link scheduling and response timeout,
+- inactivity timeout,
+- caller context cancellation/deadlines.
+
+The final high-throughput design must not require one independent `time.Timer` or goroutine per outstanding request. Deadline tracking must remain bounded by configured outstanding work.
+
+Benchmark both normal and adverse cases:
+
+- nearly all requests completing before timeout,
+- sparse timeouts at steady load,
+- large timeout storms,
+- response and timeout occurring at the same boundary,
+- session loss while many timeout records are active,
+- late responses after expiry.
+
+Measurements must include deadline-insert, completion/removal and expiry cost, plus memory retained per outstanding deadline.
+
+## Concurrency/thread-safety performance contract
+
+Concurrency correctness is mandatory and should not be achieved by serializing the whole session behind one coarse global lock if that prevents the throughput target.
+
+Measure contention for:
+
+- sequence allocation,
+- pending request insert/complete/expire,
+- session state reads/transitions,
+- window acquire/release,
+- TX serialization,
+- timer/deadline updates,
+- concurrent `Close`/timeout/session-loss paths.
+
+Run dedicated correctness tests under `go test -race`. Race-detector throughput is not the production performance target; its purpose is concurrency verification.
+
 ## Benchmark layers
 
 ### 1. Primitive/codec microbenchmarks
@@ -71,7 +112,7 @@ Measure:
 
 Goal: identify codec regressions without involving networking.
 
-### 2. Correlation/window benchmarks
+### 2. Correlation/window/timer benchmarks
 
 Measure:
 
@@ -79,7 +120,9 @@ Measure:
 - contention at realistic outstanding counts
 - window acquisition/release cost
 - out-of-order completion patterns
+- deadline scheduling/removal cost
 - timeout storms
+- exactly-once completion under response/timeout/cancel races
 
 ### 3. In-memory session benchmark
 
@@ -110,6 +153,13 @@ At minimum:
 - low RTT / high RTT simulation
 - small and large outstanding windows
 - plain TCP and TLS
+- concurrent callers sharing the same active session
+- sparse response timeouts
+- timeout storm
+- Enquire Link on otherwise idle healthy sessions
+- unresponsive peer causing Enquire Link failure
+- Session Init timeout for unbound connections
+- inactivity timeout behavior
 
 ## Allocation goals
 
@@ -122,6 +172,8 @@ At 100k request/s plus responses, even small per-PDU allocation counts can produ
 - heap profile under sustained load
 - GC frequency/pause contribution
 
+Timeout/deadline bookkeeping must also report its per-request allocation behavior.
+
 ## Memory goals
 
 Memory use must remain bounded by configuration and active workload. Track at least:
@@ -133,7 +185,7 @@ Memory use must remain bounded by configuration and active workload. Track at le
 - timer/deadline records
 - pooled objects/buffers
 
-Avoid pools that retain arbitrarily large buffers indefinitely.
+Avoid pools that retain arbitrarily large buffers indefinitely. Expired/cancelled/completed requests must not leave deadline or payload references retained indefinitely.
 
 ## CPU and contention goals
 
@@ -143,6 +195,7 @@ Profile:
 - mutex/block profile
 - scheduler/goroutine count
 - syscall contribution
+- timer/deadline subsystem CPU
 - GC CPU
 
 Do not replace a simple correct implementation with a complex one until a profile demonstrates the bottleneck.
@@ -150,6 +203,8 @@ Do not replace a simple correct implementation with a complex one until a profil
 ## Goroutine policy
 
 The library must not create a goroutine per message/request. Benchmark runs should record goroutine count during sustained load and verify it remains tied to sessions/workers rather than message volume.
+
+Timeout support must not introduce goroutine-per-deadline behavior.
 
 ## Logging policy
 
@@ -164,6 +219,9 @@ All of the following must be true on the reference machine:
 - session count is documented and is the smallest count found by the benchmark sequence
 - no unbounded memory growth
 - no unbounded goroutine growth
+- configured response-timeout tracking is enabled and bounded
+- timeout/cancel/response/session-loss races preserve exactly-once completion and window accounting
+- concurrent public API use is race-free in dedicated race-detector tests
 - error/timeout rate is within the benchmark's declared success threshold
 - CPU, memory, GC and contention profiles are captured
 - exact build version, Go version, kernel/environment and benchmark configuration are recorded
@@ -179,6 +237,8 @@ Once stable baselines exist, CI or scheduled benchmark reports should flag meani
 - bytes/op
 - throughput
 - p50/p95/p99 response latency
+- timeout scheduling/completion overhead
+- mutex/block contention
 - CPU usage
 - memory at a fixed outstanding window
 
