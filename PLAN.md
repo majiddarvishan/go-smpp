@@ -43,20 +43,22 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 2 — Binary framing and codec foundation
 
-- [ ] Implement the fixed 16-byte SMPP header codec.
-- [ ] Implement stream framing using `command_length`; never assume one TCP read equals one PDU.
-- [ ] Implement integer, C-Octet String and Octet String helpers.
-- [ ] Implement TLV scanning/encoding with unknown-TLV preservation.
-- [ ] Support duplicate vendor/standard TLVs without forcing a `map[tag]value` representation.
-- [ ] Add configurable maximum PDU size and malformed-frame protection.
-- [ ] Classify unrecoverable structural/framing violations as fatal to the current connection/session (for example invalid `command_length`, impossible field/TLV lengths, or decode state that cannot preserve frame boundaries).
-- [ ] On a fatal structural/framing error, stop consuming that byte stream, emit a structured error log, close the transport, fail the session, and never attempt byte-stream resynchronization on the same connection.
-- [ ] Ensure fatal-protocol logging includes useful safe metadata (reason, peer/session/state, declared length and command/sequence when available) without dumping credentials or message payload by default.
-- [ ] Add fragmentation/coalescing tests for arbitrary TCP read boundaries.
-- [ ] Add malformed-length tests proving a corrupt frame cannot cause subsequent bytes to be interpreted as valid PDUs on the same connection.
-- [ ] Add codec fuzz tests.
-- [ ] Establish allocation and throughput baselines.
-- [ ] Target common-path decode/encode at 0–2 allocations/PDU where practical, verified by benchmark.
+- [x] Implement the fixed 16-byte SMPP header codec.
+- [x] Implement stream framing using `command_length`; never assume one TCP read equals one PDU.
+- [x] Implement integer, C-Octet String and Octet String helpers.
+- [x] Implement TLV scanning/encoding with unknown-TLV preservation.
+- [x] Support duplicate vendor/standard TLVs without forcing a `map[tag]value` representation.
+- [x] Add configurable maximum PDU size and malformed-frame protection; initial default is 1 MiB.
+- [x] Classify unrecoverable structural/framing violations as fatal to the current connection/session (for example invalid `command_length`, impossible field/TLV lengths, or decode state that cannot preserve frame boundaries).
+- [x] Poison the framer on a fatal structural/framing/body-decode error, stop consuming that byte stream, and never attempt byte-stream resynchronization on the same connection.
+- [x] Expose safe fatal-error metadata required by the later mandatory structured logger (`reason`, declared length, command and sequence when available) without including credentials/message payload.
+- [x] Add fragmentation/coalescing tests for arbitrary TCP read boundaries.
+- [x] Add malformed-length tests proving a corrupt frame cannot cause subsequent bytes to be interpreted as valid PDUs on the same connection.
+- [x] Add codec fuzz tests/seeds.
+- [x] Establish allocation and throughput baselines.
+- [x] Verify zero-allocation common paths for fixed-header decode, complete-frame stream framing and TLV scanning in the current baseline.
+
+> Integration note: the codec deliberately does not own sockets or logging. Turning its fatal error into the mandatory structured log + TCP connection close remains tracked in Phase 5/6/15, preserving dependency direction.
 
 ## Phase 3 — Extensible registries
 
@@ -79,6 +81,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Implement `submit_sm` / `submit_sm_resp`.
 - [ ] Implement `deliver_sm` / `deliver_sm_resp`.
 - [ ] Preserve optional TLVs on supported PDUs.
+- [ ] Preserve inbound request sequence numbers exactly in responses, including interoperability values through `0xffffffff`.
 - [ ] Add specification-driven encode/decode vectors.
 
 ## Phase 5 — Shared session state machine
@@ -106,7 +109,8 @@ This file is the source of truth for implementation progress. Every completed ph
 ## Phase 7 — Asynchronous engine with synchronous public API
 
 - [ ] Implement independent long-lived RX and TX paths.
-- [ ] Implement session-local sequence-number generation.
+- [ ] Implement session-local outbound sequence-number generation in `0x00000001..0x7fffffff`.
+- [ ] Accept inbound non-zero sequence values through `0xffffffff` without rejecting otherwise valid PDUs.
 - [ ] Implement out-of-order response correlation.
 - [ ] Implement bounded pending-request tracking.
 - [ ] Expose synchronous/context-aware public submit APIs without goroutine-per-message architecture.
@@ -235,12 +239,13 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
-- [ ] Test fragmented and coalesced TCP streams.
+- [ ] Test fragmented and coalesced TCP streams end to end.
 - [ ] Test out-of-order responses.
-- [ ] Test malformed, oversized and truncated PDUs.
+- [ ] Test malformed, oversized and truncated PDUs end to end.
 - [ ] Test invalid `command_length`, impossible mandatory-field lengths, invalid TLV lengths and corrupted frames; assert the offending connection closes and no byte-stream resynchronization is attempted.
 - [ ] Verify each fatal structural/framing rejection emits the required diagnostic log without exposing sensitive message/authentication content by default.
 - [ ] Test duplicate/unexpected sequence numbers.
+- [ ] Test interoperability sequence numbers above `0x7fffffff` through `0xffffffff` on inbound requests.
 - [ ] Test disconnect during bind, idle state and full outstanding window.
 - [ ] Test delayed responses, late responses and timeout storms.
 - [ ] Test Session Init timeout, Enquire Link timeout/liveness and inactivity timeout scenarios.
