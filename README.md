@@ -76,4 +76,4 @@ The SMPP engine is transport-agnostic and works over a small `net.Conn`-compatib
 - [`.codex/BACKLOG.md`](.codex/BACKLOG.md) — deferred protocol/features backlog.
 - [`.codex/SESSION.md`](.codex/SESSION.md) — handoff/current-state notes.
 
-Phase 0 through Phase 3 are complete. Phase 4 essential SMPP 3.4 PDU implementation is in progress.
+Phase 0 through Phase 4 are complete. Phase 5 (shared session state machine) is next.
