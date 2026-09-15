@@ -1,0 +1,105 @@
++		_, _ = readOnePDU(peerConn, registry) // consume enquire_link but never answer it
++	}()
++	sess, err := New(clientConn, Config{
++		Role:                RoleESME,
++		SessionInitTimeout:  time.Second,
++		EnquireLinkInterval: 30 * time.Millisecond,
++		EnquireLinkTimeout:  35 * time.Millisecond,
++		InactivityTimeout:   time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer sess.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++		t.Fatal(err)
++	}
++	select {
++	case <-sess.Done():
++	case <-time.After(time.Second):
++		t.Fatal("unresponsive enquire_link peer was not closed")
++	}
++	var timeout *TimeoutError
++	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutEnquireLink {
++		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
++	}
++}
++
++func TestInactivityTimeoutClosesBoundSession(t *testing.T) {
++	clientConn, peerConn := net.Pipe()
++	defer peerConn.Close()
++	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
++	if err != nil {
++		t.Fatal(err)
++	}
++	go func() {
++		bind, err := readOnePDU(peerConn, registry)
++		if err != nil {
++			return
++		}
++		frame, _ := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{}, registry)
++		_ = transport.WriteFull(peerConn, frame)
++	}()
++	sess, err := New(clientConn, Config{
++		Role:                RoleESME,
++		SessionInitTimeout:  time.Second,
++		EnquireLinkInterval: -1,
++		InactivityTimeout:   45 * time.Millisecond,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer sess.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++		t.Fatal(err)
++	}
++	select {
++	case <-sess.Done():
++	case <-time.After(time.Second):
++		t.Fatal("inactivity timeout did not close session")
++	}
++	var timeout *TimeoutError
++	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutInactivity {
++		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
++	}
++}
++
++func TestResponseAndTimeoutBoundaryHasOneWinner(t *testing.T) {
++	for i := 0; i < 50; i++ {
++		done := make(chan struct{})
++		table := newPendingTable(1)
++		var releases atomic.Int64
++		request := &pendingRequest{requestID: protocol.CommandSubmitSM, expectedID: protocol.CommandSubmitSMResp, done: make(chan requestResult, 1), releaseWindow: func() { releases.Add(1) }}
++		manager := newDeadlineManager(done, func(item *deadlineItem) {
++			table.completeError(item.sequence, &TimeoutError{Kind: item.kind, Command: item.command, Sequence: item.sequence, After: item.after})
++		})
++		go manager.run()
++		if err := table.insert(7, request); err != nil {
++			t.Fatal(err)
++		}
++		item := manager.schedule(3*time.Millisecond, TimeoutResponse, protocol.CommandSubmitSM, 7)
++		request.attachDeadline(manager, item)
++		go func() {
++			time.Sleep(3 * time.Millisecond)
++			if p, ok := table.takeResponse(7, protocol.CommandSubmitSMResp); ok {
++				p.done <- requestResult{pdu: codec.DecodedPDU{Header: codec.Header{SequenceNumber: 7}}}
++			}
++		}()
++		select {
++		case <-request.done:
++		case <-time.After(time.Second):
++			t.Fatal("no terminal winner")
++		}
++		close(done)
++		if got := releases.Load(); got != 1 {
++			t.Fatalf("iteration %d releases=%d want 1", i, got)
++		}
++		if table.len() != 0 {
++			t.Fatalf("iteration %d pending leaked", i)
++		}
++	}
++}
