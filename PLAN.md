@@ -125,13 +125,13 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 8 — Windowing and backpressure
 
-- [ ] Implement configurable maximum outstanding-request window.
-- [ ] Implement blocking/context-cancellable acquisition for synchronous API calls.
-- [ ] Implement explicit overload/backpressure errors rather than unbounded queues.
-- [ ] Ensure timeout/cancellation/session-loss paths always release window capacity exactly once.
-- [ ] Record window utilization metrics/hooks.
-- [ ] Benchmark different window sizes against RTT profiles.
-- [ ] Avoid hard-coding the historical SMPP 3.4 recommendation of 10 outstanding requests.
+- [x] Implement configurable maximum outstanding-request window.
+- [x] Implement blocking/context-cancellable acquisition for synchronous API calls.
+- [x] Implement explicit overload/backpressure errors rather than unbounded queues.
+- [x] Ensure timeout/cancellation/session-loss paths always release window capacity exactly once.
+- [x] Record window utilization metrics/hooks.
+- [x] Benchmark different window sizes against RTT profiles.
+- [x] Avoid hard-coding the historical SMPP 3.4 recommendation of 10 outstanding requests.
 
 ## Phase 9 — Efficient timer and liveness subsystem
 

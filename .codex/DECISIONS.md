@@ -196,12 +196,19 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** Fatal protocol logging is mandatory, rare, and must be useful operationally without putting message/authentication content on the normal logging path.
 
+## D-037 — Configurable outstanding request window
+
+**Decision:** Each active session has a configurable outbound request window. The default is **1024** outstanding requests, not the historical recommendation of 10. `Request` waits for a slot with caller-context cancellation; `TryRequest` provides non-blocking admission and returns `ErrWindowFull`.
+
+Window ownership transfers to the pending-correlation entry after insertion. Whichever terminal path removes that entry releases the window exactly once. Window utilization/high-water/wait counters are available through a lock-free snapshot, with an optional observer hook.
+
+**Reason:** The usable window depends on target request rate and peer RTT. A fixed value of 10 cannot meet high-throughput/long-RTT scenarios; the bound must remain explicit, observable, and tunable while preventing unbounded work.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
-- Default window size and backpressure behavior.
 - Default per-request response timeout.
 - Default Session Init timeout.
 - Default Enquire Link interval and response timeout.
