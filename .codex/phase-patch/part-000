@@ -1,0 +1,172 @@
+diff --git a/.codex/DECISIONS.md b/.codex/DECISIONS.md
+index 5a8cc6a..fa72bba 100644
+--- a/.codex/DECISIONS.md
++++ b/.codex/DECISIONS.md
+@@ -204,13 +204,19 @@ Window ownership transfers to the pending-correlation entry after insertion. Whi
+ 
+ **Reason:** The usable window depends on target request rate and peer RTT. A fixed value of 10 cannot meet high-throughput/long-RTT scenarios; the bound must remain explicit, observable, and tunable while preventing unbounded work.
+ 
++## D-038 — Shared response-deadline and liveness timers
++
++**Decision:** Response deadlines are scheduled in one per-session min-heap managed by one long-lived goroutine and one reusable `time.Timer`; outstanding requests do not allocate an independent timer or goroutine. A deadline is attached only after the complete PDU write succeeds, and terminal pending removal cancels/removes the deadline so completed requests are not retained until their original timeout.
++
++Default protocol timings are: response timeout **30s**, Session Init **30s**, Enquire Link interval **30s**, Enquire Link response timeout **10s**, and inactivity timeout **2m**. A zero configuration value selects the default; a negative value disables that timer. Automatic Enquire Link uses the normal correlated request machinery and the same bounded request window.
++
++Session Init and liveness checks are handled by one additional long-lived per-session liveness loop, not by per-event goroutines. Fatal liveness failure closes the session; an ordinary request response timeout fails only that request.
++
++**Reason:** The design keeps timer/goroutine count proportional to sessions, starts protocol timing at the required full-dispatch boundary, supports exact-once completion/window release, and gives a simple measurable heap baseline before more complex timer-wheel work is justified by profiling.
++
+ ## Open decisions
+ 
+ The following remain to be decided in later phases and recorded here:
+ 
+ - Exact public package naming/API conventions after the first API sketch stabilizes.
+-- Default per-request response timeout.
+-- Default Session Init timeout.
+-- Default Enquire Link interval and response timeout.
+-- Default inactivity timeout and exact graceful-close policy.
+ - Default reconnect/backoff policy.
+diff --git a/.codex/PERFORMANCE.md b/.codex/PERFORMANCE.md
+index 9074a60..ceb038f 100644
+--- a/.codex/PERFORMANCE.md
++++ b/.codex/PERFORMANCE.md
+@@ -243,3 +243,9 @@ Once stable baselines exist, CI or scheduled benchmark reports should flag meani
+ - memory at a fixed outstanding window
+ 
+ Exact regression thresholds are deferred until stable benchmark noise is measured.
++
++## Phase 9 timer baseline
++
++The first response-deadline implementation uses a cancellable min-heap with one reusable timer and one long-lived goroutine per session. It intentionally avoids a `time.Timer`/goroutine per request. Completed/cancelled entries are removed immediately rather than retained until their original expiry.
++
++A local Linux/amd64 development benchmark on an AMD EPYC 9V74 (not the final 8-core/10-GB acceptance machine) measured the initial heap baseline at roughly 109 ns/op and 1 allocation for schedule+cancel; the timeout-storm benchmark exercises batched expiry. These values are implementation baselines, not Phase 17 acceptance results. Heap vs alternative shared deadline structures can be revisited only if end-to-end profiling shows timer bookkeeping is material.
+diff --git a/.codex/SESSION.md b/.codex/SESSION.md
+index c2eb0ea..5041a68 100644
+--- a/.codex/SESSION.md
++++ b/.codex/SESSION.md
+@@ -4,7 +4,7 @@
+ 
+ Branch: `main`
+ 
+-Phase 0 through Phase 8 are complete and verified locally. Phase 9 is next.
++Phase 0 through Phase 9 are complete and verified locally. Phase 10 is next.
+ 
+ The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
+ 
+@@ -60,7 +60,7 @@ Implemented behavior includes:
+ 
+ Phase 8 adds a configurable outbound request window (default 1024), context-cancellable blocking acquisition, non-blocking `TryRequest` admission with `ErrWindowFull`, exact-once slot release through pending-entry ownership, and lock-free window utilization/high-water/wait snapshots with an optional observer hook. `MaxPending` remains a defensive correlation-table ceiling and is automatically kept at least as large as the window.
+ 
+-The pending completion primitive already accepts timeout completion safely, but the actual per-request response-deadline scheduler is intentionally still Phase 9. Session Init timeout, Enquire Link scheduling/timeout, and inactivity timeout also remain Phase 9.
++Phase 9 adds configurable response deadlines that begin only after full PDU dispatch, a cancellable shared deadline heap with one reusable timer/goroutine per session, typed response/enquire timeouts, Session Init timeout, automatic Enquire Link after idle periods, and inactivity shutdown. Deadline cancellation is coupled to the exact-once pending terminal path so window capacity and timer state are released together.
+ 
+ A basic concurrent server listener/session wrapper now exists to exercise and expose the shared core, but **Phase 11 remains incomplete**: bind authentication policy, Session Init enforcement, connection/session limits, slow-handler policy, and the remaining SMSC/server acceptance work still belong there.
+ 
+@@ -108,4 +108,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
+ 
+ ## Exact next task
+ 
+-Start **Phase 9 — Efficient timer and liveness subsystem** from `PLAN.md`. Add shared response-deadline processing without one timer/goroutine per request, then Session Init, Enquire Link, and inactivity timers on the same race-safe session core.
++Start **Phase 10 — Client auto-reconnect** from `PLAN.md`. Reconnect/rebind must create a fresh session, fail old pending work deterministically, never replay ambiguous requests automatically, and remain race-safe with explicit Close and timeout paths.
+diff --git a/PLAN.md b/PLAN.md
+index c5d2108..db427ac 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -135,19 +135,19 @@ This file is the source of truth for implementation progress. Every completed ph
+ 
+ ## Phase 9 — Efficient timer and liveness subsystem
+ 
+-- [ ] Implement a configurable per-request response timeout for outbound SMPP requests.
+-- [ ] Start the protocol response timeout when the request PDU has been fully dispatched to the transport; time spent waiting for window/TX capacity remains governed by the caller context/deadline.
+-- [ ] On response timeout, atomically remove/expire the pending request, release its window slot and return a typed timeout error to the synchronous caller.
+-- [ ] Treat a response arriving after its request expired as a late/unmatched response; it must never complete an unrelated request.
+-- [ ] Implement response deadlines without one independent `time.Timer` per request in the final high-throughput design.
+-- [ ] Implement configurable Session Init timeout for connection-to-bind/session-establishment lifecycle.
+-- [ ] Implement configurable Enquire Link interval/scheduling after SMPP inactivity.
+-- [ ] Correlate `enquire_link` / `enquire_link_resp` through the same safe request/response machinery and apply a response timeout.
+-- [ ] Implement configurable inactivity timeout based on session activity and define deterministic close/unbind behavior on expiry.
+-- [ ] Ensure liveness timers are reset/update-safe under simultaneous RX and TX traffic.
+-- [ ] Evaluate deadline buckets, heap batching, and/or timer wheel by benchmark.
+-- [ ] Add boundary-race tests where response and timeout occur at nearly the same instant.
+-- [ ] Add timeout-storm benchmark and memory-bound tests.
++- [x] Implement a configurable per-request response timeout for outbound SMPP requests.
++- [x] Start the protocol response timeout when the request PDU has been fully dispatched to the transport; time spent waiting for window/TX capacity remains governed by the caller context/deadline.
++- [x] On response timeout, atomically remove/expire the pending request, release its window slot and return a typed timeout error to the synchronous caller.
++- [x] Treat a response arriving after its request expired as a late/unmatched response; it must never complete an unrelated request.
++- [x] Implement response deadlines without one independent `time.Timer` per request in the final high-throughput design.
++- [x] Implement configurable Session Init timeout for connection-to-bind/session-establishment lifecycle.
++- [x] Implement configurable Enquire Link interval/scheduling after SMPP inactivity.
++- [x] Correlate `enquire_link` / `enquire_link_resp` through the same safe request/response machinery and apply a response timeout.
++- [x] Implement configurable inactivity timeout based on session activity and define deterministic close/unbind behavior on expiry.
++- [x] Ensure liveness timers are reset/update-safe under simultaneous RX and TX traffic.
++- [x] Evaluate deadline buckets, heap batching, and/or timer wheel by benchmark.
++- [x] Add boundary-race tests where response and timeout occur at nearly the same instant.
++- [x] Add timeout-storm benchmark and memory-bound tests.
+ 
+ ## Phase 10 — Client auto-reconnect
+ 
+diff --git a/session/deadline.go b/session/deadline.go
+new file mode 100644
+index 0000000..e6aa101
+--- /dev/null
++++ b/session/deadline.go
+@@ -0,0 +1,159 @@
++package session
++
++import (
++	"container/heap"
++	"sync"
++	"time"
++
++	"github.com/majiddarvishan/go-smpp/protocol"
++)
++
++type deadlineItem struct {
++	at       time.Time
++	after    time.Duration
++	kind     TimeoutKind
++	command  protocol.CommandID
++	sequence protocol.SequenceNumber
++	index    int
++}
++
++type deadlineHeap []*deadlineItem
++
++func (h deadlineHeap) Len() int           { return len(h) }
++func (h deadlineHeap) Less(i, j int) bool { return h[i].at.Before(h[j].at) }
++func (h deadlineHeap) Swap(i, j int) {
++	h[i], h[j] = h[j], h[i]
++	h[i].index = i
++	h[j].index = j
++}
++func (h *deadlineHeap) Push(x any) {
++	item := x.(*deadlineItem)
++	item.index = len(*h)
++	*h = append(*h, item)
++}
++func (h *deadlineHeap) Pop() any {
++	old := *h
++	n := len(old)
++	item := old[n-1]
++	old[n-1] = nil
++	item.index = -1
++	*h = old[:n-1]
++	return item
++}
++
++type deadlineManager struct {
++	mu     sync.Mutex
++	heap   deadlineHeap
++	wake   chan struct{}
++	done   <-chan struct{}
++	expire func(*deadlineItem)
++}
++
++func newDeadlineManager(done <-chan struct{}, expire func(*deadlineItem)) *deadlineManager {
++	return &deadlineManager{wake: make(chan struct{}, 1), done: done, expire: expire}
++}
++
++func (m *deadlineManager) schedule(after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
++	if after <= 0 {
++		return nil
++	}
