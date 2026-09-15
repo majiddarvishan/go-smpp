@@ -1,366 +1,271 @@
- 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
--		pending: newPendingTable(config.MaxPending),
--		window:  newRequestWindow(config.WindowSize, config.WindowObserver),
-+		pending:   newPendingTable(config.MaxPending),
-+		window:    newRequestWindow(config.WindowSize, config.WindowObserver),
-+		createdAt: now,
- 	}
--	s.wg.Add(2)
-+	s.lastActivity.Store(now.UnixNano())
-+	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)
-+	s.wg.Add(4)
- 	go s.rxLoop()
- 	go s.txLoop()
-+	go func() { defer s.wg.Done(); s.deadlines.run() }()
-+	go s.livenessLoop()
- 	return s, nil
+-	return c.session.SubmitSM(ctx, request)
++	sess, err := c.activeSession()
++	if err != nil {
++		return protocol.SubmitSMResp{}, err
++	}
++	return sess.SubmitSM(ctx, request)
++}
++
++func (c *Client) EnquireLink(ctx context.Context) error {
++	sess, err := c.activeSession()
++	if err != nil {
++		return err
++	}
++	return sess.EnquireLink(ctx)
  }
  
-@@ -368,6 +395,100 @@ func (s *Session) Unbind(ctx context.Context) error {
- 	return nil
- }
- 
-+func defaultDuration(value, fallback time.Duration) time.Duration {
-+	if value == 0 {
-+		return fallback
+-func (c *Client) EnquireLink(ctx context.Context) error { return c.session.EnquireLink(ctx) }
+-func (c *Client) Unbind(ctx context.Context) error      { return c.session.Unbind(ctx) }
++func (c *Client) Unbind(ctx context.Context) error {
++	sess, err := c.activeSession()
++	if err != nil {
++		return err
 +	}
-+	if value < 0 {
-+		return 0
++	return sess.Unbind(ctx)
++}
++
++func (c *Client) activeSession() (*session.Session, error) {
++	c.mu.RLock()
++	sess := c.current
++	cause := c.lastErr
++	reconnecting := !c.closed && c.config.Reconnect.Enabled && c.dialable
++	closed := c.closed
++	c.mu.RUnlock()
++	if sess != nil && !closed {
++		return sess, nil
 +	}
-+	return value
++	return nil, &UnavailableError{Cause: cause, Reconnecting: reconnecting}
 +}
 +
-+func (s *Session) responseTimeoutFor(command protocol.CommandID) (time.Duration, TimeoutKind) {
-+	if command == protocol.CommandEnquireLink {
-+		if s.config.EnquireLinkTimeout > 0 {
-+			return s.config.EnquireLinkTimeout, TimeoutEnquireLink
-+		}
-+		return s.config.ResponseTimeout, TimeoutEnquireLink
-+	}
-+	return s.config.ResponseTimeout, TimeoutResponse
-+}
-+
-+func (s *Session) expireDeadline(item *deadlineItem) {
-+	if item == nil {
-+		return
-+	}
-+	err := &TimeoutError{Kind: item.kind, Command: item.command, Sequence: item.sequence, After: item.after}
-+	request, won := s.pending.completeError(item.sequence, err)
-+	if won {
-+		s.machine.CancelOutbound(request.requestID)
-+	}
-+}
-+
-+func (s *Session) noteActivity() {
-+	s.lastActivity.Store(time.Now().UnixNano())
-+}
-+
-+func (s *Session) lastActivityTime() time.Time {
-+	return time.Unix(0, s.lastActivity.Load())
-+}
-+
-+func isBoundState(state protocol.SessionState) bool {
-+	return state == protocol.StateBoundTX || state == protocol.StateBoundRX || state == protocol.StateBoundTRX
-+}
-+
-+func (s *Session) livenessLoop() {
-+	defer s.wg.Done()
-+	interval := s.livenessResolution()
-+	ticker := time.NewTicker(interval)
-+	defer ticker.Stop()
++func (c *Client) lifecycle(initial *session.Session) {
++	defer c.wg.Done()
++	sess := initial
 +	for {
 +		select {
-+		case now := <-ticker.C:
-+			state := s.State()
-+			if (state == protocol.StateOpen || state == protocol.StateOutbound) && s.config.SessionInitTimeout > 0 && now.Sub(s.createdAt) >= s.config.SessionInitTimeout {
-+				s.terminate(&TimeoutError{Kind: TimeoutSessionInit, After: s.config.SessionInitTimeout})
-+				return
-+			}
-+			if !isBoundState(state) {
-+				continue
-+			}
-+			idle := now.Sub(s.lastActivityTime())
-+			if s.config.InactivityTimeout > 0 && idle >= s.config.InactivityTimeout {
-+				s.terminate(&TimeoutError{Kind: TimeoutInactivity, After: s.config.InactivityTimeout})
-+				return
-+			}
-+			if s.config.EnquireLinkInterval > 0 && idle >= s.config.EnquireLinkInterval {
-+				if err := s.EnquireLink(s.ctx); err != nil {
-+					select {
-+					case <-s.done:
-+						return
-+					default:
-+						s.terminate(err)
-+						return
-+					}
-+				}
-+			}
-+		case <-s.done:
++		case <-c.ctx.Done():
++			return
++		case <-sess.Done():
++		}
++		sess.Wait()
++		cause := sess.Err()
++		c.mu.Lock()
++		if c.current == sess {
++			c.current = nil
++			c.last = sess
++			c.lastErr = cause
++			c.lastLoss = cause
++			c.signalLocked()
++		}
++		closed := c.closed
++		enabled := c.config.Reconnect.Enabled && c.dialable
++		c.mu.Unlock()
++		if closed || !enabled {
 +			return
 +		}
-+	}
-+}
 +
-+func (s *Session) livenessResolution() time.Duration {
-+	resolution := 500 * time.Millisecond
-+	for _, duration := range []time.Duration{s.config.SessionInitTimeout, s.config.EnquireLinkInterval, s.config.InactivityTimeout} {
-+		if duration > 0 && duration/4 < resolution {
-+			resolution = duration / 4
++		backoff := c.config.Reconnect.InitialBackoff
++		for {
++			if !waitContext(c.ctx, backoff) {
++				return
++			}
++			conn, err := dialTransport(c.ctx, c.config)
++			if err != nil {
++				c.recordReconnectError(err)
++				backoff = nextBackoff(backoff, c.config.Reconnect)
++				continue
++			}
++			config := c.config.SessionConfig
++			config.Role = session.RoleESME
++			candidate, err := session.New(conn, config)
++			if err != nil {
++				_ = conn.Close()
++				c.recordReconnectError(err)
++				backoff = nextBackoff(backoff, c.config.Reconnect)
++				continue
++			}
++			profile := c.bindProfileSnapshot()
++			if profile != nil {
++				bindCtx, cancel := context.WithTimeout(c.ctx, c.config.Reconnect.BindTimeout)
++				err = bindSession(bindCtx, candidate, profile)
++				cancel()
++				if err != nil {
++					_ = candidate.Close()
++					candidate.Wait()
++					c.recordReconnectError(err)
++					backoff = nextBackoff(backoff, c.config.Reconnect)
++					continue
++				}
++			}
++			c.mu.Lock()
++			if c.closed {
++				c.mu.Unlock()
++				_ = candidate.Close()
++				candidate.Wait()
++				return
++			}
++			c.current = candidate
++			c.last = candidate
++			c.lastErr = nil
++			c.reconnects.Add(1)
++			c.signalLocked()
++			c.mu.Unlock()
++			sess = candidate
++			break
 +		}
 +	}
-+	if resolution < 10*time.Millisecond {
-+		return 10 * time.Millisecond
-+	}
-+	return resolution
 +}
 +
- func responseError(pdu codec.DecodedPDU) error {
- 	if pdu.Header.CommandID == protocol.CommandGenericNACK || !pdu.Header.CommandStatus.OK() {
- 		return &ResponseError{Command: pdu.Header.CommandID, Status: pdu.Header.CommandStatus, Sequence: pdu.Header.SequenceNumber}
-@@ -426,8 +547,13 @@ func (s *Session) txLoop() {
- 				s.terminate(err)
- 				return
- 			}
-+			s.noteActivity()
- 			if item.kind == txRequest {
--				s.pending.markDispatched(item.sequence)
-+				if request, ok := s.pending.markDispatched(item.sequence); ok {
-+					timeout, kind := s.responseTimeoutFor(item.requestID)
-+					deadline := s.deadlines.schedule(timeout, kind, item.requestID, item.sequence)
-+					request.attachDeadline(s.deadlines, deadline)
-+				}
- 				continue
- 			}
- 			if item.responseTo == protocol.CommandUnbind && item.status.OK() {
-@@ -456,6 +582,7 @@ func (s *Session) processFrame(frame []byte) error {
- 		_ = s.queueGenericNACK(header, protocol.StatusInvalidMessageLength)
- 		return nil
- 	}
-+	s.noteActivity()
- 	if pdu.Header.CommandID.IsResponse() {
- 		s.handleResponse(pdu)
- 		return nil
-diff --git a/session/timers_test.go b/session/timers_test.go
++func (c *Client) bindProfileSnapshot() *bindProfile {
++	c.mu.RLock()
++	profile := c.profile
++	if profile != nil {
++		copyProfile := *profile
++		copyProfile.request = cloneBindRequest(profile.request)
++		profile = &copyProfile
++	}
++	c.mu.RUnlock()
++	return profile
++}
++
++func (c *Client) recordReconnectError(err error) {
++	c.mu.Lock()
++	c.lastErr = err
++	c.signalLocked()
++	c.mu.Unlock()
++}
++
++func (c *Client) signalLocked() {
++	close(c.notify)
++	c.notify = make(chan struct{})
++}
++
++func bindSession(ctx context.Context, sess *session.Session, profile *bindProfile) error {
++	switch profile.mode {
++	case session.BindTX:
++		_, err := sess.BindTransmitter(ctx, profile.request)
++		return err
++	case session.BindRX:
++		_, err := sess.BindReceiver(ctx, profile.request)
++		return err
++	default:
++		_, err := sess.BindTransceiver(ctx, profile.request)
++		return err
++	}
++}
++
++func cloneBindRequest(request protocol.BindRequest) protocol.BindRequest {
++	request.SystemID = append([]byte(nil), request.SystemID...)
++	request.Password = append([]byte(nil), request.Password...)
++	request.SystemType = append([]byte(nil), request.SystemType...)
++	request.AddressRange = append([]byte(nil), request.AddressRange...)
++	return request
++}
++
++func waitContext(ctx context.Context, duration time.Duration) bool {
++	timer := time.NewTimer(duration)
++	defer timer.Stop()
++	select {
++	case <-timer.C:
++		return true
++	case <-ctx.Done():
++		return false
++	}
++}
++
++func nextBackoff(current time.Duration, policy ReconnectPolicy) time.Duration {
++	next := time.Duration(float64(current) * policy.Multiplier)
++	if next <= current {
++		next = current + time.Millisecond
++	}
++	if next > policy.MaxBackoff {
++		return policy.MaxBackoff
++	}
++	return next
++}
+diff --git a/client/doc.go b/client/doc.go
+index 72b1e54..c43879d 100644
+--- a/client/doc.go
++++ b/client/doc.go
+@@ -1,4 +1,5 @@
+ // Package client provides the high-level ESME/client facade over the shared
+ // SMPP session engine. Active Client request methods are safe for concurrent
+-// use. Automatic reconnect/rebind is added in its dedicated phase.
++// use. Dialed clients can be configured for automatic reconnect and rebind;
++// requests from a lost session are never silently replayed.
+ package client
+diff --git a/client/reconnect_test.go b/client/reconnect_test.go
 new file mode 100644
-index 0000000..f0f096b
+index 0000000..62de771
 --- /dev/null
-+++ b/session/timers_test.go
-@@ -0,0 +1,323 @@
-+package session
++++ b/client/reconnect_test.go
+@@ -0,0 +1,302 @@
++package client
 +
 +import (
 +	"context"
++	"encoding/binary"
 +	"errors"
++	"io"
 +	"net"
-+	"sync/atomic"
 +	"testing"
 +	"time"
 +
 +	"github.com/majiddarvishan/go-smpp/codec"
 +	"github.com/majiddarvishan/go-smpp/protocol"
++	"github.com/majiddarvishan/go-smpp/session"
 +	"github.com/majiddarvishan/go-smpp/transport"
 +)
 +
-+func TestResponseTimeoutStartsAfterFullDispatch(t *testing.T) {
-+	clientConn, peerConn := net.Pipe()
-+	defer peerConn.Close()
++func TestClientReconnectRebindWithoutHiddenResubmit(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
 +	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	allowSubmitRead := make(chan struct{})
-+	submitRead := make(chan struct{})
++
++	firstSeen := make(chan struct{})
++	readySecond := make(chan struct{})
 +	peerErr := make(chan error, 1)
 +	go func() {
-+		bind, err := readOnePDU(peerConn, registry)
++		conn, err := listener.Accept()
 +		if err != nil {
 +			peerErr <- err
 +			return
 +		}
-+		frame, err := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{SystemID: []byte("smsc")}, registry)
++		if err := peerBindTRX(conn, registry); err != nil {
++			peerErr <- err
++			return
++		}
++		first, err := readClientPDU(conn, registry)
 +		if err != nil {
 +			peerErr <- err
 +			return
 +		}
-+		if err := transport.WriteFull(peerConn, frame); err != nil {
-+			peerErr <- err
++		if first.Header.CommandID != protocol.CommandSubmitSM {
++			peerErr <- errors.New("expected first submit_sm")
 +			return
 +		}
-+		<-allowSubmitRead
-+		if _, err := readOnePDU(peerConn, registry); err != nil {
-+			peerErr <- err
-+			return
-+		}
-+		close(submitRead)
-+		peerErr <- nil
-+	}()
++		close(firstSeen)
++		_ = conn.Close() // delivery outcome is deliberately ambiguous
 +
-+	sess, err := New(clientConn, Config{
-+		Role:                RoleESME,
-+		ResponseTimeout:     40 * time.Millisecond,
-+		SessionInitTimeout:  time.Second,
-+		EnquireLinkInterval: -1,
-+		InactivityTimeout:   -1,
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	defer sess.Close()
-+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-+	defer cancel()
-+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
-+		t.Fatal(err)
-+	}
-+
-+	result := make(chan error, 1)
-+	go func() {
-+		_, err := sess.SubmitSM(ctx, protocol.SubmitSM{DestinationAddr: []byte("1")})
-+		result <- err
-+	}()
-+	// The peer is deliberately not reading the submit PDU, so net.Pipe keeps the
-+	// TX write blocked. The protocol response timeout must not start yet.
-+	time.Sleep(90 * time.Millisecond)
-+	select {
-+	case err := <-result:
-+		t.Fatalf("request completed before full dispatch: %v", err)
-+	default:
-+	}
-+
-+	close(allowSubmitRead)
-+	select {
-+	case <-submitRead:
-+	case <-time.After(time.Second):
-+		t.Fatal("peer did not receive submit_sm")
-+	}
-+	started := time.Now()
-+	var timeout *TimeoutError
-+	select {
-+	case err := <-result:
-+		if !errors.As(err, &timeout) || timeout.Kind != TimeoutResponse {
-+			t.Fatalf("submit error=%T %v", err, err)
-+		}
-+	case <-time.After(time.Second):
-+		t.Fatal("response timeout did not fire")
-+	}
-+	if elapsed := time.Since(started); elapsed < 20*time.Millisecond {
-+		t.Fatalf("response timeout fired too early after dispatch: %s", elapsed)
-+	}
-+	if got := sess.Window().InUse; got != 0 {
-+		t.Fatalf("window in use after timeout=%d", got)
-+	}
-+	if err := <-peerErr; err != nil {
-+		t.Fatal(err)
-+	}
-+}
-+
-+func TestSessionInitTimeout(t *testing.T) {
-+	sessionConn, peerConn := net.Pipe()
-+	defer peerConn.Close()
-+	sess, err := New(sessionConn, Config{
-+		Role:                RoleSMSC,
-+		SessionInitTimeout:  40 * time.Millisecond,
-+		EnquireLinkInterval: -1,
-+		InactivityTimeout:   -1,
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	defer sess.Close()
-+	select {
-+	case <-sess.Done():
-+	case <-time.After(time.Second):
-+		t.Fatal("session init timeout did not close session")
-+	}
-+	var timeout *TimeoutError
-+	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutSessionInit {
-+		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
-+	}
-+}
-+
-+func TestAutomaticEnquireLinkHealthyPeer(t *testing.T) {
-+	clientConn, peerConn := net.Pipe()
-+	defer peerConn.Close()
-+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	enquireSeen := make(chan struct{})
-+	peerErr := make(chan error, 1)
-+	go func() {
-+		bind, err := readOnePDU(peerConn, registry)
++		conn, err = listener.Accept()
 +		if err != nil {
 +			peerErr <- err
 +			return
 +		}
-+		frame, err := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{SystemID: []byte("smsc")}, registry)
-+		if err != nil {
++		defer conn.Close()
++		if err := peerBindTRX(conn, registry); err != nil {
 +			peerErr <- err
 +			return
 +		}
-+		if err := transport.WriteFull(peerConn, frame); err != nil {
-+			peerErr <- err
-+			return
-+		}
-+		request, err := readOnePDU(peerConn, registry)
-+		if err != nil {
-+			peerErr <- err
-+			return
-+		}
-+		if request.Header.CommandID != protocol.CommandEnquireLink {
-+			peerErr <- errors.New("expected enquire_link")
-+			return
-+		}
-+		close(enquireSeen)
-+		frame, err = codec.EncodePDU(nil, codec.ResponseHeader(request.Header, protocol.CommandEnquireLinkResp, protocol.StatusOK), protocol.EmptyBody{}, registry)
-+		if err != nil {
-+			peerErr <- err
-+			return
-+		}
-+		peerErr <- transport.WriteFull(peerConn, frame)
-+	}()
-+	sess, err := New(clientConn, Config{
-+		Role:                RoleESME,
-+		SessionInitTimeout:  time.Second,
-+		ResponseTimeout:     100 * time.Millisecond,
-+		EnquireLinkInterval: 35 * time.Millisecond,
-+		EnquireLinkTimeout:  80 * time.Millisecond,
-+		InactivityTimeout:   300 * time.Millisecond,
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	defer sess.Close()
-+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-+	defer cancel()
-+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
-+		t.Fatal(err)
-+	}
-+	select {
-+	case <-enquireSeen:
-+	case <-time.After(time.Second):
-+		t.Fatal("automatic enquire_link not sent")
-+	}
-+	if err := <-peerErr; err != nil {
-+		t.Fatal(err)
-+	}
-+	select {
-+	case <-sess.Done():
-+		t.Fatalf("healthy enquire_link closed session: %v", sess.Err())
-+	case <-time.After(25 * time.Millisecond):
-+	}
-+}
 +
-+func TestAutomaticEnquireLinkTimeoutClosesSession(t *testing.T) {
-+	clientConn, peerConn := net.Pipe()
-+	defer peerConn.Close()
-+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	go func() {
-+		bind, err := readOnePDU(peerConn, registry)
-+		if err != nil {
++		// Prove the lost submit is not replayed automatically after rebind.
++		_ = conn.SetReadDeadline(time.Now().Add(80 * time.Millisecond))
++		if _, err := readClientPDU(conn, registry); err == nil {
++			peerErr <- errors.New("ambiguous submit_sm was replayed after reconnect")
 +			return
-+		}
-+		frame, _ := codec.EncodePDU(nil, codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK), protocol.BindResponse{}, registry)
-+		_ = transport.WriteFull(peerConn, frame)
++		} else if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
