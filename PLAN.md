@@ -58,7 +58,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Establish allocation and throughput baselines.
 - [x] Verify zero-allocation common paths for fixed-header decode, complete-frame stream framing and TLV scanning in the current baseline.
 
-> Integration note: the codec deliberately does not own sockets or logging. Turning its fatal error into the mandatory structured log + TCP connection close remains tracked in Phase 5/6/15, preserving dependency direction.
+> Integration note: fatal codec errors are now wired through the session/transport layer to mandatory structured error logging and connection close. Broader observability counters/hooks remain tracked in Phase 15.
 
 ## Phase 3 — Extensible registries
 
@@ -87,39 +87,41 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 5 — Shared session state machine
 
-- [ ] Implement shared session states: Closed, Open, Outbound, Bound_TX, Bound_RX, Bound_TRX, Unbound.
-- [ ] Implement legal-operation validation by state and peer role.
-- [ ] Implement client and server role semantics on the same session core.
-- [ ] Keep codec independent from session state.
-- [ ] Implement clean bind/unbind lifecycle.
-- [ ] Make fatal decoder/framing errors transition the owning session to failure/closed exactly once.
-- [ ] Make state transitions race-free under concurrent send/receive/close/timeout activity.
-- [ ] Add state-transition and invalid-state tests.
+- [x] Implement shared session states: Closed, Open, Outbound, Bound_TX, Bound_RX, Bound_TRX, Unbound.
+- [x] Implement legal-operation validation by state and peer role.
+- [x] Implement client and server role semantics on the same session core.
+- [x] Keep codec independent from session state.
+- [x] Implement clean bind/unbind lifecycle.
+- [x] Make fatal decoder/framing errors transition the owning session to failure/closed exactly once.
+- [x] Make state transitions race-free under concurrent send/receive/close/timeout activity.
+- [x] Add state-transition and invalid-state tests.
 
 ## Phase 6 — TCP transport and optional TLS-over-TCP
 
-- [ ] Define transport around `net.Conn` semantics.
-- [ ] Implement plain TCP dial/listen using the standard library.
-- [ ] Implement optional TLS client/server adapters over TCP using `crypto/tls`.
-- [ ] Keep TLS configuration outside SMPP PDU/session packages.
-- [ ] Support caller-supplied `net.Conn` compatible transports that preserve TCP stream semantics.
-- [ ] Do not implement X.25 transport.
-- [ ] Ensure protocol-fatal close interrupts blocked RX/TX operations and is idempotent/concurrent-safe.
-- [ ] Add partial-read, partial-write and connection-close tests.
+- [x] Define transport around `net.Conn` semantics.
+- [x] Implement plain TCP dial/listen using the standard library.
+- [x] Implement optional TLS client/server adapters over TCP using `crypto/tls`.
+- [x] Keep TLS configuration outside SMPP PDU/session packages.
+- [x] Support caller-supplied `net.Conn` compatible transports that preserve TCP stream semantics.
+- [x] Do not implement X.25 transport.
+- [x] Ensure protocol-fatal close interrupts blocked RX/TX operations and is idempotent/concurrent-safe.
+- [x] Add partial-read, partial-write and connection-close tests.
 
 ## Phase 7 — Asynchronous engine with synchronous public API
 
-- [ ] Implement independent long-lived RX and TX paths.
-- [ ] Implement session-local outbound sequence-number generation in `0x00000001..0x7fffffff`.
-- [ ] Accept inbound non-zero sequence values through `0xffffffff` without rejecting otherwise valid PDUs.
-- [ ] Implement out-of-order response correlation.
-- [ ] Implement bounded pending-request tracking.
-- [ ] Expose synchronous/context-aware public submit APIs without goroutine-per-message architecture.
-- [ ] Ensure inbound `deliver_sm` can be processed while outbound submit requests are outstanding.
-- [ ] Guarantee public `Client`, `Server`, `Session` and request APIs documented as concurrent-safe can be called from multiple goroutines at the same time.
-- [ ] Ensure request completion is exactly-once when response, timeout, cancellation, fatal protocol error and session loss race each other.
-- [ ] Add race tests and high-concurrency correlation tests.
-- [ ] Run `go test -race` for concurrent session/client/server scenarios.
+- [x] Implement independent long-lived RX and TX paths.
+- [x] Implement session-local outbound sequence-number generation in `0x00000001..0x7fffffff`.
+- [x] Accept inbound non-zero sequence values through `0xffffffff` without rejecting otherwise valid PDUs.
+- [x] Implement out-of-order response correlation.
+- [x] Implement bounded pending-request tracking.
+- [x] Expose synchronous/context-aware public submit APIs without goroutine-per-message architecture.
+- [x] Ensure inbound `deliver_sm` can be processed while outbound submit requests are outstanding.
+- [x] Guarantee public `Client`, `Server`, `Session` and request APIs documented as concurrent-safe can be called from multiple goroutines at the same time.
+- [x] Ensure request completion is exactly-once when response, timeout, cancellation, fatal protocol error and session loss race each other.
+- [x] Add race tests and high-concurrency correlation tests.
+- [x] Run `go test -race` for concurrent session/client/server scenarios.
+
+> Phase 7 provides the exactly-once terminal completion primitive used by future protocol timeouts. The actual response-deadline scheduler and liveness timers remain Phase 9 work.
 
 ## Phase 8 — Windowing and backpressure
 
