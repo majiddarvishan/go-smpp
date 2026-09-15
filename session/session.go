@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	DefaultMaxPending    = 1024
-	DefaultTXQueueSize   = 1024
+	DefaultMaxPending     = 1024
+	DefaultTXQueueSize    = 1024
 	DefaultReadBufferSize = 64 << 10
 )
 
@@ -143,13 +143,13 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	return s, nil
 }
 
-func (s *Session) Role() Role                       { return s.machine.Role() }
-func (s *Session) State() protocol.SessionState     { return s.machine.State() }
-func (s *Session) BindMode() BindMode               { return s.machine.BindMode() }
-func (s *Session) Done() <-chan struct{}             { return s.done }
-func (s *Session) Pending() int                      { return s.pending.len() }
-func (s *Session) LocalAddr() net.Addr               { return s.conn.LocalAddr() }
-func (s *Session) RemoteAddr() net.Addr              { return s.conn.RemoteAddr() }
+func (s *Session) Role() Role                   { return s.machine.Role() }
+func (s *Session) State() protocol.SessionState { return s.machine.State() }
+func (s *Session) BindMode() BindMode           { return s.machine.BindMode() }
+func (s *Session) Done() <-chan struct{}         { return s.done }
+func (s *Session) Pending() int                  { return s.pending.len() }
+func (s *Session) LocalAddr() net.Addr           { return s.conn.LocalAddr() }
+func (s *Session) RemoteAddr() net.Addr          { return s.conn.RemoteAddr() }
 
 // Err returns the terminal session error after Done is closed.
 func (s *Session) Err() error {
@@ -197,10 +197,12 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body 
 
 	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1)}
 	var sequence protocol.SequenceNumber
+	inserted := false
 	for attempts := 0; attempts <= s.config.MaxPending; attempts++ {
 		sequence = s.seq.Next()
 		err := s.pending.insert(sequence, request)
 		if err == nil {
+			inserted = true
 			break
 		}
 		if errors.Is(err, ErrSequenceInUse) {
@@ -208,7 +210,7 @@ func (s *Session) Request(ctx context.Context, command protocol.CommandID, body 
 		}
 		return codec.DecodedPDU{}, err
 	}
-	if !s.pending.exists(sequence) {
+	if !inserted {
 		return codec.DecodedPDU{}, ErrSequenceExhausted
 	}
 
@@ -442,9 +444,10 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	if err := s.beginInbound(pdu.Header.CommandID); err != nil {
 		return s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), protocol.StatusInvalidBindState, protocol.EmptyBody{})
 	}
+	lifecycleReserved := isLifecycleRequest(pdu.Header.CommandID)
 
 	var response Response
-	var err error
+	var handlerErr error
 	switch pdu.Header.CommandID {
 	case protocol.CommandEnquireLink, protocol.CommandUnbind:
 		response = Response{Status: protocol.StatusOK, Body: protocol.EmptyBody{}}
@@ -456,27 +459,60 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 				response = Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}
 			}
 		} else {
-			response, err = s.config.Handler.Handle(s.ctx, s, pdu)
-			if err != nil {
+			response, handlerErr = s.config.Handler.Handle(s.ctx, s, pdu)
+			if handlerErr != nil {
 				response = Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}
 			}
 		}
 	}
-	return s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), response.Status, response.Body)
+	if err := s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), response.Status, response.Body); err != nil {
+		if lifecycleReserved {
+			s.machine.CancelInbound(pdu.Header.CommandID)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Session) beginInbound(command protocol.CommandID) error {
-	if CanIssue(s.State(), s.Role().peer(), command) {
+	peerRole := s.Role().peer()
+	state := s.State()
+	if isStandardSessionCommand(command) {
 		return s.machine.BeginInbound(command)
 	}
-	// Registered vendor commands have no standard operation-matrix entry. Keep
-	// their default policy conservative: only allow request-form extensions once
-	// a session is bound; applications still control semantics in Handler.
-	state := s.State()
+	// Vendor-specific request commands do not have a standard operation-matrix
+	// entry. Keep their default policy conservative: they may run only after a
+	// session is bound, with application semantics delegated to Handler.
 	if !command.IsResponse() && (state == protocol.StateBoundTX || state == protocol.StateBoundRX || state == protocol.StateBoundTRX) {
 		return nil
 	}
-	return &StateError{State: state, Command: command, Role: s.Role().peer()}
+	return &StateError{State: state, Command: command, Role: peerRole}
+}
+
+func isStandardSessionCommand(command protocol.CommandID) bool {
+	switch command {
+	case protocol.CommandBindReceiver,
+		protocol.CommandBindTransmitter,
+		protocol.CommandQuerySM,
+		protocol.CommandSubmitSM,
+		protocol.CommandDeliverSM,
+		protocol.CommandUnbind,
+		protocol.CommandReplaceSM,
+		protocol.CommandCancelSM,
+		protocol.CommandBindTransceiver,
+		protocol.CommandOutbind,
+		protocol.CommandEnquireLink,
+		protocol.CommandSubmitMulti,
+		protocol.CommandAlertNotification,
+		protocol.CommandDataSM:
+		return true
+	default:
+		return false
+	}
+}
+
+func isLifecycleRequest(command protocol.CommandID) bool {
+	return isBindRequest(command) || command == protocol.CommandUnbind
 }
 
 func (s *Session) queueGenericNACK(request codec.Header, status protocol.CommandStatus) error {
