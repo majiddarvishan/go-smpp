@@ -142,6 +142,20 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** SMPP framing uses a 32-bit length, so an explicit operational bound is required to prevent unbounded memory commitment from malformed or hostile peers. One MiB leaves substantial room above ordinary SMPP message payloads and vendor TLVs while retaining a defensive ceiling.
 
+## D-028 — Frozen extensible registries
+
+**Decision:** Command and TLV registries are configured through a concurrency-safe builder and then frozen into immutable snapshots used by active sessions. Vendor commands and TLVs use the same registration mechanism as standard definitions. Duplicate registrations are rejected explicitly. Compatible mode may preserve/leave unknown structurally valid fields unresolved; strict mode reports them as unknown errors. Neither mode can downgrade a framing/length error into a recoverable registry miss.
+
+**Reason:** Immutable hot-path lookups avoid mutation locks and global state surprises while keeping vendor extensions testable and deterministic.
+
+## D-029 — GSM 7-bit and Unicode/emoji encoding
+
+**Decision:** Message-content encoding remains separate from the low-level PDU codec. The repository will support GSM 03.38/GSM 7-bit (default alphabet, extension table and septet packing), strict UCS-2/BMP encoding, and UTF-16BE Unicode with surrogate-pair support for supplementary-plane characters such as emoji.
+
+Strict UCS-2 and UTF-16BE-with-surrogates must remain distinguishable. Higher-level helpers may prefer GSM 7-bit when text is representable and otherwise use a configured Unicode strategy. Multipart sizing must be based on encoded septets/code units and UDH overhead, not Go rune count.
+
+**Reason:** GSM 7-bit provides efficient SMS payloads for representable text, while many emoji require Unicode code points outside the BMP and therefore surrogate pairs. Peer/carrier support for such payloads varies, so the library must not silently pretend every emoji is valid strict UCS-2.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:
