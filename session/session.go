@@ -375,6 +375,14 @@ func (s *Session) txLoop() {
 			if item.kind == txRequest && !s.pending.exists(item.sequence) {
 				continue
 			}
+			// Commit a peer lifecycle decision before the response bytes become
+			// observable. This removes the bind-response race where a fast peer
+			// receives bind_resp and immediately sends its first bound-state PDU
+			// before the local TX goroutine has updated session state. If the write
+			// then fails, terminate closes the already-committed session anyway.
+			if item.kind == txResponse && item.responseTo != 0 {
+				s.machine.CompleteInbound(item.responseTo, item.status)
+			}
 			if err := transport.WriteFull(s.conn, item.frame); err != nil {
 				s.terminate(err)
 				return
@@ -383,12 +391,9 @@ func (s *Session) txLoop() {
 				s.pending.markDispatched(item.sequence)
 				continue
 			}
-			if item.responseTo != 0 {
-				s.machine.CompleteInbound(item.responseTo, item.status)
-				if item.responseTo == protocol.CommandUnbind && item.status.OK() {
-					s.terminate(ErrSessionClosed)
-					return
-				}
+			if item.responseTo == protocol.CommandUnbind && item.status.OK() {
+				s.terminate(ErrSessionClosed)
+				return
 			}
 		case <-s.done:
 			return
