@@ -11,6 +11,7 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 - Client/ESME and server/SMSC share protocol/session core logic.
 - Public API is synchronous/context-aware; the engine is asynchronous and pipelined.
 - Do not create a goroutine per message/request or per timeout.
+- Locally generated sequence numbers stay in `0x00000001..0x7fffffff`. Inbound non-zero sequence numbers through `0xffffffff` are accepted for interoperability, and responses preserve the received value exactly.
 - Every outbound request expecting a response has a configurable protocol response timeout after full transport dispatch.
 - Session Init, Enquire Link and inactivity timeout are first-class features.
 - Response, timeout, cancellation, fatal protocol failure and session loss may race, but local completion/window release happens exactly once.
@@ -19,6 +20,8 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 - No unbounded queues or pending-request growth.
 - Never silently auto-resubmit ambiguous requests after connection loss.
 - Fatal structural/framing corruption closes the offending TCP connection/session after structured diagnostic logging. Never attempt heuristic stream resynchronization.
+- The codec framer is poisoned after fatal framing/body-decode corruption. Session/transport layers must log and close the TCP connection when they consume that fatal error.
+- Default codec maximum PDU size is 1 MiB and configurable; do not remove the bound.
 - In server mode, malformed input must not terminate the listener or unrelated sessions.
 - Prefer the Go standard library. Document any runtime dependency before adding it.
 - Do not use `unsafe` unless profiling proves a need and the decision is recorded/reviewed first.
