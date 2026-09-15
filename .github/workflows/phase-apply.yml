@@ -1,0 +1,37 @@
+name: Apply phase patch
+
+on:
+  push:
+    branches: [codex/phase8-work]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, 'patch-ready')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Apply patch
+        run: |
+          cat .codex/phase-patch/part-* > /tmp/phase.patch
+          git apply --index /tmp/phase.patch
+          git rm -r .codex/phase-patch
+      - name: Unit tests
+        run: go test ./...
+      - name: Race tests
+        run: go test -race ./...
+      - name: Window benchmarks
+        run: go test -run '^$' -bench=RequestWindow -benchtime=10000x -benchmem ./session
+      - name: Commit verified phase
+        run: |
+          git config user.name 'Majid Darvishan'
+          git config user.email 'majiddarvishan@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: phase 8 windowing and backpressure'
+          git push origin HEAD:codex/phase8-work
