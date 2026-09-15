@@ -55,13 +55,15 @@ func TestSequenceRange(t *testing.T) {
 }
 
 func TestProtocolProfiles(t *testing.T) {
-	if !Profile34.Valid() || Profile34.InterfaceVersion != 0x34 {
+	profile34 := SMPP34Profile()
+	if !profile34.Valid() || profile34.InterfaceVersion != 0x34 {
 		t.Fatal("SMPP 3.4 profile is invalid")
 	}
-	if !Profile50.Valid() || Profile50.InterfaceVersion != 0x50 || !Profile50.IsSMPP50() {
+	profile50 := SMPP50Profile()
+	if !profile50.Valid() || profile50.InterfaceVersion != 0x50 || !profile50.IsSMPP50() {
 		t.Fatal("SMPP 5.0 profile is invalid")
 	}
-	if !Profile34.SupportsOptionalParameters() || !Profile50.SupportsOptionalParameters() {
+	if !profile34.SupportsOptionalParameters() || !profile50.SupportsOptionalParameters() {
 		t.Fatal("SMPP 3.4 and 5.0 profiles must support optional TLV parameters")
 	}
 	if (Profile{InterfaceVersion: 0x40}).Valid() {

@@ -14,10 +14,15 @@ type Profile struct {
 	InterfaceVersion InterfaceVersion
 }
 
-var (
-	Profile34 = Profile{InterfaceVersion: InterfaceVersion34}
-	Profile50 = Profile{InterfaceVersion: InterfaceVersion50}
-)
+// SMPP34Profile returns the standard SMPP 3.4 protocol profile.
+func SMPP34Profile() Profile {
+	return Profile{InterfaceVersion: InterfaceVersion34}
+}
+
+// SMPP50Profile returns the standard SMPP 5.0 protocol profile.
+func SMPP50Profile() Profile {
+	return Profile{InterfaceVersion: InterfaceVersion50}
+}
 
 // Valid reports whether the profile identifies a version explicitly supported
 // by this library architecture.
