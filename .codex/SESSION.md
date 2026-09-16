@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 11 are complete and verified locally. Phase 12 is next.
+Phase 0 through Phase 12 are complete and verified locally. Phase 13 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -66,6 +66,8 @@ Phase 10 adds opt-in automatic reconnect/rebind for dialed clients with bounded 
 
 Phase 11 completes SMSC/server mode with TCP/TLS listener construction, bind authentication and submit dispatch hooks, per-session isolation and sequence spaces, Session Init enforcement, configurable active-session limits, server-originated `deliver_sm`, and malformed/slow-client isolation. Outbound server requests use the same bounded window and response-timeout machinery as client requests.
 
+Phase 12 adds GSM 03.38 default/extension alphabet conversion, septet packing/unpacking, strict UCS-2, UTF-16BE surrogate-pair emoji support, explicit text encoding selection, binary payload helpers, UDH multipart segmentation/reassembly metadata, and SAR-TLV helpers. Segmentation counts septets/code units rather than Go runes and never splits a UTF-16 surrogate pair.
+
 ## Validation performed
 
 GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
@@ -110,4 +112,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 12 — Message and encoding packages** from `PLAN.md`. Implement GSM 03.38/GSM 7-bit, strict UCS-2, UTF-16BE surrogate-pair emoji support, binary payloads, and multipart segmentation/reassembly outside the protocol hot path.
+Start **Phase 13 — SMPP 3.4 completeness** from `PLAN.md`. Implement the remaining SMPP 3.4 command bodies/codecs, outbind semantics, standard TLV coverage, status coverage, and a conformance matrix on the shared core.

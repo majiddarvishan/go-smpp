@@ -230,6 +230,14 @@ A server may listen on plain TCP or TLS-over-TCP through the transport package. 
 
 **Reason:** Authentication and SMSC application policy are deployment concerns, while protocol correlation/state/timing correctness should remain shared and tested once. Per-connection isolation also ensures a malformed or slow client cannot poison unrelated sessions or the listener.
 
+## D-041 — Message encoding and segmentation are explicit opt-in layers
+
+**Decision:** The `encoding` package exposes GSM 03.38 as unpacked septets plus explicit pack/unpack helpers, strict UCS-2/BMP, and UTF-16BE with validated surrogate pairs. The `message` package maps selected text to SMPP `data_coding`, counts GSM extension characters as two septets, counts supplementary Unicode characters as two UTF-16 code units, and provides UDH/SAR multipart helpers without making message decoding part of the session/codec hot path.
+
+Strict UCS-2 rejects supplementary-plane characters. Emoji are emitted only through the explicitly enabled UTF-16BE-surrogate mode, still mapped to SMPP data_coding `0x08` for peers known to accept that interoperability convention. UDH and SAR are separate segmentation modes; callers choose the peer-compatible mode.
+
+**Reason:** Carrier/SMSC behavior around packing and surrogate pairs varies. Keeping encoding, packing, and segmentation explicit avoids silently changing wire semantics while still providing correct length accounting and reusable standards-oriented primitives.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:

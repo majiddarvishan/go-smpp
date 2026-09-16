@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 11 are complete and verified. The next implementation phase is Phase 12: message encoding and multipart support.
+Phase 0 through Phase 12 are complete and verified. The next implementation phase is Phase 13: SMPP 3.4 completeness.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -61,3 +61,8 @@ The shared runtime now includes:
 - tests for fragmented reads, short writes, TLS-over-TCP, blocked TX interruption, high-concurrency correlation, invalid state operations, and race safety
 
 The runtime now also includes configurable request windowing/backpressure, shared response deadlines and liveness timers, client reconnect/rebind without ambiguous request replay, and SMSC/server listener/authentication/submit/deliver support with per-connection isolation and configurable session limits.
+
+
+## Message encoding
+
+The message layer supports GSM 03.38/GSM 7-bit (including the extension table and septet packing), strict UCS-2/BMP, UTF-16BE surrogate pairs for explicitly enabled emoji interoperability, binary payloads, 8-bit concatenation UDH, and SMPP SAR TLVs. Multipart thresholds are calculated from encoded septets/code units rather than Go rune count.

@@ -175,18 +175,18 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 12 — Message and encoding packages
 
-- [ ] Create encoding packages separate from protocol/session core.
-- [ ] Implement GSM 03.38/GSM 7-bit default alphabet encode/decode.
-- [ ] Implement GSM 7-bit extension-table characters and septet packing/unpacking.
-- [ ] Implement strict UCS-2/BMP encoding and decoding helpers.
-- [ ] Implement UTF-16BE Unicode encoding with surrogate-pair support for supplementary-plane characters such as emoji.
-- [ ] Provide a message-encoding selection helper that can prefer GSM 7-bit when representable and fall back to Unicode when required/configured.
-- [ ] Keep strict UCS-2 and UTF-16BE-with-surrogates behavior distinguishable so applications can match peer/carrier capabilities instead of silently emitting unsupported emoji.
-- [ ] Support binary payloads.
-- [ ] Implement UDH-based multipart segmentation/reassembly with limits calculated from encoded septets/code units, not Go rune count.
-- [ ] Implement SAR-TLV multipart support.
-- [ ] Keep message-content decoding optional on the protocol hot path.
-- [ ] Add conformance and boundary tests for GSM 7-bit, extension characters, Unicode BMP text, surrogate pairs/emoji, and multipart boundaries.
+- [x] Create encoding packages separate from protocol/session core.
+- [x] Implement GSM 03.38/GSM 7-bit default alphabet encode/decode.
+- [x] Implement GSM 7-bit extension-table characters and septet packing/unpacking.
+- [x] Implement strict UCS-2/BMP encoding and decoding helpers.
+- [x] Implement UTF-16BE Unicode encoding with surrogate-pair support for supplementary-plane characters such as emoji.
+- [x] Provide a message-encoding selection helper that can prefer GSM 7-bit when representable and fall back to Unicode when required/configured.
+- [x] Keep strict UCS-2 and UTF-16BE-with-surrogates behavior distinguishable so applications can match peer/carrier capabilities instead of silently emitting unsupported emoji.
+- [x] Support binary payloads.
+- [x] Implement UDH-based multipart segmentation/reassembly with limits calculated from encoded septets/code units, not Go rune count.
+- [x] Implement SAR-TLV multipart support.
+- [x] Keep message-content decoding optional on the protocol hot path.
+- [x] Add conformance and boundary tests for GSM 7-bit, extension characters, Unicode BMP text, surrogate pairs/emoji, and multipart boundaries.
 
 ## Phase 13 — SMPP 3.4 completeness
 
