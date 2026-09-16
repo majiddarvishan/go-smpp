@@ -1,241 +1,269 @@
-+// SMPP session was available. Cause preserves the most recent session/dial/bind
-+// failure when one exists.
-+type UnavailableError struct {
-+	Cause        error
-+	Reconnecting bool
-+}
+diff --git a/server/phase11_test.go b/server/phase11_test.go
+new file mode 100644
+index 0000000..22dd435
+--- /dev/null
++++ b/server/phase11_test.go
+@@ -0,0 +1,263 @@
++package server_test
 +
-+func (e *UnavailableError) Error() string {
-+	if e == nil || e.Cause == nil {
-+		return ErrUnavailable.Error()
-+	}
-+	return ErrUnavailable.Error() + ": " + e.Cause.Error()
-+}
++import (
++	"context"
++	"encoding/binary"
++	"errors"
++	"io"
++	"net"
++	"sync/atomic"
++	"testing"
++	"time"
 +
-+func (e *UnavailableError) Unwrap() error {
-+	if e == nil {
-+		return nil
-+	}
-+	return e.Cause
- }
- 
--// Client is a thin concurrent-safe ESME facade over the shared Session core.
-+func (e *UnavailableError) Is(target error) bool { return target == ErrUnavailable }
++	"github.com/majiddarvishan/go-smpp/client"
++	"github.com/majiddarvishan/go-smpp/codec"
++	"github.com/majiddarvishan/go-smpp/protocol"
++	"github.com/majiddarvishan/go-smpp/server"
++	"github.com/majiddarvishan/go-smpp/session"
++)
 +
-+type bindProfile struct {
-+	mode    session.BindMode
-+	request protocol.BindRequest
-+}
-+
-+// Client is a concurrent-safe ESME facade over replaceable Session instances.
-+// A request always binds to exactly one session snapshot and is never silently
-+// retried on a replacement connection.
- type Client struct {
--	session *session.Session
-+	mu       sync.RWMutex
-+	config   Config
-+	current  *session.Session
-+	last     *session.Session
-+	profile  *bindProfile
-+	lastErr  error
-+	lastLoss error
-+	dialable bool
-+	closed   bool
-+	notify   chan struct{}
-+
-+	ctx    context.Context
-+	cancel context.CancelFunc
-+	wg     sync.WaitGroup
-+
-+	reconnects atomic.Uint64
- }
- 
- func Dial(ctx context.Context, config Config) (*Client, error) {
--	var (
--		conn net.Conn
--		err  error
--	)
--	if config.TLSConfig != nil {
--		conn, err = transport.DialTLS(ctx, config.Network, config.Address, config.Dialer, config.TLSConfig)
--	} else {
--		conn, err = transport.DialTCP(ctx, config.Network, config.Address, config.Dialer)
-+	if ctx == nil {
-+		ctx = context.Background()
- 	}
-+	conn, err := dialTransport(ctx, config)
- 	if err != nil {
- 		return nil, err
- 	}
--	client, err := New(conn, config.SessionConfig)
-+	client, err := newClient(conn, config, true)
- 	if err != nil {
- 		_ = conn.Close()
- 		return nil, err
-@@ -48,33 +104,340 @@ func Dial(ctx context.Context, config Config) (*Client, error) {
- }
- 
- // New attaches the ESME client API to a caller-supplied TCP-compatible stream.
-+// A caller-supplied stream cannot be redialed automatically.
- func New(conn net.Conn, config session.Config) (*Client, error) {
--	config.Role = session.RoleESME
--	sess, err := session.New(conn, config)
-+	return newClient(conn, Config{SessionConfig: config}, false)
-+}
-+
-+func newClient(conn net.Conn, config Config, dialable bool) (*Client, error) {
-+	config.SessionConfig.Role = session.RoleESME
-+	sess, err := session.New(conn, config.SessionConfig)
- 	if err != nil {
- 		return nil, err
- 	}
--	return &Client{session: sess}, nil
-+	config.Reconnect = normalizeReconnect(config.Reconnect)
++func TestServerAuthenticatesBindAndDispatchesSubmit(t *testing.T) {
++	var submits atomic.Uint64
 +	ctx, cancel := context.WithCancel(context.Background())
-+	c := &Client{
-+		config: config, current: sess, last: sess, dialable: dialable,
-+		notify: make(chan struct{}), ctx: ctx, cancel: cancel,
-+	}
-+	c.signalLocked()
-+	c.wg.Add(1)
-+	go c.lifecycle(sess)
-+	return c, nil
-+}
++	defer cancel()
 +
-+func normalizeReconnect(policy ReconnectPolicy) ReconnectPolicy {
-+	if policy.InitialBackoff <= 0 {
-+		policy.InitialBackoff = 100 * time.Millisecond
-+	}
-+	if policy.MaxBackoff <= 0 {
-+		policy.MaxBackoff = 5 * time.Second
-+	}
-+	if policy.MaxBackoff < policy.InitialBackoff {
-+		policy.MaxBackoff = policy.InitialBackoff
-+	}
-+	if policy.Multiplier < 1 {
-+		policy.Multiplier = 2
-+	}
-+	if policy.BindTimeout <= 0 {
-+		policy.BindTimeout = session.DefaultSessionInitTimeout
-+	}
-+	return policy
-+}
-+
-+func dialTransport(ctx context.Context, config Config) (net.Conn, error) {
-+	if config.TLSConfig != nil {
-+		return transport.DialTLS(ctx, config.Network, config.Address, config.Dialer, config.TLSConfig)
-+	}
-+	return transport.DialTCP(ctx, config.Network, config.Address, config.Dialer)
-+}
-+
-+// Session returns the current session snapshot. If the client is temporarily
-+// disconnected or closed, it returns the most recently owned session so callers
-+// can inspect its terminal error/state. Do not cache this value across reconnects.
-+func (c *Client) Session() *session.Session {
-+	c.mu.RLock()
-+	sess := c.current
-+	if sess == nil {
-+		sess = c.last
-+	}
-+	c.mu.RUnlock()
-+	return sess
-+}
-+
-+func (c *Client) ReconnectCount() uint64 { return c.reconnects.Load() }
-+
-+// LastLoss returns the most recent terminal error from a replaced/lost SMPP
-+// session. It remains available after a successful reconnect so applications
-+// can distinguish transport loss from fatal protocol corruption.
-+func (c *Client) LastLoss() error {
-+	c.mu.RLock()
-+	err := c.lastLoss
-+	c.mu.RUnlock()
-+	return err
-+}
-+
-+// WaitConnected waits until a current session exists or ctx/client closure wins.
-+func (c *Client) WaitConnected(ctx context.Context) error {
-+	if ctx == nil {
-+		ctx = context.Background()
-+	}
-+	for {
-+		c.mu.RLock()
-+		if c.current != nil && !c.closed {
-+			c.mu.RUnlock()
-+			return nil
-+		}
-+		if c.closed {
-+			c.mu.RUnlock()
-+			return ErrUnavailable
-+		}
-+		notify := c.notify
-+		c.mu.RUnlock()
-+		select {
-+		case <-notify:
-+		case <-ctx.Done():
-+			return ctx.Err()
-+		case <-c.ctx.Done():
-+			return ErrUnavailable
-+		}
-+	}
-+}
-+
-+func (c *Client) Close() error {
-+	c.mu.Lock()
-+	if c.closed {
-+		c.mu.Unlock()
-+		return nil
-+	}
-+	c.closed = true
-+	c.cancel()
-+	sess := c.current
-+	c.signalLocked()
-+	c.mu.Unlock()
-+	if sess != nil {
-+		return sess.Close()
-+	}
-+	return nil
- }
- 
--func (c *Client) Session() *session.Session { return c.session }
--func (c *Client) Close() error             { return c.session.Close() }
-+func (c *Client) Wait() { c.wg.Wait() }
- 
- func (c *Client) BindTransmitter(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error) {
--	return c.session.BindTransmitter(ctx, request)
-+	return c.bind(ctx, session.BindTX, request)
- }
- 
- func (c *Client) BindReceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error) {
--	return c.session.BindReceiver(ctx, request)
-+	return c.bind(ctx, session.BindRX, request)
- }
- 
- func (c *Client) BindTransceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error) {
--	return c.session.BindTransceiver(ctx, request)
-+	return c.bind(ctx, session.BindTRX, request)
-+}
-+
-+func (c *Client) bind(ctx context.Context, mode session.BindMode, request protocol.BindRequest) (protocol.BindResponse, error) {
-+	sess, err := c.activeSession()
++	srv, err := server.Listen(ctx, server.Config{
++		Address:       "127.0.0.1:0",
++		SessionConfig: quietSessionConfig(),
++		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, mode session.BindMode, request protocol.BindRequest) (server.BindResult, error) {
++			if mode != session.BindTRX || string(request.SystemID) != "esme" || string(request.Password) != "secret" {
++				return server.BindResult{Status: protocol.StatusBindFailed}, nil
++			}
++			return server.BindResult{Status: protocol.StatusOK, SystemID: []byte("smsc")}, nil
++		}),
++		SubmitHandler: server.SubmitHandlerFunc(func(_ context.Context, _ *session.Session, request protocol.SubmitSM) (server.SubmitResult, error) {
++			submits.Add(1)
++			if string(request.DestinationAddr) != "15551234" {
++				return server.SubmitResult{Status: protocol.StatusInvalidDestinationAddress}, nil
++			}
++			return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte("msg-1")}, nil
++		}),
++	})
 +	if err != nil {
-+		return protocol.BindResponse{}, err
++		t.Fatal(err)
 +	}
-+	var response protocol.BindResponse
-+	switch mode {
-+	case session.BindTX:
-+		response, err = sess.BindTransmitter(ctx, request)
-+	case session.BindRX:
-+		response, err = sess.BindReceiver(ctx, request)
-+	default:
-+		response, err = sess.BindTransceiver(ctx, request)
++	defer srv.Close()
++	serveDone := startServer(t, ctx, srv)
++
++	cli, err := client.Dial(ctx, client.Config{Address: srv.Addr().String(), SessionConfig: quietSessionConfig()})
++	if err != nil {
++		t.Fatal(err)
 +	}
++	defer cli.Close()
++
++	bindResp, err := cli.BindTransceiver(ctx, protocol.BindRequest{SystemID: []byte("esme"), Password: []byte("secret"), InterfaceVersion: protocol.InterfaceVersion34})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(bindResp.SystemID) != "smsc" {
++		t.Fatalf("system_id=%q", bindResp.SystemID)
++	}
++
++	resp, err := cli.SubmitSM(ctx, protocol.SubmitSM{DestinationAddr: []byte("15551234"), ShortMessage: []byte("hello")})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(resp.MessageID) != "msg-1" || submits.Load() != 1 {
++		t.Fatalf("response=%q submits=%d", resp.MessageID, submits.Load())
++	}
++
++	_ = srv.Close()
++	select {
++	case err := <-serveDone:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("Serve did not exit")
++	}
++}
++
++func TestServerSessionInitTimeoutProtectsSlowClient(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	cfg := quietSessionConfig()
++	cfg.SessionInitTimeout = 35 * time.Millisecond
++	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer srv.Close()
++	_ = startServer(t, ctx, srv)
++
++	conn, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer conn.Close()
++	waitSessions(t, srv, 1, time.Second)
++	waitSessions(t, srv, 0, time.Second)
++
++	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
++	buf := make([]byte, 1)
++	_, err = conn.Read(buf)
 +	if err == nil {
-+		profile := &bindProfile{mode: mode, request: cloneBindRequest(request)}
-+		c.mu.Lock()
-+		c.profile = profile
-+		c.mu.Unlock()
++		t.Fatal("expected server to close unbound slow client")
 +	}
-+	return response, err
- }
- 
- func (c *Client) SubmitSM(ctx context.Context, request protocol.SubmitSM) (protocol.SubmitSMResp, error) {
++}
++
++func TestMalformedConnectionDoesNotKillOtherSessions(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	cfg := quietSessionConfig()
++	cfg.SessionInitTimeout = time.Second
++	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer srv.Close()
++	_ = startServer(t, ctx, srv)
++
++	bad, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer bad.Close()
++	good, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer good.Close()
++	waitSessions(t, srv, 2, time.Second)
++
++	// A declared command_length below the fixed 16-octet header is fatal. The
++	// connection must close rather than attempting stream resynchronization.
++	var invalid [4]byte
++	binary.BigEndian.PutUint32(invalid[:], 15)
++	if _, err := bad.Write(invalid[:]); err != nil {
++		t.Fatal(err)
++	}
++	waitSessions(t, srv, 1, time.Second)
++
++	// The unrelated connection remains usable/owned by the listener.
++	if len(srv.Sessions()) != 1 {
++		t.Fatalf("active sessions=%d", len(srv.Sessions()))
++	}
++	_ = good.SetWriteDeadline(time.Now().Add(time.Second))
++	if _, err := good.Write(make([]byte, codec.HeaderSize)); err != nil {
++		t.Fatalf("unrelated connection unexpectedly closed: %v", err)
++	}
++}
++
++func TestServerConnectionLimit(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	cfg := quietSessionConfig()
++	cfg.SessionInitTimeout = time.Second
++	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg, MaxSessions: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer srv.Close()
++	_ = startServer(t, ctx, srv)
++
++	first, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer first.Close()
++	waitSessions(t, srv, 1, time.Second)
++
++	second, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer second.Close()
++	_ = second.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
++	one := make([]byte, 1)
++	_, readErr := second.Read(one)
++	if readErr == nil {
++		t.Fatal("expected over-limit connection to be closed")
++	}
++	if !errors.Is(readErr, io.EOF) {
++		if ne, ok := readErr.(net.Error); ok && ne.Timeout() {
++			t.Fatalf("over-limit connection remained open until timeout: %v", readErr)
++		}
++	}
++	if got := len(srv.Sessions()); got != 1 {
++		t.Fatalf("sessions=%d", got)
++	}
++}
++
++func TestServerDeliverSMUsesSessionResponseTimeout(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	serverSession := quietSessionConfig()
++	serverSession.ResponseTimeout = 40 * time.Millisecond
++	srv, err := server.Listen(ctx, server.Config{
++		Address:       "127.0.0.1:0",
++		SessionConfig: serverSession,
++		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, _ session.BindMode, _ protocol.BindRequest) (server.BindResult, error) {
++			return server.BindResult{Status: protocol.StatusOK, SystemID: []byte("smsc")}, nil
++		}),
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer srv.Close()
++	_ = startServer(t, ctx, srv)
++
++	clientSession := quietSessionConfig()
++	clientSession.Handler = session.HandlerFunc(func(_ context.Context, _ *session.Session, pdu codec.DecodedPDU) (session.Response, error) {
++		if pdu.Header.CommandID == protocol.CommandDeliverSM {
++			time.Sleep(150 * time.Millisecond)
++			return session.Response{Status: protocol.StatusOK, Body: protocol.DeliverSMResp{}}, nil
++		}
++		return session.Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, nil
++	})
++	cli, err := client.Dial(ctx, client.Config{Address: srv.Addr().String(), SessionConfig: clientSession})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer cli.Close()
++	if _, err := cli.BindReceiver(ctx, protocol.BindRequest{SystemID: []byte("rx"), InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++		t.Fatal(err)
++	}
++	waitSessions(t, srv, 1, time.Second)
++	sess := srv.Sessions()[0]
++
++	_, err = srv.DeliverSM(ctx, sess, protocol.DeliverSM{DestinationAddr: []byte("rx"), ShortMessage: []byte("hello")})
++	var timeout *session.TimeoutError
++	if !errors.As(err, &timeout) || timeout.Kind != session.TimeoutResponse {
++		t.Fatalf("expected response timeout, got %T %v", err, err)
++	}
++}
++
++func quietSessionConfig() session.Config {
++	return session.Config{
++		ResponseTimeout:     time.Second,
++		SessionInitTimeout:  time.Second,
++		EnquireLinkInterval: -1,
++		EnquireLinkTimeout:  -1,
++		InactivityTimeout:   -1,
++	}
++}
++
++func startServer(t *testing.T, ctx context.Context, srv *server.Server) <-chan error {
++	t.Helper()
++	done := make(chan error, 1)
++	go func() { done <- srv.Serve(ctx) }()
++	return done
++}
++
++func waitSessions(t *testing.T, srv *server.Server, want int, timeout time.Duration) {
++	t.Helper()
++	deadline := time.Now().Add(timeout)
++	for time.Now().Before(deadline) {
++		if len(srv.Sessions()) == want {
++			return
++		}
++		time.Sleep(time.Millisecond)
++	}
++	t.Fatalf("sessions=%d want=%d", len(srv.Sessions()), want)
++}
