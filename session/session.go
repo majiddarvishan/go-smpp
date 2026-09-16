@@ -35,16 +35,22 @@ type Response struct {
 	Body   any
 }
 
-// Handler processes an inbound request PDU. The DecodedPDU may contain borrowed
-// views into the receive frame and must not be retained after Handle returns
-// unless the application copies the data it needs.
+// InboundPDU is the session-layer view of one decoded inbound PDU. It aliases
+// codec.DecodedPDU so higher-level client/server packages can implement session
+// handlers without depending directly on the lower codec package. Borrowed body
+// slices retain the same lifetime rules as codec.DecodedPDU.
+type InboundPDU = codec.DecodedPDU
+
+// Handler processes an inbound request PDU. The PDU may contain borrowed views
+// into the receive frame and must not be retained after Handle returns unless
+// the application copies the data it needs.
 type Handler interface {
-	Handle(context.Context, *Session, codec.DecodedPDU) (Response, error)
+	Handle(context.Context, *Session, InboundPDU) (Response, error)
 }
 
-type HandlerFunc func(context.Context, *Session, codec.DecodedPDU) (Response, error)
+type HandlerFunc func(context.Context, *Session, InboundPDU) (Response, error)
 
-func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu codec.DecodedPDU) (Response, error) {
+func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu InboundPDU) (Response, error) {
 	return f(ctx, s, pdu)
 }
 

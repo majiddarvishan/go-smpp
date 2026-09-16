@@ -162,16 +162,16 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 11 — Server/SMSC mode
 
-- [ ] Implement TCP/TLS listener lifecycle.
-- [ ] Implement bind authentication hook/interface.
-- [ ] Implement per-session state and sequence spaces.
-- [ ] Enforce Session Init timeout for accepted connections that do not establish a valid SMPP session in time.
-- [ ] Implement inbound `submit_sm` dispatch and synchronous response path.
-- [ ] Implement outbound `deliver_sm` from server to bound RX/TRX sessions.
-- [ ] Apply outbound request response-timeout behavior to server-originated requests such as `deliver_sm`.
-- [ ] Close only the offending connection/session on a fatal malformed PDU; keep the listener and unrelated sessions healthy.
-- [ ] Add configurable connection/session limits.
-- [ ] Add slow-client and malicious-frame protection tests.
+- [x] Implement TCP/TLS listener lifecycle.
+- [x] Implement bind authentication hook/interface.
+- [x] Implement per-session state and sequence spaces.
+- [x] Enforce Session Init timeout for accepted connections that do not establish a valid SMPP session in time.
+- [x] Implement inbound `submit_sm` dispatch and synchronous response path.
+- [x] Implement outbound `deliver_sm` from server to bound RX/TRX sessions.
+- [x] Apply outbound request response-timeout behavior to server-originated requests such as `deliver_sm`.
+- [x] Close only the offending connection/session on a fatal malformed PDU; keep the listener and unrelated sessions healthy.
+- [x] Add configurable connection/session limits.
+- [x] Add slow-client and malicious-frame protection tests.
 
 ## Phase 12 — Message and encoding packages
 

@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 10 are complete and verified locally. Phase 11 is next.
+Phase 0 through Phase 11 are complete and verified locally. Phase 12 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -64,7 +64,7 @@ Phase 9 adds configurable response deadlines that begin only after full PDU disp
 
 Phase 10 adds opt-in automatic reconnect/rebind for dialed clients with bounded exponential backoff, persistent bind-profile copies, fresh sequence/pending state per replacement session, typed unavailable/loss metadata, retained fatal-protocol loss cause, and explicit Close cancellation. No ambiguous submit/deliver request is replayed.
 
-A basic concurrent server listener/session wrapper now exists to exercise and expose the shared core, but **Phase 11 remains incomplete**: bind authentication policy, Session Init enforcement, connection/session limits, slow-handler policy, and the remaining SMSC/server acceptance work still belong there.
+Phase 11 completes SMSC/server mode with TCP/TLS listener construction, bind authentication and submit dispatch hooks, per-session isolation and sequence spaces, Session Init enforcement, configurable active-session limits, server-originated `deliver_sm`, and malformed/slow-client isolation. Outbound server requests use the same bounded window and response-timeout machinery as client requests.
 
 ## Validation performed
 
@@ -110,4 +110,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 11 — Server/SMSC mode** from `PLAN.md`. Add listener/session limits and authentication policy on top of the shared SMSC session core while keeping malformed/slow clients isolated from other sessions.
+Start **Phase 12 — Message and encoding packages** from `PLAN.md`. Implement GSM 03.38/GSM 7-bit, strict UCS-2, UTF-16BE surrogate-pair emoji support, binary payloads, and multipart segmentation/reassembly outside the protocol hot path.

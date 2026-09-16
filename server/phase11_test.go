@@ -1,0 +1,263 @@
+package server_test
+
+import (
+	"context"
+	"encoding/binary"
+	"errors"
+	"io"
+	"net"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/majiddarvishan/go-smpp/client"
+	"github.com/majiddarvishan/go-smpp/codec"
+	"github.com/majiddarvishan/go-smpp/protocol"
+	"github.com/majiddarvishan/go-smpp/server"
+	"github.com/majiddarvishan/go-smpp/session"
+)
+
+func TestServerAuthenticatesBindAndDispatchesSubmit(t *testing.T) {
+	var submits atomic.Uint64
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv, err := server.Listen(ctx, server.Config{
+		Address:       "127.0.0.1:0",
+		SessionConfig: quietSessionConfig(),
+		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, mode session.BindMode, request protocol.BindRequest) (server.BindResult, error) {
+			if mode != session.BindTRX || string(request.SystemID) != "esme" || string(request.Password) != "secret" {
+				return server.BindResult{Status: protocol.StatusBindFailed}, nil
+			}
+			return server.BindResult{Status: protocol.StatusOK, SystemID: []byte("smsc")}, nil
+		}),
+		SubmitHandler: server.SubmitHandlerFunc(func(_ context.Context, _ *session.Session, request protocol.SubmitSM) (server.SubmitResult, error) {
+			submits.Add(1)
+			if string(request.DestinationAddr) != "15551234" {
+				return server.SubmitResult{Status: protocol.StatusInvalidDestinationAddress}, nil
+			}
+			return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte("msg-1")}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	serveDone := startServer(t, ctx, srv)
+
+	cli, err := client.Dial(ctx, client.Config{Address: srv.Addr().String(), SessionConfig: quietSessionConfig()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+
+	bindResp, err := cli.BindTransceiver(ctx, protocol.BindRequest{SystemID: []byte("esme"), Password: []byte("secret"), InterfaceVersion: protocol.InterfaceVersion34})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(bindResp.SystemID) != "smsc" {
+		t.Fatalf("system_id=%q", bindResp.SystemID)
+	}
+
+	resp, err := cli.SubmitSM(ctx, protocol.SubmitSM{DestinationAddr: []byte("15551234"), ShortMessage: []byte("hello")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(resp.MessageID) != "msg-1" || submits.Load() != 1 {
+		t.Fatalf("response=%q submits=%d", resp.MessageID, submits.Load())
+	}
+
+	_ = srv.Close()
+	select {
+	case err := <-serveDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Serve did not exit")
+	}
+}
+
+func TestServerSessionInitTimeoutProtectsSlowClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := quietSessionConfig()
+	cfg.SessionInitTimeout = 35 * time.Millisecond
+	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	_ = startServer(t, ctx, srv)
+
+	conn, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	waitSessions(t, srv, 1, time.Second)
+	waitSessions(t, srv, 0, time.Second)
+
+	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	buf := make([]byte, 1)
+	_, err = conn.Read(buf)
+	if err == nil {
+		t.Fatal("expected server to close unbound slow client")
+	}
+}
+
+func TestMalformedConnectionDoesNotKillOtherSessions(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := quietSessionConfig()
+	cfg.SessionInitTimeout = time.Second
+	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	_ = startServer(t, ctx, srv)
+
+	bad, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Close()
+	good, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer good.Close()
+	waitSessions(t, srv, 2, time.Second)
+
+	// A declared command_length below the fixed 16-octet header is fatal. The
+	// connection must close rather than attempting stream resynchronization.
+	var invalid [4]byte
+	binary.BigEndian.PutUint32(invalid[:], 15)
+	if _, err := bad.Write(invalid[:]); err != nil {
+		t.Fatal(err)
+	}
+	waitSessions(t, srv, 1, time.Second)
+
+	// The unrelated connection remains usable/owned by the listener.
+	if len(srv.Sessions()) != 1 {
+		t.Fatalf("active sessions=%d", len(srv.Sessions()))
+	}
+	_ = good.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := good.Write(make([]byte, codec.HeaderSize)); err != nil {
+		t.Fatalf("unrelated connection unexpectedly closed: %v", err)
+	}
+}
+
+func TestServerConnectionLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := quietSessionConfig()
+	cfg.SessionInitTimeout = time.Second
+	srv, err := server.Listen(ctx, server.Config{Address: "127.0.0.1:0", SessionConfig: cfg, MaxSessions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	_ = startServer(t, ctx, srv)
+
+	first, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	waitSessions(t, srv, 1, time.Second)
+
+	second, err := net.DialTimeout("tcp", srv.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	_ = second.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	one := make([]byte, 1)
+	_, readErr := second.Read(one)
+	if readErr == nil {
+		t.Fatal("expected over-limit connection to be closed")
+	}
+	if !errors.Is(readErr, io.EOF) {
+		if ne, ok := readErr.(net.Error); ok && ne.Timeout() {
+			t.Fatalf("over-limit connection remained open until timeout: %v", readErr)
+		}
+	}
+	if got := len(srv.Sessions()); got != 1 {
+		t.Fatalf("sessions=%d", got)
+	}
+}
+
+func TestServerDeliverSMUsesSessionResponseTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverSession := quietSessionConfig()
+	serverSession.ResponseTimeout = 40 * time.Millisecond
+	srv, err := server.Listen(ctx, server.Config{
+		Address:       "127.0.0.1:0",
+		SessionConfig: serverSession,
+		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, _ session.BindMode, _ protocol.BindRequest) (server.BindResult, error) {
+			return server.BindResult{Status: protocol.StatusOK, SystemID: []byte("smsc")}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	_ = startServer(t, ctx, srv)
+
+	clientSession := quietSessionConfig()
+	clientSession.Handler = session.HandlerFunc(func(_ context.Context, _ *session.Session, pdu codec.DecodedPDU) (session.Response, error) {
+		if pdu.Header.CommandID == protocol.CommandDeliverSM {
+			time.Sleep(150 * time.Millisecond)
+			return session.Response{Status: protocol.StatusOK, Body: protocol.DeliverSMResp{}}, nil
+		}
+		return session.Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, nil
+	})
+	cli, err := client.Dial(ctx, client.Config{Address: srv.Addr().String(), SessionConfig: clientSession})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	if _, err := cli.BindReceiver(ctx, protocol.BindRequest{SystemID: []byte("rx"), InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
+		t.Fatal(err)
+	}
+	waitSessions(t, srv, 1, time.Second)
+	sess := srv.Sessions()[0]
+
+	_, err = srv.DeliverSM(ctx, sess, protocol.DeliverSM{DestinationAddr: []byte("rx"), ShortMessage: []byte("hello")})
+	var timeout *session.TimeoutError
+	if !errors.As(err, &timeout) || timeout.Kind != session.TimeoutResponse {
+		t.Fatalf("expected response timeout, got %T %v", err, err)
+	}
+}
+
+func quietSessionConfig() session.Config {
+	return session.Config{
+		ResponseTimeout:     time.Second,
+		SessionInitTimeout:  time.Second,
+		EnquireLinkInterval: -1,
+		EnquireLinkTimeout:  -1,
+		InactivityTimeout:   -1,
+	}
+}
+
+func startServer(t *testing.T, ctx context.Context, srv *server.Server) <-chan error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+	return done
+}
+
+func waitSessions(t *testing.T, srv *server.Server, want int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(srv.Sessions()) == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("sessions=%d want=%d", len(srv.Sessions()), want)
+}

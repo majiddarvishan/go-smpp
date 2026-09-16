@@ -222,6 +222,14 @@ The client retains the most recent terminal session-loss cause separately from t
 
 **Reason:** SMPP reconnect establishes a new sequence/correlation domain. Replaying a submit whose remote outcome is unknown risks duplicate message delivery, while automatic rebind is safe session establishment work.
 
+## D-040 — SMSC server policy stays above the shared session core
+
+**Decision:** The `server` package owns listener lifecycle, bind authentication, inbound `submit_sm` application dispatch, active-session limits, and server-originated `deliver_sm` convenience APIs. Accepted connections still use the same `session.Session` core as ESME clients, so each connection has independent state, sequence allocation, pending correlation, windowing, response deadlines, liveness timers, and fatal-framing isolation.
+
+A server may listen on plain TCP or TLS-over-TCP through the transport package. `MaxSessions <= 0` means unlimited; when a positive limit is full, newly accepted connections are closed without disturbing the listener or existing sessions. A missing authenticator may delegate bind handling to an explicit fallback handler; otherwise bind is rejected rather than implicitly authenticated.
+
+**Reason:** Authentication and SMSC application policy are deployment concerns, while protocol correlation/state/timing correctness should remain shared and tested once. Per-connection isolation also ensures a malformed or slow client cannot poison unrelated sessions or the listener.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:

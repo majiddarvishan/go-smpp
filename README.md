@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 7 are complete and verified. The next implementation phase is Phase 8: configurable request windowing and backpressure.
+Phase 0 through Phase 11 are complete and verified. The next implementation phase is Phase 12: message encoding and multipart support.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -60,4 +60,4 @@ The shared runtime now includes:
 - mandatory structured fatal-protocol logging followed by closing the offending TCP connection
 - tests for fragmented reads, short writes, TLS-over-TCP, blocked TX interruption, high-concurrency correlation, invalid state operations, and race safety
 
-The current `MaxPending` and TX queue bounds are defensive safety limits, not the final SMPP request-window policy. Configurable window acquisition/backpressure is Phase 8. The actual response-timeout scheduler, Session Init timer, Enquire Link scheduling, and inactivity timer remain Phase 9 work.
+The runtime now also includes configurable request windowing/backpressure, shared response deadlines and liveness timers, client reconnect/rebind without ambiguous request replay, and SMSC/server listener/authentication/submit/deliver support with per-connection isolation and configurable session limits.
