@@ -21,7 +21,11 @@ jobs:
           cache: false
       - name: Prepare phase inputs
         run: |
-          cat .codex/phase-patch/part-* > /tmp/phase.patch
+          if compgen -G '.codex/phase-patch/PATCH.b64-*' > /dev/null; then
+            cat .codex/phase-patch/PATCH.b64-* | base64 -d | gzip -d > /tmp/phase.patch
+          else
+            cat .codex/phase-patch/part-* > /tmp/phase.patch
+          fi
           cp .codex/phase-patch/MESSAGE /tmp/MESSAGE
           cp .codex/phase-patch/VERIFY.sh /tmp/VERIFY.sh
           chmod +x /tmp/VERIFY.sh
