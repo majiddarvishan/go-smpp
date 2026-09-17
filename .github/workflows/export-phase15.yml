@@ -1,0 +1,21 @@
+name: Export phase15 base source
+on:
+  push:
+    branches: [ codex/export-phase15 ]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Pack source
+        run: tar --exclude=.git -czf /tmp/go-smpp-phase15-base.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-smpp-phase15-base
+          path: /tmp/go-smpp-phase15-base.tar.gz
+          retention-days: 1
