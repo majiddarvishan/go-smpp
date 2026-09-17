@@ -103,7 +103,6 @@ type txItem struct {
 	status     protocol.CommandStatus
 	pending    *pendingRequest
 	dispatched chan error
-	buffer     *txFrameBuffer
 }
 
 // Session owns one TCP-compatible stream and runs independent long-lived RX and
@@ -124,7 +123,6 @@ type Session struct {
 	pending   *pendingTable
 	window    *requestWindow
 	deadlines *deadlineManager
-	frames    *txFramePool
 	seq       sequenceGenerator
 
 	createdAt    time.Time
@@ -212,7 +210,6 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
 		pending:   newPendingTable(config.MaxPending),
 		window:    newRequestWindow(config.WindowSize, config.WindowObserver),
-		frames:    newTXFramePool(),
 		createdAt: now,
 	}
 	s.lastActivity.Store(now.UnixNano())
@@ -355,25 +352,23 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	windowOwned = false // pendingRequest now owns the slot until terminal removal.
 
 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
-	frame, frameBuffer, err := s.encodeTXPDU(header, body)
+	frame, err := codec.EncodePDU(nil, header, body, s.registry)
 	if err != nil {
 		_, _ = s.pending.completeError(sequence, err)
 		return codec.DecodedPDU{}, err
 	}
 
-	item := txItem{kind: txRequest, header: header, frame: frame, sequence: sequence, requestID: command, pending: request, buffer: frameBuffer}
+	item := txItem{kind: txRequest, header: header, frame: frame, sequence: sequence, requestID: command, pending: request}
 	select {
 	case s.tx <- item:
 		reserved = false
 	case <-ctx.Done():
-		s.releaseTXBuffer(frameBuffer)
 		if _, won := s.pending.completeError(sequence, ctx.Err()); won {
 			return codec.DecodedPDU{}, ctx.Err()
 		}
 		reserved = false
 		return s.waitCompleted(request)
 	case <-s.done:
-		s.releaseTXBuffer(frameBuffer)
 		reserved = false
 		return s.waitCompleted(request)
 	}
@@ -419,20 +414,18 @@ func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, bo
 
 	sequence := s.seq.Next()
 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
-	frame, frameBuffer, err := s.encodeTXPDU(header, body)
+	frame, err := codec.EncodePDU(nil, header, body, s.registry)
 	if err != nil {
 		return err
 	}
 	dispatched := make(chan error, 1)
-	item := txItem{kind: txOneWay, header: header, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched, buffer: frameBuffer}
+	item := txItem{kind: txOneWay, header: header, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
 	select {
 	case s.tx <- item:
 		reserved = false
 	case <-ctx.Done():
-		s.releaseTXBuffer(frameBuffer)
 		return ctx.Err()
 	case <-s.done:
-		s.releaseTXBuffer(frameBuffer)
 		return s.requestCloseError()
 	}
 
@@ -805,8 +798,6 @@ func (s *Session) txLoop() {
 		case item := <-s.tx:
 			if s.txItemActive(item) {
 				batch = append(batch, item)
-			} else {
-				s.releaseTXItem(&item)
 			}
 		case <-s.done:
 			return
@@ -821,7 +812,6 @@ func (s *Session) txLoop() {
 			select {
 			case item := <-s.tx:
 				if !s.txItemActive(item) {
-					s.releaseTXItem(&item)
 					continue
 				}
 				batch = append(batch, item)
@@ -863,7 +853,6 @@ func (s *Session) txLoop() {
 				if batch[i].dispatched != nil {
 					batch[i].dispatched <- err
 				}
-				s.releaseTXItem(&batch[i])
 			}
 			s.terminate(err)
 			return
@@ -1119,11 +1108,11 @@ func (s *Session) queueGenericNACK(request codec.Header, status protocol.Command
 
 func (s *Session) queueResponse(request codec.Header, responseID protocol.CommandID, status protocol.CommandStatus, body any) error {
 	header := codec.ResponseHeader(request, responseID, status)
-	frame, frameBuffer, err := s.encodeTXPDU(header, body)
+	frame, err := codec.EncodePDU(nil, header, body, s.registry)
 	if err != nil {
 		return err
 	}
-	item := txItem{kind: txResponse, header: header, frame: frame, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status, buffer: frameBuffer}
+	item := txItem{kind: txResponse, header: header, frame: frame, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status}
 	if responseID == protocol.CommandGenericNACK {
 		item.responseTo = 0
 	}
@@ -1131,7 +1120,6 @@ func (s *Session) queueResponse(request codec.Header, responseID protocol.Comman
 	case s.tx <- item:
 		return nil
 	case <-s.done:
-		s.releaseTXBuffer(frameBuffer)
 		return s.requestCloseError()
 	}
 }
