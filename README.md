@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 15 are complete and verified. SMPP 3.4 command coverage, the planned SMPP 5.0 extensions, and low-overhead runtime observability are implemented; the next implementation phase is Phase 16: the performance simulator and benchmark laboratory.
+Phase 0 through Phase 15 are complete and verified. Phase 16 is in progress: the repository now contains a reusable performance laboratory and a minimal SMPP peer simulator so the transport/session path can be measured before Phase 17 acceptance tuning.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -80,3 +80,23 @@ The message layer supports GSM 03.38/GSM 7-bit (including the extension table an
 
 The shared codec registry covers all 27 SMPP 3.4 command/response identifiers and all 44 standard SMPP 3.4 TLV tag identifiers. The protocol package exposes the complete named SMPP 3.4 command-status set and query message states. `submit_multi` supports SME and Distribution List destinations plus per-destination unsuccessful results. `outbind` follows the SMPP 3.4 `Open -> Outbound -> bind_receiver -> Bound_RX` lifecycle; `alert_notification` and `outbind` are one-way and never consume request-window/pending correlation capacity.
 
+
+## Performance laboratory
+
+Phase 16 adds a minimal SMSC-side simulator plus repeatable Go benchmarks for codec-only, in-memory session, localhost TCP, TLS-over-TCP, timeout/window, and bidirectional traffic paths. The default end-to-end benchmark starts with one SMPP session; additional session counts are selected explicitly with `SMPP_BENCH_SESSIONS` so connection count is increased only when measurement requires it.
+
+Run the simulator locally with:
+
+```bash
+go run ./cmd/smpp-sim -listen 127.0.0.1:2775
+```
+
+It accepts transmitter/receiver/transceiver binds and responds to `submit_sm`, `enquire_link`, and `unbind`. Optional TLS is enabled with `-tls-cert` and `-tls-key`. Per-PDU logs remain off; the simulator emits only periodic aggregate statistics and fatal protocol diagnostics.
+
+Run the benchmark laboratory with:
+
+```bash
+SMPP_BENCH_SESSIONS=1,2,4 BENCHTIME=3s ./scripts/bench.sh .bench
+```
+
+The script records benchmark output plus CPU, heap, mutex, block, scheduler-trace, and GC artifacts. These development-machine results are diagnostic only; the Phase 17 100k acceptance result is reserved for the documented Linux/amd64 8-core / 10-GB reference machine.

@@ -249,3 +249,20 @@ Exact regression thresholds are deferred until stable benchmark noise is measure
 The first response-deadline implementation uses a cancellable min-heap with one reusable timer and one long-lived goroutine per session. It intentionally avoids a `time.Timer`/goroutine per request. Completed/cancelled entries are removed immediately rather than retained until their original expiry.
 
 A local Linux/amd64 development benchmark on an AMD EPYC 9V74 (not the final 8-core/10-GB acceptance machine) measured the initial heap baseline at roughly 109 ns/op and 1 allocation for schedule+cancel; the timeout-storm benchmark exercises batched expiry. These values are implementation baselines, not Phase 17 acceptance results. Heap vs alternative shared deadline structures can be revisited only if end-to-end profiling shows timer bookkeeping is material.
+
+## Phase 16 performance laboratory methodology
+
+Phase 16 establishes a reproducible measurement harness before acceptance tuning. The benchmark implementation deliberately keeps the Phase 17 acceptance claim separate from development-run measurements.
+
+The laboratory contains four layers:
+
+1. **Codec-only**: fixed header, complete-frame framer, TLV scanning, and typed `submit_sm` / `deliver_sm` encode/decode with `-benchmem`.
+2. **Session/timer primitives**: request-window acquire/release, 10,000-outstanding response-deadline schedule/cancel, liveness activity accounting while the deadline heap is populated, and lock-free metrics snapshots.
+3. **Bidirectional end-to-end**: one ESME and one SMSC session exchange `submit_sm` / `submit_sm_resp` and `deliver_sm` / `deliver_sm_resp` concurrently over `net.Pipe`, localhost TCP, and TLS-over-TCP. Required response PDUs are included in the measured work but only request PDUs are reported in `request_pdu/s`.
+4. **Profiles**: a focused one-session in-memory run captures CPU, heap, mutex, block, Go scheduler trace, and GC trace. `scripts/bench.sh` writes the raw profiles and human-readable `pprof -top` summaries to a chosen output directory.
+
+The default end-to-end run uses one session. `SMPP_BENCH_SESSIONS` accepts a comma-separated list such as `1,2,4` or `1,2,4,8`; this permits the laboratory to add connection counts only when the preceding measurement is insufficient. `BENCHTIME` controls the per-case Go benchmark duration.
+
+The benchmark script is intended to run unchanged on Go 1.26.x/Linux in CI or on dedicated benchmark hosts. CI-runner numbers are useful regression baselines but are **not** the Phase 17 reference-machine acceptance result.
+
+The minimal `cmd/smpp-sim` executable is an SMSC-side high-throughput peer for external/local load generation. It uses the same server/session core, accepts SMPP 3.4 binds, responds to `submit_sm`, handles normal Enquire Link/Unbind lifecycle through the session core, supports TCP or TLS-over-TCP, and emits aggregate statistics rather than per-PDU logs.

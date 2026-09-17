@@ -98,3 +98,49 @@ func heapPushForBenchmark(h *deadlineHeap, item *deadlineItem) {
 	item.index = len(*h)
 	*h = append(*h, item)
 }
+
+func BenchmarkDeadlineHighOutstanding(b *testing.B) {
+	const outstanding = 10000
+	done := make(chan struct{})
+	manager := newDeadlineManager(done, nil)
+	seed := make([]*deadlineItem, 0, outstanding)
+	for i := 0; i < outstanding; i++ {
+		seed = append(seed, manager.schedule(time.Hour, TimeoutResponse, protocol.CommandSubmitSM, protocol.SequenceNumber(i+1)))
+	}
+	defer func() {
+		for _, item := range seed {
+			manager.cancel(item)
+		}
+	}()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		item := manager.schedule(time.Hour, TimeoutResponse, protocol.CommandSubmitSM, protocol.SequenceNumber(outstanding+i+1))
+		manager.cancel(item)
+	}
+}
+
+func BenchmarkLivenessActivityWithHighOutstanding(b *testing.B) {
+	const outstanding = 10000
+	done := make(chan struct{})
+	manager := newDeadlineManager(done, nil)
+	seed := make([]*deadlineItem, 0, outstanding)
+	for i := 0; i < outstanding; i++ {
+		seed = append(seed, manager.schedule(time.Hour, TimeoutResponse, protocol.CommandSubmitSM, protocol.SequenceNumber(i+1)))
+	}
+	defer func() {
+		for _, item := range seed {
+			manager.cancel(item)
+		}
+	}()
+
+	s := &Session{deadlines: manager}
+	now := time.Now()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.noteActivityAt(now)
+		_ = s.lastActivityTime()
+	}
+}

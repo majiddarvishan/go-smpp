@@ -273,3 +273,11 @@ Per-PDU log output remains disabled by default. Mandatory `slog` diagnostics for
 The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
+
+## D-042 — Performance laboratory results are not acceptance results
+
+**Decision:** Phase 16 provides repeatable codec/session/TCP/TLS benchmarks, profiling scripts, and a minimal SMPP peer simulator. End-to-end benchmarks default to one SMPP session and accept explicit additional session counts through `SMPP_BENCH_SESSIONS`; the lab must not silently assume that more connections are better.
+
+Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
+
+**Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.

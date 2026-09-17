@@ -43,3 +43,109 @@ func BenchmarkScanTLVs(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkEncodeSubmitSM(b *testing.B) {
+	registry, err := NewSMPP34Registry(RegistryCompatible)
+	if err != nil {
+		b.Fatal(err)
+	}
+	body := protocol.SubmitSM{
+		SourceAddrTON:   protocol.TONInternational,
+		SourceAddrNPI:   protocol.NPIISDN,
+		SourceAddr:      []byte("12025550100"),
+		DestAddrTON:     protocol.TONInternational,
+		DestAddrNPI:     protocol.NPIISDN,
+		DestinationAddr: []byte("12025550101"),
+		DataCoding:      protocol.DataCodingSMSCDefault,
+		ShortMessage:    []byte("phase16-codec-submit"),
+	}
+	header := Header{CommandID: protocol.CommandSubmitSM, SequenceNumber: 1}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := EncodePDU(nil, header, body, registry); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkDecodeSubmitSM(b *testing.B) {
+	registry, err := NewSMPP34Registry(RegistryCompatible)
+	if err != nil {
+		b.Fatal(err)
+	}
+	frame, err := EncodePDU(nil, Header{CommandID: protocol.CommandSubmitSM, SequenceNumber: 1}, protocol.SubmitSM{
+		SourceAddrTON:   protocol.TONInternational,
+		SourceAddrNPI:   protocol.NPIISDN,
+		SourceAddr:      []byte("12025550100"),
+		DestAddrTON:     protocol.TONInternational,
+		DestAddrNPI:     protocol.NPIISDN,
+		DestinationAddr: []byte("12025550101"),
+		DataCoding:      protocol.DataCodingSMSCDefault,
+		ShortMessage:    []byte("phase16-codec-submit"),
+	}, registry)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(frame)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := DecodePDU(frame, registry); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkEncodeDeliverSM(b *testing.B) {
+	registry, err := NewSMPP34Registry(RegistryCompatible)
+	if err != nil {
+		b.Fatal(err)
+	}
+	body := protocol.DeliverSM{
+		SourceAddrTON:   protocol.TONInternational,
+		SourceAddrNPI:   protocol.NPIISDN,
+		SourceAddr:      []byte("12025550101"),
+		DestAddrTON:     protocol.TONInternational,
+		DestAddrNPI:     protocol.NPIISDN,
+		DestinationAddr: []byte("12025550100"),
+		DataCoding:      protocol.DataCodingSMSCDefault,
+		ShortMessage:    []byte("phase16-codec-deliver"),
+	}
+	header := Header{CommandID: protocol.CommandDeliverSM, SequenceNumber: 1}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := EncodePDU(nil, header, body, registry); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkDecodeDeliverSM(b *testing.B) {
+	registry, err := NewSMPP34Registry(RegistryCompatible)
+	if err != nil {
+		b.Fatal(err)
+	}
+	frame, err := EncodePDU(nil, Header{CommandID: protocol.CommandDeliverSM, SequenceNumber: 1}, protocol.DeliverSM{
+		SourceAddrTON:   protocol.TONInternational,
+		SourceAddrNPI:   protocol.NPIISDN,
+		SourceAddr:      []byte("12025550101"),
+		DestAddrTON:     protocol.TONInternational,
+		DestAddrNPI:     protocol.NPIISDN,
+		DestinationAddr: []byte("12025550100"),
+		DataCoding:      protocol.DataCodingSMSCDefault,
+		ShortMessage:    []byte("phase16-codec-deliver"),
+	}, registry)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(frame)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := DecodePDU(frame, registry); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
