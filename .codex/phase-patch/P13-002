@@ -1,0 +1,170 @@
+tocol.TLVTagSourceNetworkType, Name: "source_network_type"},
++		{Tag: protocol.TLVTagSourceBearerType, Name: "source_bearer_type"},
++		{Tag: protocol.TLVTagSourceTelematicsID, Name: "source_telematics_id"},
++		{Tag: protocol.TLVTagQOSTimeToLive, Name: "qos_time_to_live"},
++		{Tag: protocol.TLVTagPayloadType, Name: "payload_type"},
++		{Tag: protocol.TLVTagAdditionalStatusInfoText, Name: "additional_status_info_text"},
++		{Tag: protocol.TLVTagReceiptedMessageID, Name: "receipted_message_id"},
++		{Tag: protocol.TLVTagMSMsgWaitFacilities, Name: "ms_msg_wait_facilities"},
++		{Tag: protocol.TLVTagPrivacyIndicator, Name: "privacy_indicator"},
++		{Tag: protocol.TLVTagSourceSubaddress, Name: "source_subaddress"},
++		{Tag: protocol.TLVTagDestSubaddress, Name: "dest_subaddress"},
++		{Tag: protocol.TLVTagUserMessageReference, Name: "user_message_reference"},
++		{Tag: protocol.TLVTagUserResponseCode, Name: "user_response_code"},
++		{Tag: protocol.TLVTagSourcePort, Name: "source_port"},
++		{Tag: protocol.TLVTagDestinationPort, Name: "destination_port"},
+ 		{Tag: protocol.TLVTagSARMsgRefNum, Name: "sar_msg_ref_num"},
++		{Tag: protocol.TLVTagLanguageIndicator, Name: "language_indicator"},
+ 		{Tag: protocol.TLVTagSARTotalSegments, Name: "sar_total_segments"},
+ 		{Tag: protocol.TLVTagSARSegmentSeqnum, Name: "sar_segment_seqnum"},
+ 		{Tag: protocol.TLVTagSCInterfaceVersion, Name: "sc_interface_version"},
++		{Tag: protocol.TLVTagCallbackNumPresInd, Name: "callback_num_pres_ind"},
++		{Tag: protocol.TLVTagCallbackNumAtag, Name: "callback_num_atag"},
++		{Tag: protocol.TLVTagNumberOfMessages, Name: "number_of_messages"},
++		{Tag: protocol.TLVTagCallbackNum, Name: "callback_num"},
++		{Tag: protocol.TLVTagDPFResult, Name: "dpf_result"},
++		{Tag: protocol.TLVTagSetDPF, Name: "set_dpf"},
++		{Tag: protocol.TLVTagMSAvailabilityStatus, Name: "ms_availability_status"},
++		{Tag: protocol.TLVTagNetworkErrorCode, Name: "network_error_code"},
+ 		{Tag: protocol.TLVTagMessagePayload, Name: "message_payload"},
++		{Tag: protocol.TLVTagDeliveryFailureReason, Name: "delivery_failure_reason"},
++		{Tag: protocol.TLVTagMoreMessagesToSend, Name: "more_messages_to_send"},
++		{Tag: protocol.TLVTagMessageState, Name: "message_state"},
++		{Tag: protocol.TLVTagUSSDServiceOp, Name: "ussd_service_op"},
++		{Tag: protocol.TLVTagDisplayTime, Name: "display_time"},
++		{Tag: protocol.TLVTagSMSSignal, Name: "sms_signal"},
++		{Tag: protocol.TLVTagMSValidity, Name: "ms_validity"},
++		{Tag: protocol.TLVTagAlertOnMessageDelivery, Name: "alert_on_message_delivery"},
++		{Tag: protocol.TLVTagITSReplyType, Name: "its_reply_type"},
++		{Tag: protocol.TLVTagITSSessionInfo, Name: "its_session_info"},
+ 	}
+ 	for _, def := range definitions {
+ 		if err := builder.RegisterTLV(def); err != nil {
+@@ -190,7 +241,7 @@ func decodeBindRequest(header Header, body []byte) (any, error) {
+ 	return protocol.BindRequest{
+ 		SystemID: systemID, Password: password, SystemType: systemType,
+ 		InterfaceVersion: protocol.InterfaceVersion(interfaceVersion),
+-		AddressTON: protocol.TON(ton), AddressNPI: protocol.NPI(npi), AddressRange: addressRange,
++		AddressTON:       protocol.TON(ton), AddressNPI: protocol.NPI(npi), AddressRange: addressRange,
+ 	}, nil
+ }
+ 
+@@ -208,11 +259,19 @@ func encodeBindRequest(dst []byte, value any) ([]byte, error) {
+ 		return dst, fmt.Errorf("%w: expected protocol.BindRequest, got %T", ErrInvalidPDUValue, value)
+ 	}
+ 	var err error
+-	if dst, err = AppendCString(dst, v.SystemID, maxSystemIDLen); err != nil { return dst, err }
+-	if dst, err = AppendCString(dst, v.Password, maxPasswordLen); err != nil { return dst, err }
+-	if dst, err = AppendCString(dst, v.SystemType, maxSystemTypeLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.SystemID, maxSystemIDLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.Password, maxPasswordLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.SystemType, maxSystemTypeLen); err != nil {
++		return dst, err
++	}
+ 	dst = append(dst, byte(v.InterfaceVersion), byte(v.AddressTON), byte(v.AddressNPI))
+-	if dst, err = AppendCString(dst, v.AddressRange, maxAddressRangeLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.AddressRange, maxAddressRangeLen); err != nil {
++		return dst, err
++	}
+ 	return dst, nil
+ }
+ 
+@@ -319,28 +378,77 @@ func decodeShortMessageBody(header Header, body []byte) (shortMessageBody, error
+ 	r := bodyReader{src: body}
+ 	var out shortMessageBody
+ 	var err error
+-	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil { return out, err }
+-	ton, err := r.uint8(); if err != nil { return out, err }; out.SourceAddrTON = protocol.TON(ton)
+-	npi, err := r.uint8(); if err != nil { return out, err }; out.SourceAddrNPI = protocol.NPI(npi)
+-	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil { return out, err }
+-	ton, err = r.uint8(); if err != nil { return out, err }; out.DestAddrTON = protocol.TON(ton)
+-	npi, err = r.uint8(); if err != nil { return out, err }; out.DestAddrNPI = protocol.NPI(npi)
+-	if out.DestinationAddr, err = r.cString(maxAddressLen); err != nil { return out, err }
+-	if out.ESMClass, err = r.uint8(); err != nil { return out, err }
+-	if out.ProtocolID, err = r.uint8(); err != nil { return out, err }
+-	if out.PriorityFlag, err = r.uint8(); err != nil { return out, err }
+-	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil { return out, err }
+-	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil { return out, err }
+-	if out.RegisteredDelivery, err = r.uint8(); err != nil { return out, err }
+-	if out.ReplaceIfPresentFlag, err = r.uint8(); err != nil { return out, err }
+-	coding, err := r.uint8(); if err != nil { return out, err }; out.DataCoding = protocol.DataCoding(coding)
+-	if out.SMDefaultMsgID, err = r.uint8(); err != nil { return out, err }
+-	smLength, err := r.uint8(); if err != nil { return out, err }
++	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil {
++		return out, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return out, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return out, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil {
++		return out, err
++	}
++	ton, err = r.uint8()
++	if err != nil {
++		return out, err
++	}
++	out.DestAddrTON = protocol.TON(ton)
++	npi, err = r.uint8()
++	if err != nil {
++		return out, err
++	}
++	out.DestAddrNPI = protocol.NPI(npi)
++	if out.DestinationAddr, err = r.cString(maxAddressLen); err != nil {
++		return out, err
++	}
++	if out.ESMClass, err = r.uint8(); err != nil {
++		return out, err
++	}
++	if out.ProtocolID, err = r.uint8(); err != nil {
++		return out, err
++	}
++	if out.PriorityFlag, err = r.uint8(); err != nil {
++		return out, err
++	}
++	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil {
++		return out, err
++	}
++	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil {
++		return out, err
++	}
++	if out.RegisteredDelivery, err = r.uint8(); err != nil {
++		return out, err
++	}
++	if out.ReplaceIfPresentFlag, err = r.uint8(); err != nil {
++		return out, err
++	}
++	coding, err := r.uint8()
++	if err != nil {
++		return out, err
++	}
++	out.DataCoding = protocol.DataCoding(coding)
++	if out.SMDefaultMsgID, err = r.uint8(); err != nil {
++		return out, err
++	}
++	smLength, err := r.uint8()
++	if err != nil {
++		return out, err
++	}
+ 	if smLength == 255 {
+ 		return out, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
+ 	}
+-	if out.ShortMessage, err = r.octets(int(smLength)); err != nil { return out, err }
+-	if out.Optional, err = r.optional(); err != nil { return out, err }
++	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
++		return out, err
++	}
++	if out.Optional, err = r.optional(); err != nil {
++		return out, err
++	}
+ 	if hasNonEmptyMessagePayload(out.Optional) && len(out.Shor
