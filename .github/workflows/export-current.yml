@@ -1,0 +1,18 @@
+name: Export current source
+on:
+  push:
+    branches: [codex/export-current]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Pack source
+        run: tar --exclude=.git --exclude=.github/workflows/export-current.yml -czf source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-smpp-current-source
+          path: source.tar.gz
+          retention-days: 1
