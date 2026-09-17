@@ -781,8 +781,15 @@ func (s *Session) txLoop() {
 	// syscalls. The bounds are per session and configurable.
 	batch := make([]txItem, 0, s.config.TXBatchItems)
 	var writeBuffer []byte
+	var writeBuffers net.Buffers
+	var batchTCP *net.TCPConn
 	if s.config.TXBatchItems > 1 {
-		writeBuffer = make([]byte, 0, s.config.TXBatchBytes)
+		batchTCP, _ = s.conn.(*net.TCPConn)
+		if batchTCP != nil {
+			writeBuffers = make(net.Buffers, 0, s.config.TXBatchItems)
+		} else {
+			writeBuffer = make([]byte, 0, s.config.TXBatchBytes)
+		}
 	}
 
 	for {
@@ -828,6 +835,12 @@ func (s *Session) txLoop() {
 		var err error
 		if len(batch) == 1 {
 			err = transport.WriteFull(s.conn, batch[0].frame)
+		} else if batchTCP != nil {
+			writeBuffers = writeBuffers[:0]
+			for i := range batch {
+				writeBuffers = append(writeBuffers, batch[i].frame)
+			}
+			err = transport.WriteBuffers(batchTCP, writeBuffers)
 		} else {
 			writeBuffer = writeBuffer[:0]
 			for i := range batch {

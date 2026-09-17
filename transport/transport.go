@@ -89,6 +89,30 @@ func WriteFull(conn net.Conn, p []byte) error {
 	return nil
 }
 
+// WriteBuffers hands a group of already-encoded PDUs to a plain TCP
+// connection using net.Buffers. For *net.TCPConn the standard library can use
+// scatter/gather writes, reducing syscall count without copying PDU payloads
+// into a temporary coalescing buffer. A nil return means every octet from every
+// buffer was handed to the transport; batch members therefore share the same
+// full-dispatch boundary.
+func WriteBuffers(conn *net.TCPConn, buffers net.Buffers) error {
+	if len(buffers) == 0 {
+		return nil
+	}
+	var total int64
+	for _, buffer := range buffers {
+		total += int64(len(buffer))
+	}
+	written, err := buffers.WriteTo(conn)
+	if err != nil {
+		return err
+	}
+	if written != total {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
 // ReadFull is exposed only as a small transport helper for tests/simulators and
 // protocol integrations that need an exact byte count. Session framing itself
 // remains stream-oriented and does not use one-read-per-PDU assumptions.

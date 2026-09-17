@@ -44,6 +44,8 @@ func benchmarkSessionConfig(role session.Role, handler session.Handler) session.
 		WindowSize:          benchmarkWindow,
 		MaxPending:          benchmarkWindow,
 		TXQueueSize:         benchmarkWindow,
+		TXBatchItems:        benchmarkTXBatchItems(),
+		TXBatchBytes:        64 << 10,
 		ReadBufferSize:      256 << 10,
 		ResponseTimeout:     30 * time.Second,
 		SessionInitTimeout:  30 * time.Second,
@@ -263,8 +265,21 @@ func benchmarkBidirectional(b *testing.B, localhost, useTLS bool) {
 			}
 			b.ReportMetric(float64(count), "sessions")
 			b.ReportMetric(float64(parallelism*runtime.GOMAXPROCS(0)), "callers")
+			b.ReportMetric(float64(benchmarkTXBatchItems()), "tx_batch")
 		})
 	}
+}
+
+func benchmarkTXBatchItems() int {
+	raw := strings.TrimSpace(os.Getenv("SMPP_BENCH_TX_BATCH"))
+	if raw == "" {
+		return 1
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 1
+	}
+	return value
 }
 
 func benchmarkParallelism() int {
