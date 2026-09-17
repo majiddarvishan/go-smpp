@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -226,6 +227,8 @@ func benchmarkBidirectional(b *testing.B, localhost, useTLS bool) {
 
 			var next atomic.Uint64
 			errCh := make(chan error, 1)
+			parallelism := benchmarkParallelism()
+			b.SetParallelism(parallelism)
 			b.ReportAllocs()
 			b.ResetTimer()
 			started := time.Now()
@@ -259,8 +262,21 @@ func benchmarkBidirectional(b *testing.B, localhost, useTLS bool) {
 				b.ReportMetric(float64(b.N)/elapsed.Seconds(), "request_pdu/s")
 			}
 			b.ReportMetric(float64(count), "sessions")
+			b.ReportMetric(float64(parallelism*runtime.GOMAXPROCS(0)), "callers")
 		})
 	}
+}
+
+func benchmarkParallelism() int {
+	raw := strings.TrimSpace(os.Getenv("SMPP_BENCH_PARALLELISM"))
+	if raw == "" {
+		return 16
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 16
+	}
+	return value
 }
 
 func benchmarkSessionCounts() []int {
