@@ -1,0 +1,200 @@
+(protocol.QuerySMResp)
++	if !ok {
++		return protocol.QuerySMResp{}, fmt.Errorf("%w: query_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
++	}
++	return body, nil
++}
++
++func (s *Session) CancelSM(ctx context.Context, request protocol.CancelSM) error {
++	pdu, err := s.Request(ctx, protocol.CommandCancelSM, request)
++	if err != nil {
++		return err
++	}
++	return responseError(pdu)
++}
++
++func (s *Session) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error {
++	pdu, err := s.Request(ctx, protocol.CommandReplaceSM, request)
++	if err != nil {
++		return err
++	}
++	return responseError(pdu)
++}
++
++func (s *Session) AlertNotification(ctx context.Context, notification protocol.AlertNotification) error {
++	return s.SendOneWay(ctx, protocol.CommandAlertNotification, notification)
++}
++
++func (s *Session) Outbind(ctx context.Context, request protocol.Outbind) error {
++	return s.SendOneWay(ctx, protocol.CommandOutbind, request)
++}
++
+ func (s *Session) EnquireLink(ctx context.Context) error {
+ 	pdu, err := s.Request(ctx, protocol.CommandEnquireLink, protocol.EmptyBody{})
+ 	if err != nil {
+@@ -550,10 +673,16 @@ func (s *Session) txLoop() {
+ 				s.machine.CompleteInbound(item.responseTo, item.status)
+ 			}
+ 			if err := transport.WriteFull(s.conn, item.frame); err != nil {
++				if item.dispatched != nil {
++					item.dispatched <- err
++				}
+ 				s.terminate(err)
+ 				return
+ 			}
+ 			s.noteActivity()
++			if item.dispatched != nil {
++				item.dispatched <- nil
++			}
+ 			if item.kind == txRequest {
+ 				if request, ok := s.pending.markDispatched(item.sequence); ok {
+ 					timeout, kind := s.responseTimeoutFor(item.requestID)
+@@ -619,8 +748,23 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
+ 	}
+ 
+ 	if err := s.beginInbound(pdu.Header.CommandID); err != nil {
++		if isOneWayCommand(pdu.Header.CommandID) {
++			return s.queueGenericNACK(pdu.Header, protocol.StatusInvalidBindState)
++		}
+ 		return s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), protocol.StatusInvalidBindState, protocol.EmptyBody{})
+ 	}
++	if isOneWayCommand(pdu.Header.CommandID) {
++		if s.config.Handler != nil {
++			if _, err := s.config.Handler.Handle(s.ctx, s, pdu); err != nil {
++				s.logger.Error("SMPP one-way handler failed",
++					"event", "smpp_one_way_handler_error",
++					"command_id", fmt.Sprintf("0x%08x", uint32(pdu.Header.CommandID)),
++					"sequence_number", uint32(pdu.Header.SequenceNumber),
++					"error", err)
++			}
++		}
++		return nil
++	}
+ 	lifecycleReserved := isLifecycleRequest(pdu.Header.CommandID)
+ 
+ 	var response Response
+@@ -688,6 +832,10 @@ func isStandardSessionCommand(command protocol.CommandID) bool {
+ 	}
+ }
+ 
++func isOneWayCommand(command protocol.CommandID) bool {
++	return command == protocol.CommandOutbind || command == protocol.CommandAlertNotification
++}
++
+ func isLifecycleRequest(command protocol.CommandID) bool {
+ 	return isBindRequest(command) || command == protocol.CommandUnbind
+ }
+@@ -781,6 +929,25 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
+ 	case protocol.DeliverSMResp:
+ 		body.MessageID = cloneBytes(body.MessageID)
+ 		pdu.Body = body
++	case protocol.DataSMResp:
++		body.MessageID = cloneBytes(body.MessageID)
++		body.Optional = cloneOptional(body.Optional)
++		pdu.Body = body
++	case protocol.SubmitMultiResp:
++		body.MessageID = cloneBytes(body.MessageID)
++		if len(body.Unsuccessful) > 0 {
++			entries := make([]protocol.UnsuccessfulSME, len(body.Unsuccessful))
++			copy(entries, body.Unsuccessful)
++			for i := range entries {
++				entries[i].DestinationAddr = cloneBytes(entries[i].DestinationAddr)
++			}
++			body.Unsuccessful = entries
++		}
++		pdu.Body = body
++	case protocol.QuerySMResp:
++		body.MessageID = cloneBytes(body.MessageID)
++		body.FinalDate = cloneBytes(body.FinalDate)
++		pdu.Body = body
+ 	case codec.RawBody:
+ 		pdu.Body = codec.RawBody(cloneBytes(body))
+ 	}
+diff --git a/session/state.go b/session/state.go
+index adf052d..4fa8d78 100644
+--- a/session/state.go
++++ b/session/state.go
+@@ -76,10 +76,14 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
+ 	}
+ 
+ 	switch command {
+-	case protocol.CommandBindTransmitter, protocol.CommandBindReceiver, protocol.CommandBindTransceiver:
++	case protocol.CommandBindTransmitter, protocol.CommandBindTransceiver:
+ 		return state == protocol.StateOpen && role == RoleESME
+-	case protocol.CommandBindTransmitterResp, protocol.CommandBindReceiverResp, protocol.CommandBindTransceiverResp:
++	case protocol.CommandBindReceiver:
++		return role == RoleESME && (state == protocol.StateOpen || state == protocol.StateOutbound)
++	case protocol.CommandBindTransmitterResp, protocol.CommandBindTransceiverResp:
+ 		return state == protocol.StateOpen && role == RoleSMSC
++	case protocol.CommandBindReceiverResp:
++		return role == RoleSMSC && (state == protocol.StateOpen || state == protocol.StateOutbound)
+ 	case protocol.CommandOutbind:
+ 		return state == protocol.StateOpen && role == RoleSMSC
+ 	case protocol.CommandUnbind:
+@@ -88,10 +92,14 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
+ 		return bound || state == protocol.StateUnbound
+ 	case protocol.CommandEnquireLink, protocol.CommandEnquireLinkResp:
+ 		return bound
+-	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandReplaceSM, protocol.CommandCancelSM:
++	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandCancelSM:
+ 		return role == RoleESME && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
+-	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandReplaceSMResp, protocol.CommandCancelSMResp:
++	case protocol.CommandReplaceSM:
++		return role == RoleESME && state == protocol.StateBoundTX
++	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandCancelSMResp:
+ 		return role == RoleSMSC && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
++	case protocol.CommandReplaceSMResp:
++		return role == RoleSMSC && state == protocol.StateBoundTX
+ 	case protocol.CommandDeliverSM:
+ 		return role == RoleSMSC && (state == protocol.StateBoundRX || state == protocol.StateBoundTRX)
+ 	case protocol.CommandDeliverSMResp:
+@@ -108,7 +116,7 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
+ // StateMachine is shared by ESME and SMSC sessions. Normal state reads are
+ // atomic; the mutex protects multi-step bind/unbind lifecycle transitions.
+ type StateMachine struct {
+-	role Role
++	role  Role
+ 	state atomic.Uint32
+ 
+ 	mu               sync.Mutex
+@@ -186,6 +194,9 @@ func (m *StateMachine) BeginOutbound(command protocol.CommandID) error {
+ 		m.localUnbindFrom = state
+ 		m.state.Store(uint32(protocol.StateUnbound))
+ 	}
++	if command == protocol.CommandOutbind {
++		m.state.Store(uint32(protocol.StateOutbound))
++	}
+ 	return nil
+ }
+ 
+@@ -200,6 +211,9 @@ func (m *StateMachine) CancelOutbound(command protocol.CommandID) {
+ 		m.state.Store(uint32(m.localUnbindFrom))
+ 		m.localUnbindFrom = protocol.StateClosed
+ 	}
++	if command == protocol.CommandOutbind && m.State() == protocol.StateOutbound {
++		m.state.Store(uint32(protocol.StateOpen))
++	}
+ }
+ 
+ // CompleteOutbound applies the response to a locally originated lifecycle PDU.
+@@ -246,6 +260,9 @@ func (m *StateMachine) BeginInbound(command protocol.CommandID) error {
+ 		m.peerUnbindFrom = state
+ 		m.state.Store(uint32(protocol.StateUnbound))
+ 	}
++	if command == protocol.CommandOutbind {
++		m.state.Store(uint32(protocol.StateOutbound))
++	}
+ 	return nil
+ }
+ 
+diff --git a/session/state_test.go b/session/state_test.go
+index a9aaa37..c82628e 100644
+--- a/session/state_test.go
++++ b/session/state_test.go
+@@ -117,3 +117,95 @@ func TestStateMachineConcurrentReadsAndClose(t *testing.T) {
+ 		t.Fatalf("state=%s", m.State())
+ 	}
+ }
++
++func TestSMPP34ExtendedOperationMatrix(t *testing.T) {
++	cases := 
