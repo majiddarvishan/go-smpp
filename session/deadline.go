@@ -54,10 +54,17 @@ func newDeadlineManager(done <-chan struct{}, expire func(*deadlineItem)) *deadl
 }
 
 func (m *deadlineManager) schedule(after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
-	if after <= 0 {
+	return m.scheduleItem(&deadlineItem{}, after, kind, command, sequence)
+}
+
+// scheduleItem inserts a caller-owned deadline record. The session hot path
+// embeds this record in pendingRequest so ordinary request scheduling does not
+// require a separate heap allocation per outstanding deadline.
+func (m *deadlineManager) scheduleItem(item *deadlineItem, after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
+	if after <= 0 || item == nil {
 		return nil
 	}
-	item := &deadlineItem{at: time.Now().Add(after), after: after, kind: kind, command: command, sequence: sequence, index: -1}
+	*item = deadlineItem{at: time.Now().Add(after), after: after, kind: kind, command: command, sequence: sequence, index: -1}
 	m.mu.Lock()
 	wasFirst := len(m.heap) == 0 || item.at.Before(m.heap[0].at)
 	heap.Push(&m.heap, item)

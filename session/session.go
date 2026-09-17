@@ -862,7 +862,7 @@ func (s *Session) txLoop() {
 			if item.kind == txRequest {
 				if request, ok := s.pending.markDispatched(item.sequence); ok {
 					timeout, kind := s.responseTimeoutFor(item.requestID)
-					deadline := s.deadlines.schedule(timeout, kind, item.requestID, item.sequence)
+					deadline := s.deadlines.scheduleItem(&request.deadlineStorage, timeout, kind, item.requestID, item.sequence)
 					request.attachDeadline(s.deadlines, deadline)
 				}
 				continue

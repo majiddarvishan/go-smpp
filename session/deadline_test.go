@@ -113,11 +113,12 @@ func BenchmarkDeadlineHighOutstanding(b *testing.B) {
 		}
 	}()
 
+	var item deadlineItem
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		item := manager.schedule(time.Hour, TimeoutResponse, protocol.CommandSubmitSM, protocol.SequenceNumber(outstanding+i+1))
-		manager.cancel(item)
+		manager.scheduleItem(&item, time.Hour, TimeoutResponse, protocol.CommandSubmitSM, protocol.SequenceNumber(outstanding+i+1))
+		manager.cancel(&item)
 	}
 }
 

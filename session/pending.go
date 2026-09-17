@@ -27,8 +27,9 @@ type pendingRequest struct {
 	rttRecorded     atomic.Bool
 	releaseWindow   func()
 
-	deadlineMu sync.Mutex
-	deadline   *deadlineItem
+	deadlineStorage deadlineItem
+	deadlineMu      sync.Mutex
+	deadline        *deadlineItem
 	deadlines  *deadlineManager
 	finished   bool
 }
