@@ -300,3 +300,9 @@ The first optimization pass should preserve protocol semantics and target measur
 5. perform the final sustained acceptance run on the documented 8-core/10-GB Linux/amd64 host.
 
 Every optimization remains subject to `go test -race`, bounded-memory requirements, fail-closed framing behavior, and the no-hidden-resubmit reconnect rule.
+
+### Phase 17 experiment: opportunistic TX batching
+
+The first Phase 17 experiment added bounded, no-wait TX coalescing and measured it immediately on the same hosted CI class. With batching enabled by default at 32 queued PDUs, localhost TCP throughput regressed from the Phase 16 baseline (for example one session from ~42.6k to ~39.2k request-PDU/s, four sessions from ~60.0k to ~53.4k), and TLS also regressed. In-memory throughput improved slightly in some cases, but the network result did not justify making batching the default.
+
+The batching implementation is therefore retained only as an explicit tuning option and the default is one PDU per transport write. This preserves a reproducible opt-in experiment without imposing a measured regression on normal sessions. The next optimization target is allocation pressure in the hot submit/deliver encode/request path.

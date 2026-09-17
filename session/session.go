@@ -19,7 +19,7 @@ import (
 const (
 	DefaultMaxPending          = 1024
 	DefaultTXQueueSize         = 1024
-	DefaultTXBatchItems        = 32
+	DefaultTXBatchItems        = 1
 	DefaultTXBatchBytes        = 64 << 10
 	DefaultReadBufferSize      = 64 << 10
 	DefaultResponseTimeout     = 30 * time.Second
@@ -780,7 +780,10 @@ func (s *Session) txLoop() {
 	// behavior while bursts can amortize channel scheduling and TCP write
 	// syscalls. The bounds are per session and configurable.
 	batch := make([]txItem, 0, s.config.TXBatchItems)
-	writeBuffer := make([]byte, 0, s.config.TXBatchBytes)
+	var writeBuffer []byte
+	if s.config.TXBatchItems > 1 {
+		writeBuffer = make([]byte, 0, s.config.TXBatchBytes)
+	}
 
 	for {
 		batch = batch[:0]
