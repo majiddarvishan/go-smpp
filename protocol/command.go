@@ -3,35 +3,41 @@ package protocol
 // CommandID identifies an SMPP PDU operation.
 type CommandID uint32
 
-// SMPP 3.4 command identifiers.
+// Standard SMPP command identifiers supported by the shared 3.4/5.0 core.
 const (
-	CommandGenericNACK         CommandID = 0x80000000
-	CommandBindReceiver        CommandID = 0x00000001
-	CommandBindReceiverResp    CommandID = 0x80000001
-	CommandBindTransmitter     CommandID = 0x00000002
-	CommandBindTransmitterResp CommandID = 0x80000002
-	CommandQuerySM             CommandID = 0x00000003
-	CommandQuerySMResp         CommandID = 0x80000003
-	CommandSubmitSM            CommandID = 0x00000004
-	CommandSubmitSMResp        CommandID = 0x80000004
-	CommandDeliverSM           CommandID = 0x00000005
-	CommandDeliverSMResp       CommandID = 0x80000005
-	CommandUnbind              CommandID = 0x00000006
-	CommandUnbindResp          CommandID = 0x80000006
-	CommandReplaceSM           CommandID = 0x00000007
-	CommandReplaceSMResp       CommandID = 0x80000007
-	CommandCancelSM            CommandID = 0x00000008
-	CommandCancelSMResp        CommandID = 0x80000008
-	CommandBindTransceiver     CommandID = 0x00000009
-	CommandBindTransceiverResp CommandID = 0x80000009
-	CommandOutbind             CommandID = 0x0000000B
-	CommandEnquireLink         CommandID = 0x00000015
-	CommandEnquireLinkResp     CommandID = 0x80000015
-	CommandSubmitMulti         CommandID = 0x00000021
-	CommandSubmitMultiResp     CommandID = 0x80000021
-	CommandAlertNotification   CommandID = 0x00000102
-	CommandDataSM              CommandID = 0x00000103
-	CommandDataSMResp          CommandID = 0x80000103
+	CommandGenericNACK           CommandID = 0x80000000
+	CommandBindReceiver          CommandID = 0x00000001
+	CommandBindReceiverResp      CommandID = 0x80000001
+	CommandBindTransmitter       CommandID = 0x00000002
+	CommandBindTransmitterResp   CommandID = 0x80000002
+	CommandQuerySM               CommandID = 0x00000003
+	CommandQuerySMResp           CommandID = 0x80000003
+	CommandSubmitSM              CommandID = 0x00000004
+	CommandSubmitSMResp          CommandID = 0x80000004
+	CommandDeliverSM             CommandID = 0x00000005
+	CommandDeliverSMResp         CommandID = 0x80000005
+	CommandUnbind                CommandID = 0x00000006
+	CommandUnbindResp            CommandID = 0x80000006
+	CommandReplaceSM             CommandID = 0x00000007
+	CommandReplaceSMResp         CommandID = 0x80000007
+	CommandCancelSM              CommandID = 0x00000008
+	CommandCancelSMResp          CommandID = 0x80000008
+	CommandBindTransceiver       CommandID = 0x00000009
+	CommandBindTransceiverResp   CommandID = 0x80000009
+	CommandOutbind               CommandID = 0x0000000B
+	CommandEnquireLink           CommandID = 0x00000015
+	CommandEnquireLinkResp       CommandID = 0x80000015
+	CommandSubmitMulti           CommandID = 0x00000021
+	CommandSubmitMultiResp       CommandID = 0x80000021
+	CommandAlertNotification     CommandID = 0x00000102
+	CommandDataSM                CommandID = 0x00000103
+	CommandDataSMResp            CommandID = 0x80000103
+	CommandBroadcastSM           CommandID = 0x00000111
+	CommandBroadcastSMResp       CommandID = 0x80000111
+	CommandQueryBroadcastSM      CommandID = 0x00000112
+	CommandQueryBroadcastSMResp  CommandID = 0x80000112
+	CommandCancelBroadcastSM     CommandID = 0x00000113
+	CommandCancelBroadcastSMResp CommandID = 0x80000113
 )
 
 const responseMask CommandID = 0x80000000

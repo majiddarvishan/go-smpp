@@ -60,11 +60,13 @@ func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu InboundPDU) (Re
 // WindowSize automatically when necessary.
 type Config struct {
 	Role                Role
+	Profile             protocol.Profile
 	Registry            *codec.Registry
 	MaxPDUSize          uint32
 	MaxPending          int
 	WindowSize          int
 	WindowObserver      WindowObserver
+	FlowController      FlowController
 	ResponseTimeout     time.Duration
 	SessionInitTimeout  time.Duration
 	EnquireLinkInterval time.Duration
@@ -116,6 +118,7 @@ type Session struct {
 
 	createdAt    time.Time
 	lastActivity atomic.Int64
+	peerCaps     atomic.Value // protocol.PeerCapabilities
 
 	closeOnce sync.Once
 	wg        sync.WaitGroup
@@ -127,8 +130,22 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	if conn == nil || !config.Role.valid() {
 		return nil, ErrInvalidConfig
 	}
+	if config.Profile.InterfaceVersion == 0 {
+		config.Profile = protocol.SMPP34Profile()
+	}
+	if !config.Profile.Valid() {
+		return nil, fmt.Errorf("%w: unsupported local SMPP profile 0x%02x", ErrInvalidConfig, byte(config.Profile.InterfaceVersion))
+	}
 	if config.Registry == nil {
-		registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+		var (
+			registry *codec.Registry
+			err      error
+		)
+		if config.Profile.IsSMPP50() {
+			registry, err = codec.NewSMPP50Registry(codec.RegistryCompatible)
+		} else {
+			registry, err = codec.NewSMPP34Registry(codec.RegistryCompatible)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -180,6 +197,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		createdAt: now,
 	}
 	s.lastActivity.Store(now.UnixNano())
+	s.peerCaps.Store(protocol.PeerCapabilities{})
 	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)
 	s.wg.Add(4)
 	go s.rxLoop()
@@ -194,6 +212,17 @@ func (s *Session) State() protocol.SessionState { return s.machine.State() }
 func (s *Session) BindMode() BindMode           { return s.machine.BindMode() }
 func (s *Session) Done() <-chan struct{}        { return s.done }
 func (s *Session) Pending() int                 { return s.pending.len() }
+func (s *Session) Profile() protocol.Profile    { return s.config.Profile }
+
+// PeerCapabilities returns the current negotiated remote-peer capabilities.
+// Before a successful bind it returns the zero value.
+func (s *Session) PeerCapabilities() protocol.PeerCapabilities {
+	v := s.peerCaps.Load()
+	if v == nil {
+		return protocol.PeerCapabilities{}
+	}
+	return v.(protocol.PeerCapabilities)
+}
 
 // Window returns current bounded-outstanding-request utilization.
 func (s *Session) Window() WindowSnapshot { return s.window.snapshot() }
@@ -240,6 +269,14 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	if command.IsResponse() || isOneWayCommand(command) {
 		return codec.DecodedPDU{}, fmt.Errorf("%w: command 0x%08x does not have synchronous request semantics", ErrUnexpectedPDU, uint32(command))
 	}
+	if isBindRequest(command) {
+		if version, ok := bindRequestVersion(body); ok && version == protocol.InterfaceVersion50 && !s.config.Profile.IsSMPP50() {
+			return codec.DecodedPDU{}, fmt.Errorf("%w: local profile 0x%02x cannot advertise SMPP 5.0", ErrUnsupportedCapability, byte(s.config.Profile.InterfaceVersion))
+		}
+	}
+	if requiresSMPP50(command) && !s.PeerCapabilities().SupportsSMPP50 {
+		return codec.DecodedPDU{}, fmt.Errorf("%w: command 0x%08x requires SMPP 5.0", ErrUnsupportedCapability, uint32(command))
+	}
 	select {
 	case <-s.done:
 		return codec.DecodedPDU{}, s.requestCloseError()
@@ -269,6 +306,16 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	}()
 
 	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: make(chan requestResult, 1), releaseWindow: s.window.release}
+	if isBindRequest(command) {
+		switch typed := body.(type) {
+		case protocol.BindRequest:
+			request.bindVersion = typed.InterfaceVersion
+		case *protocol.BindRequest:
+			if typed != nil {
+				request.bindVersion = typed.InterfaceVersion
+			}
+		}
+	}
 	var sequence protocol.SequenceNumber
 	inserted := false
 	for attempts := 0; attempts <= s.config.MaxPending; attempts++ {
@@ -491,6 +538,44 @@ func (s *Session) CancelSM(ctx context.Context, request protocol.CancelSM) error
 
 func (s *Session) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error {
 	pdu, err := s.Request(ctx, protocol.CommandReplaceSM, request)
+	if err != nil {
+		return err
+	}
+	return responseError(pdu)
+}
+
+func (s *Session) BroadcastSM(ctx context.Context, request protocol.BroadcastSM) (protocol.BroadcastSMResp, error) {
+	pdu, err := s.Request(ctx, protocol.CommandBroadcastSM, request)
+	if err != nil {
+		return protocol.BroadcastSMResp{}, err
+	}
+	if err := responseError(pdu); err != nil {
+		return protocol.BroadcastSMResp{}, err
+	}
+	body, ok := pdu.Body.(protocol.BroadcastSMResp)
+	if !ok {
+		return protocol.BroadcastSMResp{}, fmt.Errorf("%w: broadcast_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
+	}
+	return body, nil
+}
+
+func (s *Session) QueryBroadcastSM(ctx context.Context, request protocol.QueryBroadcastSM) (protocol.QueryBroadcastSMResp, error) {
+	pdu, err := s.Request(ctx, protocol.CommandQueryBroadcastSM, request)
+	if err != nil {
+		return protocol.QueryBroadcastSMResp{}, err
+	}
+	if err := responseError(pdu); err != nil {
+		return protocol.QueryBroadcastSMResp{}, err
+	}
+	body, ok := pdu.Body.(protocol.QueryBroadcastSMResp)
+	if !ok {
+		return protocol.QueryBroadcastSMResp{}, fmt.Errorf("%w: query_broadcast_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
+	}
+	return body, nil
+}
+
+func (s *Session) CancelBroadcastSM(ctx context.Context, request protocol.CancelBroadcastSM) error {
+	pdu, err := s.Request(ctx, protocol.CommandCancelBroadcastSM, request)
 	if err != nil {
 		return err
 	}
@@ -731,6 +816,17 @@ func (s *Session) handleResponse(pdu codec.DecodedPDU) {
 		return // late, unmatched, duplicate, or response from another sequence space
 	}
 	s.machine.CompleteOutbound(request.requestID, pdu.Header.CommandStatus)
+	if pdu.Header.CommandStatus.OK() && isBindRequest(request.requestID) {
+		if body, ok := pdu.Body.(protocol.BindResponse); ok {
+			peerVersion, advertised := protocol.SCInterfaceVersion(body.Optional)
+			localProfile, negotiable := bindNegotiationProfile(s.config.Profile, request.bindVersion)
+			if !negotiable {
+				localProfile = protocol.Profile{}
+			}
+			s.peerCaps.Store(protocol.NegotiatePeerCapabilities(localProfile, peerVersion, advertised))
+		}
+	}
+	s.observeCongestion(pdu)
 	owned := ownDecodedPDU(pdu)
 	request.done <- requestResult{pdu: owned}
 	if request.requestID == protocol.CommandUnbind && pdu.Header.CommandStatus.OK() {
@@ -744,6 +840,9 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	}
 	_, registered := s.registry.Command(pdu.Header.CommandID)
 	if !registered {
+		return s.queueGenericNACK(pdu.Header, protocol.StatusInvalidCommandID)
+	}
+	if requiresSMPP50(pdu.Header.CommandID) && !s.PeerCapabilities().SupportsSMPP50 {
 		return s.queueGenericNACK(pdu.Header, protocol.StatusInvalidCommandID)
 	}
 
@@ -786,6 +885,14 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 			}
 		}
 	}
+	if response.Status.OK() && isBindRequest(pdu.Header.CommandID) {
+		if bind, ok := pdu.Body.(protocol.BindRequest); ok {
+			s.peerCaps.Store(protocol.NegotiatePeerCapabilities(s.config.Profile, bind.InterfaceVersion, true))
+			if bind.InterfaceVersion == protocol.InterfaceVersion34 || bind.InterfaceVersion == protocol.InterfaceVersion50 {
+				response.Body = ensureSCInterfaceVersion(response.Body, s.config.Profile.InterfaceVersion)
+			}
+		}
+	}
 	if err := s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), response.Status, response.Body); err != nil {
 		if lifecycleReserved {
 			s.machine.CancelInbound(pdu.Header.CommandID)
@@ -825,7 +932,10 @@ func isStandardSessionCommand(command protocol.CommandID) bool {
 		protocol.CommandEnquireLink,
 		protocol.CommandSubmitMulti,
 		protocol.CommandAlertNotification,
-		protocol.CommandDataSM:
+		protocol.CommandDataSM,
+		protocol.CommandBroadcastSM,
+		protocol.CommandQueryBroadcastSM,
+		protocol.CommandCancelBroadcastSM:
 		return true
 	default:
 		return false
@@ -925,9 +1035,11 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
 		pdu.Body = body
 	case protocol.SubmitSMResp:
 		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
 		pdu.Body = body
 	case protocol.DeliverSMResp:
 		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
 		pdu.Body = body
 	case protocol.DataSMResp:
 		body.MessageID = cloneBytes(body.MessageID)
@@ -935,6 +1047,7 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
 		pdu.Body = body
 	case protocol.SubmitMultiResp:
 		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
 		if len(body.Unsuccessful) > 0 {
 			entries := make([]protocol.UnsuccessfulSME, len(body.Unsuccessful))
 			copy(entries, body.Unsuccessful)
@@ -947,11 +1060,131 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
 	case protocol.QuerySMResp:
 		body.MessageID = cloneBytes(body.MessageID)
 		body.FinalDate = cloneBytes(body.FinalDate)
+		body.Optional = cloneOptional(body.Optional)
+		pdu.Body = body
+	case protocol.BroadcastSMResp:
+		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
+		pdu.Body = body
+	case protocol.QueryBroadcastSMResp:
+		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
+		pdu.Body = body
+	case protocol.OptionalResponse:
+		body.Optional = cloneOptional(body.Optional)
 		pdu.Body = body
 	case codec.RawBody:
 		pdu.Body = codec.RawBody(cloneBytes(body))
 	}
 	return pdu
+}
+
+func bindRequestVersion(body any) (protocol.InterfaceVersion, bool) {
+	switch typed := body.(type) {
+	case protocol.BindRequest:
+		return typed.InterfaceVersion, true
+	case *protocol.BindRequest:
+		if typed != nil {
+			return typed.InterfaceVersion, true
+		}
+	}
+	return 0, false
+}
+
+// bindNegotiationProfile limits negotiated capabilities to what this local
+// endpoint actually advertised in its bind request. Reserved and pre-3.4 bind
+// versions deliberately produce no modern TLV/SMPP 5.0 capability assumption.
+func bindNegotiationProfile(local protocol.Profile, advertised protocol.InterfaceVersion) (protocol.Profile, bool) {
+	switch advertised {
+	case protocol.InterfaceVersion34:
+		return protocol.SMPP34Profile(), true
+	case protocol.InterfaceVersion50:
+		if local.IsSMPP50() {
+			return protocol.SMPP50Profile(), true
+		}
+	}
+	return protocol.Profile{}, false
+}
+
+// ensureSCInterfaceVersion follows the SMPP compatibility guidance that an MC
+// supporting SMPP 3.4 or later should advertise its interface version in a
+// successful bind response. An explicitly supplied tag is preserved so an
+// application can intentionally advertise a narrower capability set.
+func ensureSCInterfaceVersion(body any, version protocol.InterfaceVersion) any {
+	appendIfMissing := func(response protocol.BindResponse) protocol.BindResponse {
+		for _, parameter := range response.Optional {
+			if parameter.Tag == protocol.TLVTagSCInterfaceVersion {
+				return response
+			}
+		}
+		response.Optional = append(response.Optional, protocol.OptionalParameter{
+			Tag: protocol.TLVTagSCInterfaceVersion, Value: []byte{byte(version)},
+		})
+		return response
+	}
+
+	switch typed := body.(type) {
+	case protocol.BindResponse:
+		return appendIfMissing(typed)
+	case *protocol.BindResponse:
+		if typed == nil {
+			return body
+		}
+		response := appendIfMissing(*typed)
+		return response
+	default:
+		return body
+	}
+}
+
+func requiresSMPP50(command protocol.CommandID) bool {
+	switch command {
+	case protocol.CommandBroadcastSM, protocol.CommandBroadcastSMResp,
+		protocol.CommandQueryBroadcastSM, protocol.CommandQueryBroadcastSMResp,
+		protocol.CommandCancelBroadcastSM, protocol.CommandCancelBroadcastSMResp:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Session) observeCongestion(pdu codec.DecodedPDU) {
+	if s.config.FlowController == nil || !s.PeerCapabilities().SupportsSMPP50 {
+		return
+	}
+	optional := responseOptionalParameters(pdu.Body)
+	state, present, err := protocol.CongestionStateFromOptional(optional)
+	if err != nil || !present {
+		return
+	}
+	s.config.FlowController.OnCongestion(CongestionEvent{
+		State: state, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, At: time.Now(),
+	})
+}
+
+func responseOptionalParameters(body any) []protocol.OptionalParameter {
+	switch v := body.(type) {
+	case protocol.BindResponse:
+		return v.Optional
+	case protocol.SubmitSMResp:
+		return v.Optional
+	case protocol.DeliverSMResp:
+		return v.Optional
+	case protocol.DataSMResp:
+		return v.Optional
+	case protocol.SubmitMultiResp:
+		return v.Optional
+	case protocol.QuerySMResp:
+		return v.Optional
+	case protocol.BroadcastSMResp:
+		return v.Optional
+	case protocol.QueryBroadcastSMResp:
+		return v.Optional
+	case protocol.OptionalResponse:
+		return v.Optional
+	default:
+		return nil
+	}
 }
 
 func cloneBytes(src []byte) []byte {

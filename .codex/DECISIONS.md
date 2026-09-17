@@ -246,6 +246,18 @@ Sending or receiving `outbind` moves the shared state machine from `Open` to `Ou
 
 **Reason:** SMPP 3.4 defines no response PDU for `outbind` or `alert_notification`, and defines Outbind specifically as an SMSC request for the ESME to originate `bind_receiver`. Modeling these semantics explicitly avoids phantom pending entries, nonexistent response IDs, and incorrect TRX acceptance for `replace_sm`.
 
+## D-043 — SMPP 5.0 is a negotiated extension of the shared core
+
+**Decision:** SMPP 3.4 and 5.0 use one codec/session engine. `Config.Profile` selects the standard registry and the maximum local protocol capability, while each bound session stores a negotiated `PeerCapabilities` view. The negotiated version cannot exceed the version actually advertised in the local ESME bind request. A local 3.4 profile cannot advertise 5.0. Successful SMSC bind responses automatically add `sc_interface_version` for peers that advertised 3.4 or 5.0, but no TLV is added for pre-3.4 peers. Explicit application-supplied `sc_interface_version` is preserved to allow intentional downgrade policy.
+
+**Reason:** SMPP 5.0 is additive over 3.4. A shared engine avoids duplicated state/framing/concurrency code, while per-session negotiation prevents a 5.0-capable process from accidentally emitting v5-only operations to a 3.4/legacy peer.
+
+## D-044 — Congestion feedback is advisory; the hard window remains
+
+**Decision:** SMPP 5.0 `congestion_state` is decoded from any response shape, including header-only responses and non-zero-status responses whose normal standard body is omitted. Valid values 0..100 are surfaced through a `FlowController` callback. The callback is an extension point, not a built-in unbounded rate controller, and does not remove the configured outstanding-request window.
+
+**Reason:** The v5 specification defines `congestion_state` as response feedback for adaptive rate control, but a hard in-flight bound is still required as a local memory/correlation safety invariant and as fallback when peers do not send feedback. Keeping policy outside the core lets later performance work compare controllers without destabilizing request completion semantics.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:

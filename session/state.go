@@ -92,11 +92,13 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
 		return bound || state == protocol.StateUnbound
 	case protocol.CommandEnquireLink, protocol.CommandEnquireLinkResp:
 		return bound
-	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandCancelSM:
+	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandCancelSM,
+		protocol.CommandBroadcastSM, protocol.CommandQueryBroadcastSM, protocol.CommandCancelBroadcastSM:
 		return role == RoleESME && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
 	case protocol.CommandReplaceSM:
 		return role == RoleESME && state == protocol.StateBoundTX
-	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandCancelSMResp:
+	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandCancelSMResp,
+		protocol.CommandBroadcastSMResp, protocol.CommandQueryBroadcastSMResp, protocol.CommandCancelBroadcastSMResp:
 		return role == RoleSMSC && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
 	case protocol.CommandReplaceSMResp:
 		return role == RoleSMSC && state == protocol.StateBoundTX

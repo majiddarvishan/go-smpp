@@ -307,6 +307,30 @@ func (c *Client) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) erro
 	return sess.ReplaceSM(ctx, request)
 }
 
+func (c *Client) BroadcastSM(ctx context.Context, request protocol.BroadcastSM) (protocol.BroadcastSMResp, error) {
+	sess, err := c.activeSession()
+	if err != nil {
+		return protocol.BroadcastSMResp{}, err
+	}
+	return sess.BroadcastSM(ctx, request)
+}
+
+func (c *Client) QueryBroadcastSM(ctx context.Context, request protocol.QueryBroadcastSM) (protocol.QueryBroadcastSMResp, error) {
+	sess, err := c.activeSession()
+	if err != nil {
+		return protocol.QueryBroadcastSMResp{}, err
+	}
+	return sess.QueryBroadcastSM(ctx, request)
+}
+
+func (c *Client) CancelBroadcastSM(ctx context.Context, request protocol.CancelBroadcastSM) error {
+	sess, err := c.activeSession()
+	if err != nil {
+		return err
+	}
+	return sess.CancelBroadcastSM(ctx, request)
+}
+
 func (c *Client) EnquireLink(ctx context.Context) error {
 	sess, err := c.activeSession()
 	if err != nil {

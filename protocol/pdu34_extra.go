@@ -64,6 +64,7 @@ type SubmitMulti struct {
 type SubmitMultiResp struct {
 	MessageID    []byte
 	Unsuccessful []UnsuccessfulSME
+	Optional     []OptionalParameter
 }
 
 // DataSM is the SMPP 3.4 data_sm mandatory body plus ordered TLVs.
@@ -101,6 +102,7 @@ type QuerySMResp struct {
 	FinalDate    []byte
 	MessageState MessageState
 	ErrorCode    uint8
+	Optional     []OptionalParameter
 }
 
 // CancelSM is the SMPP 3.4 cancel_sm body.

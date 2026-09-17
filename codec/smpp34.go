@@ -45,7 +45,7 @@ func NewSMPP34Registry(mode RegistryMode) (*Registry, error) {
 
 func registerSMPP34Commands(builder *RegistryBuilder) error {
 	definitions := []CommandDefinition{
-		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeResponseEmpty},
 		{ID: protocol.CommandBindReceiver, Name: "bind_receiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
 		{ID: protocol.CommandBindReceiverResp, Name: "bind_receiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
 		{ID: protocol.CommandBindTransmitter, Name: "bind_transmitter", Decode: decodeBindRequest, Encode: encodeBindRequest},
@@ -57,16 +57,16 @@ func registerSMPP34Commands(builder *RegistryBuilder) error {
 		{ID: protocol.CommandDeliverSM, Name: "deliver_sm", Decode: decodeDeliverSM, Encode: encodeDeliverSM},
 		{ID: protocol.CommandDeliverSMResp, Name: "deliver_sm_resp", Decode: decodeDeliverSMResp, Encode: encodeDeliverSMResp},
 		{ID: protocol.CommandUnbind, Name: "unbind", Decode: decodeRequestEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeResponseEmpty},
 		{ID: protocol.CommandReplaceSM, Name: "replace_sm", Decode: decodeReplaceSM, Encode: encodeReplaceSM},
-		{ID: protocol.CommandReplaceSMResp, Name: "replace_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandReplaceSMResp, Name: "replace_sm_resp", Decode: decodeResponseEmpty, Encode: encodeResponseEmpty},
 		{ID: protocol.CommandCancelSM, Name: "cancel_sm", Decode: decodeCancelSM, Encode: encodeCancelSM},
-		{ID: protocol.CommandCancelSMResp, Name: "cancel_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandCancelSMResp, Name: "cancel_sm_resp", Decode: decodeResponseEmpty, Encode: encodeResponseEmpty},
 		{ID: protocol.CommandBindTransceiver, Name: "bind_transceiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
 		{ID: protocol.CommandBindTransceiverResp, Name: "bind_transceiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
 		{ID: protocol.CommandOutbind, Name: "outbind", Decode: decodeOutbind, Encode: encodeOutbind},
 		{ID: protocol.CommandEnquireLink, Name: "enquire_link", Decode: decodeRequestEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeResponseEmpty},
 		{ID: protocol.CommandSubmitMulti, Name: "submit_multi", Decode: decodeSubmitMulti, Encode: encodeSubmitMulti},
 		{ID: protocol.CommandSubmitMultiResp, Name: "submit_multi_resp", Decode: decodeSubmitMultiResp, Encode: encodeSubmitMultiResp},
 		{ID: protocol.CommandAlertNotification, Name: "alert_notification", Decode: decodeAlertNotification, Encode: encodeAlertNotification},
@@ -276,11 +276,14 @@ func encodeBindRequest(dst []byte, value any) ([]byte, error) {
 }
 
 func decodeBindResponse(header Header, body []byte) (any, error) {
-	if !header.CommandStatus.OK() {
-		if len(body) != 0 {
-			return nil, fmt.Errorf("%w: unsuccessful bind response must not contain a body", ErrInvalidPDUValue)
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
 		}
-		return protocol.BindResponse{}, nil
+		if optional == nil {
+			return protocol.BindResponse{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
 	}
 	r := bodyReader{src: body}
 	systemID, err := r.cString(maxSystemIDLen)
@@ -305,13 +308,20 @@ func encodeBindResponse(dst []byte, value any) ([]byte, error) {
 		return dst, nil
 	case protocol.BindResponse:
 		return appendBindResponse(dst, typed)
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.BindResponse:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil BindResponse", ErrInvalidPDUValue)
 		}
 		return appendBindResponse(dst, *typed)
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.BindResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.BindResponse, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
 }
 
@@ -323,6 +333,22 @@ func appendBindResponse(dst []byte, v protocol.BindResponse) ([]byte, error) {
 	return appendOptional(dst, v.Optional)
 }
 
+// decodeErrorResponseOptional handles the SMPP 5.0 additive case where the
+// standard response body is omitted for a non-zero command_status but response
+// TLVs (notably congestion_state) are still present. It returns handled=false
+// for successful responses so the command-specific mandatory body decoder runs.
+func decodeErrorResponseOptional(header Header, body []byte) ([]protocol.OptionalParameter, bool, error) {
+	if header.CommandStatus.OK() {
+		return nil, false, nil
+	}
+	if len(body) == 0 {
+		return nil, true, nil
+	}
+	r := bodyReader{src: body}
+	optional, err := r.optional()
+	return optional, true, err
+}
+
 func decodeRequestEmpty(header Header, body []byte) (any, error) {
 	if err := requestStatusMustBeZero(header); err != nil {
 		return nil, err
@@ -331,7 +357,15 @@ func decodeRequestEmpty(header Header, body []byte) (any, error) {
 }
 
 func decodeResponseEmpty(_ Header, body []byte) (any, error) {
-	return decodeEmpty(body)
+	if len(body) == 0 {
+		return protocol.EmptyBody{}, nil
+	}
+	r := bodyReader{src: body}
+	optional, err := r.optional()
+	if err != nil {
+		return nil, err
+	}
+	return protocol.OptionalResponse{Optional: optional}, nil
 }
 
 func decodeEmpty(body []byte) (any, error) {
@@ -347,6 +381,22 @@ func encodeEmpty(dst []byte, value any) ([]byte, error) {
 		return dst, nil
 	default:
 		return dst, fmt.Errorf("%w: expected EmptyBody, got %T", ErrInvalidPDUValue, value)
+	}
+}
+
+func encodeResponseEmpty(dst []byte, value any) ([]byte, error) {
+	switch typed := value.(type) {
+	case nil, protocol.EmptyBody, *protocol.EmptyBody:
+		return dst, nil
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
+	default:
+		return dst, fmt.Errorf("%w: expected EmptyBody or OptionalResponse, got %T", ErrInvalidPDUValue, value)
 	}
 }
 
@@ -563,21 +613,25 @@ func encodeDeliverSM(dst []byte, value any) ([]byte, error) {
 }
 
 func decodeSubmitSMResp(header Header, body []byte) (any, error) {
-	if !header.CommandStatus.OK() {
-		if len(body) != 0 {
-			return nil, fmt.Errorf("%w: unsuccessful submit_sm_resp must not contain a body", ErrInvalidPDUValue)
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
 		}
-		return protocol.SubmitSMResp{}, nil
+		if optional == nil {
+			return protocol.SubmitSMResp{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.requireDone(); err != nil {
+	optional, err := r.optional()
+	if err != nil {
 		return nil, err
 	}
-	return protocol.SubmitSMResp{MessageID: messageID}, nil
+	return protocol.SubmitSMResp{MessageID: messageID, Optional: optional}, nil
 }
 
 func encodeSubmitSMResp(dst []byte, value any) ([]byte, error) {
@@ -585,21 +639,45 @@ func encodeSubmitSMResp(dst []byte, value any) ([]byte, error) {
 	case nil, protocol.EmptyBody, *protocol.EmptyBody:
 		return dst, nil
 	case protocol.SubmitSMResp:
-		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
+		return appendSubmitSMResp(dst, typed)
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.SubmitSMResp:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil SubmitSMResp", ErrInvalidPDUValue)
 		}
-		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
+		return appendSubmitSMResp(dst, *typed)
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.SubmitSMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.SubmitSMResp, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
 }
 
-func decodeDeliverSMResp(_ Header, body []byte) (any, error) {
+func appendSubmitSMResp(dst []byte, v protocol.SubmitSMResp) ([]byte, error) {
+	var err error
+	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
+		return dst, err
+	}
+	return appendOptional(dst, v.Optional)
+}
+
+func decodeDeliverSMResp(header Header, body []byte) (any, error) {
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
+		}
+		if optional == nil {
+			return protocol.DeliverSMResp{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
+	}
 	// SMPP 3.4 specifies a one-octet NULL message_id. Accept a header-only
-	// response too for deployed-peer interoperability, while still validating a
-	// present C-Octet String structurally.
+	// success response too for deployed-peer interoperability, while still
+	// validating a present C-Octet String structurally.
 	if len(body) == 0 {
 		return protocol.DeliverSMResp{}, nil
 	}
@@ -608,28 +686,39 @@ func decodeDeliverSMResp(_ Header, body []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.requireDone(); err != nil {
+	optional, err := r.optional()
+	if err != nil {
 		return nil, err
 	}
-	return protocol.DeliverSMResp{MessageID: messageID}, nil
+	return protocol.DeliverSMResp{MessageID: messageID, Optional: optional}, nil
 }
 
 func encodeDeliverSMResp(dst []byte, value any) ([]byte, error) {
-	var messageID []byte
+	var v protocol.DeliverSMResp
 	switch typed := value.(type) {
 	case nil, protocol.EmptyBody, *protocol.EmptyBody:
-		messageID = nil
 	case protocol.DeliverSMResp:
-		messageID = typed.MessageID
+		v = typed
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.DeliverSMResp:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil DeliverSMResp", ErrInvalidPDUValue)
 		}
-		messageID = typed.MessageID
+		v = *typed
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.DeliverSMResp, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.DeliverSMResp, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
-	return AppendCString(dst, messageID, maxMessageIDLen)
+	var err error
+	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
+		return dst, err
+	}
+	return appendOptional(dst, v.Optional)
 }
 
 func appendOptional(dst []byte, optional []protocol.OptionalParameter) ([]byte, error) {

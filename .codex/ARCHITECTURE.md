@@ -312,6 +312,14 @@ Benefits:
 - codec/session tests can use in-memory connections
 - future proxy/custom transports can be injected without changing SMPP semantics
 
+## SMPP version negotiation and 5.0 flow feedback
+
+SMPP 5.0 does not create a second session engine. A configured protocol profile defines the maximum local capability and selects a standard 3.4 or 5.0 registry snapshot. Bind negotiation produces immutable-per-update `PeerCapabilities` for the active session. The client-side negotiated capability is capped by the `interface_version` actually sent in that bind; a process configured for 5.0 but binding as 3.4 must behave as 3.4 for that session. Reserved/pre-3.4 values do not imply modern TLV support.
+
+On the SMSC side, a successful bind from a 3.4/5.0 ESME receives `sc_interface_version` automatically when the handler has not supplied one. Pre-3.4 ESMEs do not receive that TLV. V5-only Cell Broadcast commands are rejected before transmission unless 5.0 was mutually negotiated, and inbound v5-only commands without negotiated 5.0 capability are rejected without changing framing rules.
+
+`congestion_state` is an advisory response signal, not a replacement for bounded ownership. The decoder preserves it on ordinary response bodies, header-only response bodies, and error responses where the standard body is omitted. A validated 0..100 value is delivered to the configured flow-controller hook. The outstanding-request window remains a hard independent limit so memory/pending state stays bounded even when a peer omits, delays, or misuses congestion feedback.
+
 ## Registries and vendor extensions
 
 Registry responsibilities:

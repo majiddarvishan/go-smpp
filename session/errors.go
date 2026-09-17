@@ -9,14 +9,15 @@ import (
 )
 
 var (
-	ErrSessionClosed     = errors.New("smpp session: closed")
-	ErrInvalidConfig     = errors.New("smpp session: invalid configuration")
-	ErrPendingLimit      = errors.New("smpp session: pending request limit reached")
-	ErrWindowFull        = errors.New("smpp session: outstanding request window full")
-	ErrSequenceInUse     = errors.New("smpp session: sequence number already pending")
-	ErrSequenceExhausted = errors.New("smpp session: no free sequence number")
-	ErrBindInProgress    = errors.New("smpp session: bind already in progress")
-	ErrUnexpectedPDU     = errors.New("smpp session: unexpected PDU")
+	ErrSessionClosed         = errors.New("smpp session: closed")
+	ErrInvalidConfig         = errors.New("smpp session: invalid configuration")
+	ErrPendingLimit          = errors.New("smpp session: pending request limit reached")
+	ErrWindowFull            = errors.New("smpp session: outstanding request window full")
+	ErrSequenceInUse         = errors.New("smpp session: sequence number already pending")
+	ErrSequenceExhausted     = errors.New("smpp session: no free sequence number")
+	ErrBindInProgress        = errors.New("smpp session: bind already in progress")
+	ErrUnexpectedPDU         = errors.New("smpp session: unexpected PDU")
+	ErrUnsupportedCapability = errors.New("smpp session: peer did not negotiate required capability")
 )
 
 // TimeoutKind distinguishes independent SMPP timeout/liveness mechanisms.

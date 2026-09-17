@@ -15,6 +15,7 @@ type requestResult struct {
 
 type pendingRequest struct {
 	requestID     protocol.CommandID
+	bindVersion   protocol.InterfaceVersion
 	expectedID    protocol.CommandID
 	done          chan requestResult
 	dispatched    atomic.Bool

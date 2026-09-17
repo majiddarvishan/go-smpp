@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 13 are complete and verified. SMPP 3.4 command coverage is complete; the next implementation phase is Phase 14: SMPP 5.0 extensions.
+Phase 0 through Phase 14 are complete and verified. SMPP 3.4 command coverage is complete and the shared core now implements the planned SMPP 5.0 extensions; the next implementation phase is Phase 15: low-overhead observability.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -61,6 +61,13 @@ The shared runtime now includes:
 - tests for fragmented reads, short writes, TLS-over-TCP, blocked TX interruption, high-concurrency correlation, invalid state operations, and race safety
 
 The runtime now also includes configurable request windowing/backpressure, shared response deadlines and liveness timers, client reconnect/rebind without ambiguous request replay, and SMSC/server listener/authentication/submit/deliver support with per-connection isolation and configurable session limits.
+
+
+## SMPP 5.0 extensions
+
+The same protocol/session core now supports a profile-selected SMPP 5.0 registry and per-session capability negotiation. Successful bind responses automatically advertise `sc_interface_version` to SMPP 3.4/5.0 peers while legacy pre-3.4 peers are not sent TLVs. The negotiated capability view is bounded by both the configured local profile and the version actually advertised in the ESME bind request.
+
+SMPP 5.0 coverage includes the six Cell Broadcast request/response command IDs (`broadcast_sm`, `query_broadcast_sm`, and `cancel_broadcast_sm`), the v5 command-status additions, `congestion_state`, billing, Cell Broadcast, number-portability, and source/destination network/node-identification TLVs. `congestion_state` is accepted on successful, failed, and header-only response PDUs and is surfaced through a lightweight `FlowController` callback; the hard outstanding-request window remains a separate safety bound. Unknown/duplicate TLVs continue to retain their ordered wire representation.
 
 
 ## Message encoding

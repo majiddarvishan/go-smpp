@@ -104,8 +104,14 @@ func encodeDataSM(dst []byte, value any) ([]byte, error) {
 }
 
 func decodeDataSMResp(header Header, body []byte) (any, error) {
-	if len(body) == 0 && !header.CommandStatus.OK() {
-		return protocol.DataSMResp{}, nil
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
+		}
+		if optional == nil {
+			return protocol.DataSMResp{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
@@ -125,13 +131,20 @@ func encodeDataSMResp(dst []byte, value any) ([]byte, error) {
 		return dst, nil
 	case protocol.DataSMResp:
 		return appendDataSMResp(dst, typed)
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.DataSMResp:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil DataSMResp", ErrInvalidPDUValue)
 		}
 		return appendDataSMResp(dst, *typed)
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.DataSMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.DataSMResp, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
 }
 
@@ -192,8 +205,14 @@ func encodeQuerySM(dst []byte, value any) ([]byte, error) {
 }
 
 func decodeQuerySMResp(header Header, body []byte) (any, error) {
-	if len(body) == 0 && !header.CommandStatus.OK() {
-		return protocol.QuerySMResp{}, nil
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
+		}
+		if optional == nil {
+			return protocol.QuerySMResp{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
@@ -212,10 +231,11 @@ func decodeQuerySMResp(header Header, body []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.requireDone(); err != nil {
+	optional, err := r.optional()
+	if err != nil {
 		return nil, err
 	}
-	return protocol.QuerySMResp{MessageID: messageID, FinalDate: finalDate, MessageState: protocol.MessageState(state), ErrorCode: errorCode}, nil
+	return protocol.QuerySMResp{MessageID: messageID, FinalDate: finalDate, MessageState: protocol.MessageState(state), ErrorCode: errorCode, Optional: optional}, nil
 }
 
 func encodeQuerySMResp(dst []byte, value any) ([]byte, error) {
@@ -225,13 +245,20 @@ func encodeQuerySMResp(dst []byte, value any) ([]byte, error) {
 		return dst, nil
 	case protocol.QuerySMResp:
 		v = typed
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.QuerySMResp:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil QuerySMResp", ErrInvalidPDUValue)
 		}
 		v = *typed
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.QuerySMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.QuerySMResp, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
 	var err error
 	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
@@ -240,7 +267,8 @@ func encodeQuerySMResp(dst []byte, value any) ([]byte, error) {
 	if dst, err = AppendCString(dst, v.FinalDate, maxTimeFieldLen); err != nil {
 		return dst, err
 	}
-	return append(dst, byte(v.MessageState), v.ErrorCode), nil
+	dst = append(dst, byte(v.MessageState), v.ErrorCode)
+	return appendOptional(dst, v.Optional)
 }
 
 func decodeCancelSM(header Header, body []byte) (any, error) {
@@ -679,8 +707,14 @@ func encodeSubmitMulti(dst []byte, value any) ([]byte, error) {
 }
 
 func decodeSubmitMultiResp(header Header, body []byte) (any, error) {
-	if len(body) == 0 && !header.CommandStatus.OK() {
-		return protocol.SubmitMultiResp{}, nil
+	if optional, handled, err := decodeErrorResponseOptional(header, body); handled {
+		if err != nil {
+			return nil, err
+		}
+		if optional == nil {
+			return protocol.SubmitMultiResp{}, nil
+		}
+		return protocol.OptionalResponse{Optional: optional}, nil
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
@@ -713,10 +747,11 @@ func decodeSubmitMultiResp(header Header, body []byte) (any, error) {
 			DestAddrTON: protocol.TON(ton), DestAddrNPI: protocol.NPI(npi), DestinationAddr: address, ErrorStatusCode: protocol.CommandStatus(status),
 		})
 	}
-	if err := r.requireDone(); err != nil {
+	optional, err := r.optional()
+	if err != nil {
 		return nil, err
 	}
-	return protocol.SubmitMultiResp{MessageID: messageID, Unsuccessful: unsuccessful}, nil
+	return protocol.SubmitMultiResp{MessageID: messageID, Unsuccessful: unsuccessful, Optional: optional}, nil
 }
 
 func encodeSubmitMultiResp(dst []byte, value any) ([]byte, error) {
@@ -726,13 +761,20 @@ func encodeSubmitMultiResp(dst []byte, value any) ([]byte, error) {
 		return dst, nil
 	case protocol.SubmitMultiResp:
 		v = typed
+	case protocol.OptionalResponse:
+		return appendOptional(dst, typed.Optional)
+	case *protocol.OptionalResponse:
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil OptionalResponse", ErrInvalidPDUValue)
+		}
+		return appendOptional(dst, typed.Optional)
 	case *protocol.SubmitMultiResp:
 		if typed == nil {
 			return dst, fmt.Errorf("%w: nil SubmitMultiResp", ErrInvalidPDUValue)
 		}
 		v = *typed
 	default:
-		return dst, fmt.Errorf("%w: expected protocol.SubmitMultiResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
+		return dst, fmt.Errorf("%w: expected protocol.SubmitMultiResp, OptionalResponse or EmptyBody, got %T", ErrInvalidPDUValue, value)
 	}
 	if len(v.Unsuccessful) > 255 {
 		return dst, fmt.Errorf("%w: no_unsuccess exceeds 255", ErrInvalidPDUValue)
@@ -749,5 +791,5 @@ func encodeSubmitMultiResp(dst []byte, value any) ([]byte, error) {
 		}
 		dst = binary.BigEndian.AppendUint32(dst, uint32(unsuccessful.ErrorStatusCode))
 	}
-	return dst, nil
+	return appendOptional(dst, v.Optional)
 }

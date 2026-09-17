@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 13 are complete and verified locally. Phase 14 is next.
+Phase 0 through Phase 14 are complete. Phase 14 adds SMPP 5.0 capability negotiation, Cell Broadcast operations, v5 TLVs/status codes, and congestion feedback while preserving the shared 3.4 core. Phase 15 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -70,6 +70,10 @@ Phase 12 adds GSM 03.38 default/extension alphabet conversion, septet packing/un
 
 Phase 13 completes the SMPP 3.4 command surface with `data_sm`, `submit_multi`, `query_sm`, `cancel_sm`, `replace_sm`, `alert_notification`, and `outbind`; registers all 44 SMPP 3.4 standard TLV tag identifiers; and verifies the complete named 3.4 command-status set. `outbind` and `alert_notification` are modeled as one-way primitives, never consume a pending/window slot, and never receive a synthetic response. Outbind moves both sides through `Outbound` and permits the ESME to originate `bind_receiver`. `replace_sm` is intentionally Bound_TX-only per the 3.4 operation matrix. Typed client/session/server convenience methods were added for the newly completed operations.
 
+Phase 14 extends that same core rather than introducing a parallel SMPP 5.0 stack. `Config.Profile` selects the standard registry/profile, bind negotiation records `PeerCapabilities`, and an ESME can use v5-only operations only after 5.0 was mutually negotiated. SMSC sessions automatically add `sc_interface_version` to successful bind responses for 3.4/5.0 peers, but do not send it to pre-3.4 peers. A local 3.4 profile cannot advertise 5.0, and a local 5.0 profile that intentionally binds as 3.4 is capped at 3.4 capabilities.
+
+The v5 registry adds six Cell Broadcast command IDs and 20 v5 TLV tags on top of the complete 3.4 registry, including `congestion_state`, broadcast/billing fields, number portability, and endpoint network/node identification. `broadcast_sm`, `query_broadcast_sm`, and `cancel_broadcast_sm` have typed session/client APIs. The codec accepts `congestion_state` on normal, header-only, and non-zero-status responses; error responses may carry TLVs without reintroducing their omitted standard body. `FlowController` receives validated 0..100 congestion feedback on the RX path and is intentionally separate from the hard request-window bound.
+
 ## Validation performed
 
 GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
@@ -114,4 +118,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 14 — SMPP 5.0 extensions** from `PLAN.md`. Keep one shared core, negotiate peer capabilities per session, add v5-only TLVs/statuses and Cell Broadcast operations without weakening SMPP 3.4 compatibility or fatal-framing safety.
+Start **Phase 15 — Observability without hot-path logging** from `PLAN.md`. Add counters/event hooks and optional tracing without introducing per-PDU default logging or weakening the mandatory fatal-protocol diagnostic path. Expose the already implemented congestion feedback as observability data without moving it onto a blocking hot path.

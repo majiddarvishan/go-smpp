@@ -203,13 +203,13 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 14 — SMPP 5.0 extensions
 
-- [ ] Add SMPP 5.0 capability negotiation on the shared core.
-- [ ] Implement `congestion_state` TLV support.
-- [ ] Implement adaptive flow-controller extension points.
-- [ ] Add SMPP 5.0 error/status additions.
-- [ ] Add SMPP 5.0 number-portability and endpoint-identification TLVs.
-- [ ] Implement Cell Broadcast commands and related TLVs.
-- [ ] Add SMPP 5.0 compatibility/conformance tests.
+- [x] Add SMPP 5.0 capability negotiation on the shared core.
+- [x] Implement `congestion_state` TLV support.
+- [x] Implement adaptive flow-controller extension points.
+- [x] Add SMPP 5.0 error/status additions.
+- [x] Add SMPP 5.0 number-portability and endpoint-identification TLVs.
+- [x] Implement Cell Broadcast commands and related TLVs.
+- [x] Add SMPP 5.0 compatibility/conformance tests.
 
 ## Phase 15 — Observability without hot-path logging
 

@@ -9,51 +9,81 @@ type OptionalParameter struct {
 }
 
 const (
-	TLVTagDestAddrSubunit          uint16 = 0x0005
-	TLVTagDestNetworkType          uint16 = 0x0006
-	TLVTagDestBearerType           uint16 = 0x0007
-	TLVTagDestTelematicsID         uint16 = 0x0008
-	TLVTagSourceAddrSubunit        uint16 = 0x000D
-	TLVTagSourceNetworkType        uint16 = 0x000E
-	TLVTagSourceBearerType         uint16 = 0x000F
-	TLVTagSourceTelematicsID       uint16 = 0x0010
-	TLVTagQOSTimeToLive            uint16 = 0x0017
-	TLVTagPayloadType              uint16 = 0x0019
-	TLVTagAdditionalStatusInfoText uint16 = 0x001D
-	TLVTagReceiptedMessageID       uint16 = 0x001E
-	TLVTagMSMsgWaitFacilities      uint16 = 0x0030
-	TLVTagPrivacyIndicator         uint16 = 0x0201
-	TLVTagSourceSubaddress         uint16 = 0x0202
-	TLVTagDestSubaddress           uint16 = 0x0203
-	TLVTagUserMessageReference     uint16 = 0x0204
-	TLVTagUserResponseCode         uint16 = 0x0205
-	TLVTagSourcePort               uint16 = 0x020A
-	TLVTagDestinationPort          uint16 = 0x020B
-	TLVTagSARMsgRefNum             uint16 = 0x020C
-	TLVTagLanguageIndicator        uint16 = 0x020D
-	TLVTagSARTotalSegments         uint16 = 0x020E
-	TLVTagSARSegmentSeqnum         uint16 = 0x020F
-	TLVTagSCInterfaceVersion       uint16 = 0x0210
-	TLVTagCallbackNumPresInd       uint16 = 0x0302
-	TLVTagCallbackNumAtag          uint16 = 0x0303
-	TLVTagNumberOfMessages         uint16 = 0x0304
-	TLVTagCallbackNum              uint16 = 0x0381
-	TLVTagDPFResult                uint16 = 0x0420
-	TLVTagSetDPF                   uint16 = 0x0421
-	TLVTagMSAvailabilityStatus     uint16 = 0x0422
-	TLVTagNetworkErrorCode         uint16 = 0x0423
-	TLVTagMessagePayload           uint16 = 0x0424
-	TLVTagDeliveryFailureReason    uint16 = 0x0425
-	TLVTagMoreMessagesToSend       uint16 = 0x0426
-	TLVTagMessageState             uint16 = 0x0427
-	TLVTagUSSDServiceOp            uint16 = 0x0501
-	TLVTagDisplayTime              uint16 = 0x1201
-	TLVTagSMSSignal                uint16 = 0x1203
-	TLVTagMSValidity               uint16 = 0x1204
-	TLVTagAlertOnMessageDelivery   uint16 = 0x130C
-	TLVTagITSReplyType             uint16 = 0x1380
-	TLVTagITSSessionInfo           uint16 = 0x1383
+	TLVTagDestAddrSubunit            uint16 = 0x0005
+	TLVTagDestNetworkType            uint16 = 0x0006
+	TLVTagDestBearerType             uint16 = 0x0007
+	TLVTagDestTelematicsID           uint16 = 0x0008
+	TLVTagSourceAddrSubunit          uint16 = 0x000D
+	TLVTagSourceNetworkType          uint16 = 0x000E
+	TLVTagSourceBearerType           uint16 = 0x000F
+	TLVTagSourceTelematicsID         uint16 = 0x0010
+	TLVTagQOSTimeToLive              uint16 = 0x0017
+	TLVTagPayloadType                uint16 = 0x0019
+	TLVTagAdditionalStatusInfoText   uint16 = 0x001D
+	TLVTagReceiptedMessageID         uint16 = 0x001E
+	TLVTagMSMsgWaitFacilities        uint16 = 0x0030
+	TLVTagPrivacyIndicator           uint16 = 0x0201
+	TLVTagSourceSubaddress           uint16 = 0x0202
+	TLVTagDestSubaddress             uint16 = 0x0203
+	TLVTagUserMessageReference       uint16 = 0x0204
+	TLVTagUserResponseCode           uint16 = 0x0205
+	TLVTagSourcePort                 uint16 = 0x020A
+	TLVTagDestinationPort            uint16 = 0x020B
+	TLVTagSARMsgRefNum               uint16 = 0x020C
+	TLVTagLanguageIndicator          uint16 = 0x020D
+	TLVTagSARTotalSegments           uint16 = 0x020E
+	TLVTagSARSegmentSeqnum           uint16 = 0x020F
+	TLVTagSCInterfaceVersion         uint16 = 0x0210
+	TLVTagCallbackNumPresInd         uint16 = 0x0302
+	TLVTagCallbackNumAtag            uint16 = 0x0303
+	TLVTagNumberOfMessages           uint16 = 0x0304
+	TLVTagCallbackNum                uint16 = 0x0381
+	TLVTagDPFResult                  uint16 = 0x0420
+	TLVTagSetDPF                     uint16 = 0x0421
+	TLVTagMSAvailabilityStatus       uint16 = 0x0422
+	TLVTagNetworkErrorCode           uint16 = 0x0423
+	TLVTagMessagePayload             uint16 = 0x0424
+	TLVTagDeliveryFailureReason      uint16 = 0x0425
+	TLVTagMoreMessagesToSend         uint16 = 0x0426
+	TLVTagMessageState               uint16 = 0x0427
+	TLVTagCongestionState            uint16 = 0x0428
+	TLVTagUSSDServiceOp              uint16 = 0x0501
+	TLVTagBroadcastChannelIndicator  uint16 = 0x0600
+	TLVTagBroadcastContentType       uint16 = 0x0601
+	TLVTagBroadcastContentTypeInfo   uint16 = 0x0602
+	TLVTagBroadcastMessageClass      uint16 = 0x0603
+	TLVTagBroadcastRepNum            uint16 = 0x0604
+	TLVTagBroadcastFrequencyInterval uint16 = 0x0605
+	TLVTagBroadcastAreaIdentifier    uint16 = 0x0606
+	TLVTagBroadcastErrorStatus       uint16 = 0x0607
+	TLVTagBroadcastAreaSuccess       uint16 = 0x0608
+	TLVTagBroadcastEndTime           uint16 = 0x0609
+	TLVTagBroadcastServiceGroup      uint16 = 0x060A
+	TLVTagBillingIdentification      uint16 = 0x060B
+	TLVTagSourceNetworkID            uint16 = 0x060D
+	TLVTagDestNetworkID              uint16 = 0x060E
+	TLVTagSourceNodeID               uint16 = 0x060F
+	TLVTagDestNodeID                 uint16 = 0x0610
+	TLVTagDestAddrNPResolution       uint16 = 0x0611
+	TLVTagDestAddrNPInformation      uint16 = 0x0612
+	TLVTagDestAddrNPCountry          uint16 = 0x0613
+	TLVTagDisplayTime                uint16 = 0x1201
+	TLVTagSMSSignal                  uint16 = 0x1203
+	TLVTagMSValidity                 uint16 = 0x1204
+	TLVTagAlertOnMessageDelivery     uint16 = 0x130C
+	TLVTagITSReplyType               uint16 = 0x1380
+	TLVTagITSSessionInfo             uint16 = 0x1383
 )
+
+// TLVTagFailedBroadcastAreaIdentifier shares the wire tag with
+// broadcast_area_identifier; the name depends on PDU context in SMPP 5.0.
+const TLVTagFailedBroadcastAreaIdentifier = TLVTagBroadcastAreaIdentifier
+
+// OptionalResponse represents a response whose standard body is empty but that
+// carries SMPP optional parameters such as the v5 congestion_state TLV.
+type OptionalResponse struct {
+	Optional []OptionalParameter
+}
 
 // BindRequest is the common body used by bind_transmitter, bind_receiver and
 // bind_transceiver in SMPP 3.4.
@@ -102,6 +132,7 @@ type SubmitSM struct {
 // command_status is non-zero.
 type SubmitSMResp struct {
 	MessageID []byte
+	Optional  []OptionalParameter
 }
 
 // DeliverSM is the SMPP 3.4 deliver_sm mandatory body plus ordered optional
@@ -133,4 +164,5 @@ type DeliverSM struct {
 // peers that send a C-Octet String body anyway.
 type DeliverSMResp struct {
 	MessageID []byte
+	Optional  []OptionalParameter
 }

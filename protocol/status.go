@@ -3,7 +3,7 @@ package protocol
 // CommandStatus is the SMPP command_status value carried by response PDUs.
 type CommandStatus uint32
 
-// SMPP 3.4 command status values.
+// Standard SMPP command status values supported by the shared 3.4/5.0 core.
 const (
 	StatusOK                             CommandStatus = 0x00000000
 	StatusInvalidMessageLength           CommandStatus = 0x00000001
@@ -53,6 +53,25 @@ const (
 	StatusInvalidOptionalParameterValue  CommandStatus = 0x000000C4
 	StatusDeliveryFailure                CommandStatus = 0x000000FE
 	StatusUnknownError                   CommandStatus = 0x000000FF
+	StatusServiceTypeUnauthorized        CommandStatus = 0x00000100
+	StatusProhibited                     CommandStatus = 0x00000101
+	StatusServiceTypeUnavailable         CommandStatus = 0x00000102
+	StatusServiceTypeDenied              CommandStatus = 0x00000103
+	StatusInvalidDataCodingScheme        CommandStatus = 0x00000104
+	StatusInvalidSourceAddrSubunit       CommandStatus = 0x00000105
+	StatusInvalidDestAddrSubunit         CommandStatus = 0x00000106
+	StatusInvalidBroadcastFrequency      CommandStatus = 0x00000107
+	StatusInvalidBroadcastAliasName      CommandStatus = 0x00000108
+	StatusInvalidBroadcastAreaFormat     CommandStatus = 0x00000109
+	StatusInvalidNumberOfBroadcastAreas  CommandStatus = 0x0000010A
+	StatusInvalidBroadcastContentType    CommandStatus = 0x0000010B
+	StatusInvalidBroadcastMessageClass   CommandStatus = 0x0000010C
+	StatusBroadcastFailed                CommandStatus = 0x0000010D
+	StatusBroadcastQueryFailed           CommandStatus = 0x0000010E
+	StatusBroadcastCancelFailed          CommandStatus = 0x0000010F
+	StatusInvalidBroadcastRepetition     CommandStatus = 0x00000110
+	StatusInvalidBroadcastServiceGroup   CommandStatus = 0x00000111
+	StatusInvalidBroadcastChannel        CommandStatus = 0x00000112
 )
 
 // OK reports whether the command status represents success.

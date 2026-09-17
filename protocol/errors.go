@@ -1,6 +1,11 @@
 package protocol
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrInvalidCongestionState = errors.New("smpp protocol: invalid congestion_state")
 
 // SemanticError describes a recoverable SMPP protocol/semantic violation for
 // which framing is still trustworthy. Later session code may answer such an
