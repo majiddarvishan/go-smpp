@@ -100,8 +100,8 @@ The project benchmarks one session first, then increases connection count only i
 
 ## Current implementation state
 
-Phase 0 through Phase 15 are complete and verified. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, and low-overhead observability.
+Phase 0 through Phase 16 are complete and verified. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, low-overhead observability, and a reproducible performance simulator/benchmark laboratory.
 
 Session observability provides atomic snapshots for traffic, response/liveness timeouts, Enquire Link activity, window state, RTT, decode/fatal failures, and SMPP 5.0 congestion feedback. Dialed clients expose reconnect counters. Event hooks and packet tracing are explicit opt-ins; raw wire-PDU copying requires a second explicit opt-in. Ordinary per-PDU logging remains disabled while mandatory structured fatal-protocol logging cannot be turned off through the observability configuration.
 
-Phase 16 is next and will build the high-throughput peer simulator and benchmark laboratory needed to measure codec/session/TCP/TLS behavior before Phase 17 performance acceptance. No 100k request-PDU/s acceptance claim is made until those benchmark phases are executed on the documented reference environment.
+Phase 16 is complete. Phase 17 is now the active phase: profile-guided optimization and acceptance on the documented Linux/amd64 8-core / 10-GB reference environment. No 100k request-PDU/s acceptance claim is made until that reference run sustains the target with the minimum practical session count.

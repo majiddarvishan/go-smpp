@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 15 are complete. Phase 15 adds low-overhead traffic/liveness/RTT/congestion metrics, opt-in event and packet-trace hooks, client reconnect metrics, and preserves mandatory fatal-protocol logging without enabling default per-PDU logs. Phase 16 is next.
+Phase 0 through Phase 16 are complete and verified. Phase 16 adds the minimal SMPP peer simulator, codec/session/TCP/TLS benchmark laboratory, timeout/window/liveness overhead benchmarks, and CPU/heap/mutex/block/scheduler/GC profiling. Phase 17 performance acceptance and optimization is now in progress.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -82,6 +82,16 @@ Each `Session` now exposes a lock-free `Metrics()` snapshot for sent/received re
 
 RTT measurement is tied to the full-dispatch boundary. A very fast peer can return a response before the TX goroutine records its post-write timestamp; that race is preserved as a valid zero lower-bound RTT sample instead of dropping the sample. Congestion metrics are updated from negotiated SMPP 5.0 response feedback even if no adaptive `FlowController` is configured.
 
+## Phase 16 completed — performance laboratory
+
+Phase 16 added a reproducible benchmark stack and verified it on Go 1.26.8/Linux amd64. The end-to-end workload exchanges `submit_sm/submit_sm_resp` and `deliver_sm/deliver_sm_resp` concurrently, counts only request PDUs in `request_pdu/s`, and still processes every required response.
+
+GitHub Actions run `35279555454` completed successfully with `go test ./...`, `go test -race ./...`, `go vet ./...`, codec/session microbenchmarks, in-memory bidirectional benchmarks, localhost TCP/TLS benchmarks, and profiling.
+
+Development-run baselines on the hosted AMD EPYC runner were approximately 163k request-PDU/s for one in-memory session, 42.6k for one localhost TCP session, 56.3k for two TCP sessions, 60.0k for four, and 60.2k for eight. TLS measured approximately 39.7k, 52.0k, 55.4k, and 55.5k request-PDU/s for 1/2/4/8 sessions respectively. These numbers are diagnostics only and are not the Phase 17 8-core/10-GB acceptance result.
+
+The first profile shows the main optimization candidates are session scheduling/channel coordination and per-request allocation pressure rather than codec framing: the in-memory path already exceeds the target on one session, while localhost TCP plateaus well below it on this runner. The heap profile also highlights `Session.request`, short-message encoding/decoding, owned response copies, and deadline records as measurable allocation sources.
+
 ## Validation performed
 
 GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
@@ -137,4 +147,4 @@ Phase 15 adds tests for observability counters/events, opt-in packet tracing and
 
 ## Exact next task
 
-Start **Phase 16 — Performance simulator and benchmark laboratory** from `PLAN.md`. Build the minimal high-throughput SMPP peer simulator and establish codec, in-memory session, localhost TCP, and TLS-over-TCP benchmark baselines. Begin with one bidirectional session and increase session count only if measurement requires it. Persist methodology/results in `.codex/PERFORMANCE.md`; do not claim the Phase 17 100k target before the reference acceptance run.
+Continue **Phase 17 — Performance acceptance and optimization** from `PLAN.md`. Use the Phase 16 profiles to reduce scheduler/channel overhead and per-request allocations first, re-run the same benchmark matrix after every significant change, and keep the 100k acceptance checkbox open until the documented Linux/amd64 8-core / 10-GB reference environment sustains the target with the minimum practical session count.

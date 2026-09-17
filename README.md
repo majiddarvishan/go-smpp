@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 15 are complete and verified. Phase 16 is in progress: the repository now contains a reusable performance laboratory and a minimal SMPP peer simulator so the transport/session path can be measured before Phase 17 acceptance tuning.
+Phase 0 through Phase 16 are complete and verified. Phase 17 is in progress: the performance laboratory, minimal SMPP peer simulator, TCP/TLS bidirectional benchmarks, timer/window benchmarks, and profiling scripts are now established, and optimization work is driven by measured end-to-end profiles rather than microbenchmarks alone.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 

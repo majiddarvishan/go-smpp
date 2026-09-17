@@ -222,16 +222,16 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 16 — Performance simulator and benchmark laboratory
 
-- [ ] Build a minimal high-throughput SMPP peer simulator.
-- [ ] Add codec-only benchmarks.
-- [ ] Add in-memory/loopback session benchmarks.
-- [ ] Add localhost TCP benchmarks.
-- [ ] Add TLS-over-TCP benchmarks separately from plain TCP.
-- [ ] Add single-session bidirectional benchmark first.
-- [ ] Add 2-, 4-, and higher-session benchmarks only as needed to find the minimum session count meeting target.
-- [ ] Add request-timeout and liveness-timer overhead benchmarks under high outstanding counts.
-- [ ] Measure CPU, allocations, heap, GC, mutex contention and scheduler behavior.
-- [ ] Persist benchmark methodology/results in `.codex/PERFORMANCE.md` or dedicated reports.
+- [x] Build a minimal high-throughput SMPP peer simulator.
+- [x] Add codec-only benchmarks.
+- [x] Add in-memory/loopback session benchmarks.
+- [x] Add localhost TCP benchmarks.
+- [x] Add TLS-over-TCP benchmarks separately from plain TCP.
+- [x] Add single-session bidirectional benchmark first.
+- [x] Add 2-, 4-, and higher-session benchmarks only as needed to find the minimum session count meeting target.
+- [x] Add request-timeout and liveness-timer overhead benchmarks under high outstanding counts.
+- [x] Measure CPU, allocations, heap, GC, mutex contention and scheduler behavior.
+- [x] Persist benchmark methodology/results in `.codex/PERFORMANCE.md` or dedicated reports.
 
 ## Phase 17 — Performance acceptance and optimization
 

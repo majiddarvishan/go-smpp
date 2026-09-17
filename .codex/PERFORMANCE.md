@@ -266,3 +266,37 @@ The default end-to-end run uses one session. `SMPP_BENCH_SESSIONS` accepts a com
 The benchmark script is intended to run unchanged on Go 1.26.x/Linux in CI or on dedicated benchmark hosts. CI-runner numbers are useful regression baselines but are **not** the Phase 17 reference-machine acceptance result.
 
 The minimal `cmd/smpp-sim` executable is an SMSC-side high-throughput peer for external/local load generation. It uses the same server/session core, accepts SMPP 3.4 binds, responds to `submit_sm`, handles normal Enquire Link/Unbind lifecycle through the session core, supports TCP or TLS-over-TCP, and emits aggregate statistics rather than per-PDU logs.
+
+## Phase 16 verified CI development baseline
+
+GitHub Actions run `35279555454` executed the Phase 16 laboratory on Go 1.26.8/Linux amd64 using a hosted AMD EPYC runner. The run passed the normal and race test suites, then recorded these diagnostic baselines:
+
+| Path | Sessions | request-PDU/s | allocs/op | bytes/op |
+| --- | ---: | ---: | ---: | ---: |
+| in-memory `net.Pipe` | 1 | ~163,057 | 16 | ~1,165 |
+| in-memory `net.Pipe` | 2 | ~267,359 | 16 | ~1,159 |
+| in-memory `net.Pipe` | 4 | ~309,018 | 16 | ~1,151 |
+| localhost TCP | 1 | ~42,600 | 16 | ~1,176 |
+| localhost TCP | 2 | ~56,261 | 16 | ~1,176 |
+| localhost TCP | 4 | ~60,047 | 16 | ~1,177 |
+| localhost TCP | 8 | ~60,214 | 16 | ~1,177 |
+| localhost TLS | 1 | ~39,674 | 17 | ~1,208 |
+| localhost TLS | 2 | ~52,030 | 18 | ~1,216 |
+| localhost TLS | 4 | ~55,420 | 18 | ~1,219 |
+| localhost TLS | 8 | ~55,499 | 18 | ~1,219 |
+
+Codec baselines remained inexpensive relative to the full session path: complete-frame framing was allocation-free, TLV scanning was allocation-free, and typed submit/deliver decode was one allocation per operation in the recorded run.
+
+The CPU/scheduler profiles show substantial time in Go runtime select/channel scheduling, while the heap profile attributes visible allocation volume to `Session.request`, short-message encoding, response ownership copies, deadline scheduling, and decoded submit/deliver bodies. This is the measured starting point for Phase 17. The hosted runner is not the reference 8-core/10-GB acceptance environment, so these figures must not be presented as the production acceptance result.
+
+## Phase 17 optimization order
+
+The first optimization pass should preserve protocol semantics and target measured costs in this order:
+
+1. reduce per-PDU TX syscall/scheduler overhead using opportunistic bounded batching/coalescing without delaying a packet merely to form a batch;
+2. reduce avoidable request-path allocations while preserving exactly-once response/timeout/cancel/session-loss completion;
+3. re-profile pending/deadline/window contention before replacing the current simple bounded structures;
+4. re-run 1, 2, 4, and only then higher session counts;
+5. perform the final sustained acceptance run on the documented 8-core/10-GB Linux/amd64 host.
+
+Every optimization remains subject to `go test -race`, bounded-memory requirements, fail-closed framing behavior, and the no-hidden-resubmit reconnect rule.
