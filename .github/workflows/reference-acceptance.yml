@@ -1,6 +1,8 @@
 name: SMPP reference performance acceptance
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       duration:
@@ -21,6 +23,7 @@ permissions:
 
 jobs:
   reference-acceptance:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[reference]')
     runs-on: [self-hosted, linux, x64, smpp-reference]
     timeout-minutes: 45
     env:
