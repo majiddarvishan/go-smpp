@@ -19,7 +19,7 @@ import (
 const (
 	DefaultMaxPending          = 1024
 	DefaultTXQueueSize         = 1024
-	DefaultTXBatchItems        = 1
+	DefaultTXBatchItems        = 32
 	DefaultTXBatchBytes        = 64 << 10
 	DefaultReadBufferSize      = 64 << 10
 	DefaultResponseTimeout     = 30 * time.Second

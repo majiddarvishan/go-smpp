@@ -320,6 +320,6 @@ A same-run localhost TCP sweep on the hosted AMD EPYC 9V74 runner measured the s
 | 16 | ~168,177 | 11 | ~983 |
 | 32 | ~182,512 | 11 | ~983 |
 
-This experiment validates opportunistic scatter/gather batching as a material TCP optimization on that development runner. The session default remains 32 queued PDUs, bounded by `TXBatchBytes`; the TX loop does not delay an isolated packet just to fill a batch. Performance-lab defaults now follow the production session default so ordinary smoke/profile runs exercise the measured fast path.
+This experiment validates opportunistic scatter/gather batching as a material TCP optimization on that development runner. Based on this measured sweep, the session default is now 32 queued PDUs, bounded by `TXBatchBytes`; setting `TXBatchItems=1` disables coalescing for peers/workloads where that is preferable. The TX loop does not delay an isolated packet just to fill a batch. Performance-lab defaults now follow the production session default so ordinary smoke/profile runs exercise the measured fast path.
 
 The experiment is still not the Phase 17 acceptance result: the required acceptance host is Linux/amd64 with 8 CPU cores and 10 GB RAM, and sustained memory/goroutine/timeout bounds must also be verified there.

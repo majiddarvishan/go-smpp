@@ -62,6 +62,8 @@ The shared runtime now includes:
 
 The runtime now also includes configurable request windowing/backpressure, shared response deadlines and liveness timers, client reconnect/rebind without ambiguous request replay, and SMSC/server listener/authentication/submit/deliver support with per-connection isolation and configurable session limits.
 
+Plain TCP sessions also use bounded opportunistic TX batching by default (`TXBatchItems=32`, `TXBatchBytes=64 KiB`). Already-queued PDUs can be sent with `net.Buffers` scatter/gather on `*net.TCPConn`; an isolated PDU is never delayed merely to fill a batch, and `TXBatchItems=1` disables batching.
+
 
 ## SMPP 5.0 extensions
 
