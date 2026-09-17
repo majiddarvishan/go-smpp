@@ -1,0 +1,22 @@
+name: Export phase16 base source
+
+on:
+  push:
+    branches: [codex/export-phase16]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare source archive
+        run: |
+          tar --exclude=.git --exclude=.github/workflows/export-phase16.yml -czf /tmp/go-smpp-phase16-base.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-smpp-phase16-base
+          path: /tmp/go-smpp-phase16-base.tar.gz
+          retention-days: 1
