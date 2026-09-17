@@ -22,7 +22,15 @@ jobs:
       - name: Prepare phase inputs
         run: |
           if compgen -G '.codex/phase-patch/P13-*' > /dev/null; then
-            cat .codex/phase-patch/P13-* > /tmp/phase.patch
+            # Four uploaded chunk files contain one transcription byte each.
+            # Reconstruct the exact local phase-13 patch deterministically.
+            head -c -1 .codex/phase-patch/P13-000 > /tmp/phase.patch
+            sed 's#^ diff --git a/codec/smpp34.go#diff --git a/codec/smpp34.go#' .codex/phase-patch/P13-001 >> /tmp/phase.patch
+            cat .codex/phase-patch/P13-00{2,3,4,5,6} >> /tmp/phase.patch
+            head -c -1 .codex/phase-patch/P13-007 >> /tmp/phase.patch
+            cat .codex/phase-patch/P13-008 >> /tmp/phase.patch
+            head -c -1 .codex/phase-patch/P13-009 >> /tmp/phase.patch
+            cat .codex/phase-patch/P13-01{0,1,2} >> /tmp/phase.patch
           elif compgen -G '.codex/phase-patch/PATCH.b64-*' > /dev/null; then
             cat .codex/phase-patch/PATCH.b64-* | base64 -d | gzip -d > /tmp/phase.patch
           else
