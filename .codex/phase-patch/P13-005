@@ -1,0 +1,275 @@
+ with an unknown value.
++	bodyOffset := HeaderSize
++	flagOffset := bodyOffset + 1 + 1 + 1 + 1 + 1
++	if frame[flagOffset] != byte(protocol.DestinationSME) {
++		t.Fatalf("unexpected vector layout: %x", frame)
++	}
++	frame[flagOffset] = 0x7f
++	_, err = DecodePDU(frame, registry)
++	var fatal *protocol.FatalError
++	if !errors.As(err, &fatal) || fatal.Kind != protocol.FatalFrameBoundaryLost {
++		t.Fatalf("want fatal boundary error, got %v", err)
++	}
++}
++
++func TestSMPP34MessagePayloadAndShortMessageRemainExclusiveForSubmitMulti(t *testing.T) {
++	registry := mustSMPP34Registry(t)
++	_, err := EncodePDU(nil, Header{CommandID: protocol.CommandSubmitMulti, SequenceNumber: 1}, protocol.SubmitMulti{
++		Destinations: []protocol.SubmitMultiDestination{{Flag: protocol.DestinationSME, Address: []byte("1")}},
++		ShortMessage: []byte("x"),
++		Optional:     []protocol.OptionalParameter{{Tag: protocol.TLVTagMessagePayload, Value: []byte("y")}},
++	}, registry)
++	if !errors.Is(err, ErrConflictingMessageData) {
++		t.Fatalf("want conflict, got %v", err)
++	}
++}
++
++func TestSMPP34SubmitMultiResponseUsesNetworkOrderStatus(t *testing.T) {
++	registry := mustSMPP34Registry(t)
++	frame, err := EncodePDU(nil, Header{CommandID: protocol.CommandSubmitMultiResp, SequenceNumber: 7}, protocol.SubmitMultiResp{
++		MessageID:    []byte("x"),
++		Unsuccessful: []protocol.UnsuccessfulSME{{DestinationAddr: []byte("1"), ErrorStatusCode: protocol.StatusInvalidDestinationAddress}},
++	}, registry)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Contains(frame, []byte{0x00, 0x00, 0x00, 0x0b}) {
++		t.Fatalf("status not encoded in network order: %x", frame)
++	}
++}
+diff --git a/codec/smpp34_extra.go b/codec/smpp34_extra.go
+new file mode 100644
+index 0000000..9e7a13d
+--- /dev/null
++++ b/codec/smpp34_extra.go
+@@ -0,0 +1,753 @@
++package codec
++
++import (
++	"encoding/binary"
++	"fmt"
++
++	"github.com/majiddarvishan/go-smpp/protocol"
++)
++
++const (
++	maxDataAddressLen = 65
++	maxDLNameLen      = 21
++)
++
++func (r *bodyReader) uint32() (uint32, error) {
++	value, n, err := ReadUint32(r.src[r.off:])
++	if err != nil {
++		return 0, err
++	}
++	r.off += n
++	return value, nil
++}
++
++func decodeDataSM(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	var out protocol.DataSM
++	var err error
++	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil {
++		return nil, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxDataAddressLen); err != nil {
++		return nil, err
++	}
++	ton, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DestAddrTON = protocol.TON(ton)
++	npi, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DestAddrNPI = protocol.NPI(npi)
++	if out.DestinationAddr, err = r.cString(maxDataAddressLen); err != nil {
++		return nil, err
++	}
++	if out.ESMClass, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.RegisteredDelivery, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	coding, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DataCoding = protocol.DataCoding(coding)
++	if out.Optional, err = r.optional(); err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
++func encodeDataSM(dst []byte, value any) ([]byte, error) {
++	var v protocol.DataSM
++	switch typed := value.(type) {
++	case protocol.DataSM:
++		v = typed
++	case *protocol.DataSM:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil DataSM", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.DataSM, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	if dst, err = AppendCString(dst, v.SourceAddr, maxDataAddressLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.DestAddrTON), byte(v.DestAddrNPI))
++	if dst, err = AppendCString(dst, v.DestinationAddr, maxDataAddressLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, v.ESMClass, v.RegisteredDelivery, byte(v.DataCoding))
++	return appendOptional(dst, v.Optional)
++}
++
++func decodeDataSMResp(header Header, body []byte) (any, error) {
++	if len(body) == 0 && !header.CommandStatus.OK() {
++		return protocol.DataSMResp{}, nil
++	}
++	r := bodyReader{src: body}
++	messageID, err := r.cString(maxMessageIDLen)
++	if err != nil {
++		return nil, err
++	}
++	optional, err := r.optional()
++	if err != nil {
++		return nil, err
++	}
++	return protocol.DataSMResp{MessageID: messageID, Optional: optional}, nil
++}
++
++func encodeDataSMResp(dst []byte, value any) ([]byte, error) {
++	switch typed := value.(type) {
++	case nil, protocol.EmptyBody, *protocol.EmptyBody:
++		return dst, nil
++	case protocol.DataSMResp:
++		return appendDataSMResp(dst, typed)
++	case *protocol.DataSMResp:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil DataSMResp", ErrInvalidPDUValue)
++		}
++		return appendDataSMResp(dst, *typed)
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.DataSMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
++	}
++}
++
++func appendDataSMResp(dst []byte, v protocol.DataSMResp) ([]byte, error) {
++	var err error
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	return appendOptional(dst, v.Optional)
++}
++
++func decodeQuerySM(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	messageID, err := r.cString(maxMessageIDLen)
++	if err != nil {
++		return nil, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	sourceAddr, err := r.cString(maxAddressLen)
++	if err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return protocol.QuerySM{MessageID: messageID, SourceAddrTON: protocol.TON(ton), SourceAddrNPI: protocol.NPI(npi), SourceAddr: sourceAddr}, nil
++}
++
++func encodeQuerySM(dst []byte, value any) ([]byte, error) {
++	var v protocol.QuerySM
++	switch typed := value.(type) {
++	case protocol.QuerySM:
++		v = typed
++	case *protocol.QuerySM:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil QuerySM", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.QuerySM, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	return AppendCString(dst, v.SourceAddr, maxAddressLen)
++}
++
++func decodeQuerySMResp(header Header, body []byte) (any, error) {
++	if len(body) == 0 && !header.CommandStatus.OK() {
++		return protocol.QuerySMResp{}, nil
++	}
++	r := bodyReader{src: body}
++	messageID, err := r.cString(maxMessageIDLen)
++	if err != nil {
++		return nil, err
++	}
++	finalDate, err := r.cString(maxTimeFieldLen)
++	if err != nil {
++		return nil, err
++	}
++	state, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	errorCode, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return protocol.QuerySMResp{MessageID: messageID, FinalDate: finalDate, MessageState: protocol.MessageState(state), ErrorCode: errorCode}, nil
++}
++
++func encodeQuerySMResp(dst []byte, value any) ([]byte, error) {
++	var v protocol.QuerySMResp
++	switch typed := value.(type) {
++	case nil, protocol.EmptyBody, *protocol.EmptyBody:
++		return dst, nil
++	case protocol.QuerySMResp:
++		v = typed
++	case *protocol.QuerySMResp:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil QuerySMResp
