@@ -82,6 +82,7 @@ func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte,
 		return dst, nil
 	}
 
+	dst = reservePDUCapacity(dst, header.CommandID, body)
 	start := len(dst)
 	dst = append(dst, make([]byte, HeaderSize)...)
 	dst, err = def.Encode(dst, body)
