@@ -1,0 +1,53 @@
+name: SMPP reference performance acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Sustained acceptance duration
+        required: true
+        default: 60s
+      session_candidates:
+        description: Comma-separated TCP session candidates, smallest first
+        required: true
+        default: 1,2,4
+      callers:
+        description: Fixed concurrent callers
+        required: true
+        default: '128'
+
+permissions:
+  contents: read
+
+jobs:
+  reference-acceptance:
+    runs-on: [self-hosted, linux, x64, smpp-reference]
+    timeout-minutes: 45
+    env:
+      SMPP_ACCEPTANCE_DURATION: ${{ inputs.duration }}
+      SMPP_ACCEPTANCE_SESSIONS: ${{ inputs.session_candidates }}
+      SMPP_ACCEPTANCE_CALLERS: ${{ inputs.callers }}
+      SMPP_ACCEPTANCE_MIN_RPS: '100000'
+      SMPP_BENCH_TX_BATCH: '32'
+      GOMAXPROCS: '8'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+
+      - name: Run reference acceptance
+        run: ./scripts/acceptance.sh .bench/phase17-reference
+
+      - name: Upload reference evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase17-reference-${{ github.sha }}
+          path: .bench/phase17-reference
+          if-no-files-found: warn
+          retention-days: 30

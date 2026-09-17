@@ -47,6 +47,54 @@ jobs:
           SMPP_ACCEPTANCE_MIN_RPS: 1
         run: go test ./internal/perflab -run '^TestPhase17ReferenceAcceptance$' -count=1 -v
 
+      - name: Phase 17 60-second soak
+        if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[soak]')
+        env:
+          SMPP_ACCEPTANCE: 1
+          SMPP_ACCEPTANCE_DURATION: 60s
+          SMPP_ACCEPTANCE_SESSION_COUNT: 1
+          SMPP_ACCEPTANCE_CALLERS: 128
+          SMPP_ACCEPTANCE_MIN_RPS: 100000
+        run: go test ./internal/perflab -run '^TestPhase17ReferenceAcceptance
+        if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[profile]')
+        env:
+          SMPP_BENCH_SESSIONS: 1
+          SMPP_BENCH_PARALLELISM: 16
+          SMPP_BENCH_TX_BATCH: 32
+        run: |
+          go test -run=^$ -bench=BenchmarkLocalhostTCPBidirectional/sessions_1 -benchmem -benchtime=2s ./internal/perflab \
+            -cpuprofile=/tmp/phase17-cpu.pprof \
+            -memprofile=/tmp/phase17-heap.pprof \
+            -mutexprofile=/tmp/phase17-mutex.pprof \
+            -blockprofile=/tmp/phase17-block.pprof
+          echo '=== CPU top ==='
+          go tool pprof -top -nodecount=25 /tmp/phase17-cpu.pprof
+          echo '=== Heap top ==='
+          go tool pprof -top -nodecount=25 /tmp/phase17-heap.pprof
+          echo '=== Mutex top ==='
+          go tool pprof -top -nodecount=25 /tmp/phase17-mutex.pprof
+          echo '=== Block top ==='
+          go tool pprof -top -nodecount=25 /tmp/phase17-block.pprof
+
+      - name: Phase 17 TCP scatter/gather batch experiment
+        if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[batch]')
+        env:
+          SMPP_BENCH_SESSIONS: 1
+          SMPP_BENCH_PARALLELISM: 16
+        run: |
+          for batch in 1 2 4 8 16 32; do
+            echo "=== tx_batch=$batch ==="
+            SMPP_BENCH_TX_BATCH="$batch" go test -run='a^' -bench=BenchmarkLocalhostTCPBidirectional/sessions_1 -benchmem -benchtime=750ms ./internal/perflab
+          done
+ -count=1 -v
+
+      - name: Enforce no direct unsafe imports
+        run: |
+          if go list -f '{{range .Imports}}{{.}}{{"\n"}}{{end}}{{range .TestImports}}{{.}}{{"\n"}}{{end}}{{range .XTestImports}}{{.}}{{"\n"}}{{end}}' ./... | grep -qx unsafe; then
+            echo 'direct import of unsafe is not allowed by the current performance policy' >&2
+            exit 1
+          fi
+
       - name: Phase 17 profiled TCP run
         if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[profile]')
         env:

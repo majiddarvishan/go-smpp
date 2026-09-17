@@ -62,9 +62,9 @@ func TestPhase17ReferenceAcceptance(t *testing.T) {
 
 	var (
 		completed atomic.Uint64
-		firstErr  atomic.Value // error
 		wg        sync.WaitGroup
 	)
+	errCh := make(chan error, 1)
 	wg.Add(callers)
 	for worker := 0; worker < callers; worker++ {
 		worker := worker
@@ -85,7 +85,10 @@ func TestPhase17ReferenceAcceptance(t *testing.T) {
 				}
 				if err != nil {
 					if workerCtx.Err() == nil {
-						firstErr.CompareAndSwap(nil, err)
+						select {
+						case errCh <- err:
+						default:
+						}
 					}
 					return
 				}
@@ -135,8 +138,10 @@ monitor:
 	completedAtStop := completed.Load()
 	close(stop)
 	wg.Wait()
-	if err, _ := firstErr.Load().(error); err != nil {
+	select {
+	case err := <-errCh:
 		t.Fatalf("traffic error: %v", err)
+	default:
 	}
 
 	var requestDelta, responseDelta uint64

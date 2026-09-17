@@ -226,7 +226,7 @@ All of the following must be true on the reference machine:
 - CPU, memory, GC and contention profiles are captured
 - exact build version, Go version, kernel/environment and benchmark configuration are recorded
 
-The sustained run duration and acceptable error threshold will be fixed before Phase 17 and added here.
+The reference acceptance duration is fixed at 60 seconds. Unexpected traffic errors are not accepted; every measured request must receive its required SMPP response. The reference runner starts with one session and increases session count only when the preceding count does not sustain the throughput target.
 
 ## Performance regression policy
 
@@ -353,3 +353,10 @@ window_max=32
 This verifies on the CI development environment that required response processing is present, goroutine growth is tied to fixed workers/session machinery rather than message count, and outstanding timeout/window state remains bounded. The high-outstanding deadline benchmark is also allocation-free in current CI and is well below the end-to-end per-request cost.
 
 These facts do **not** close the final Phase 17 acceptance items. The 60-second 100k target, minimum practical session count, and sustained-memory acceptance must still be executed by `scripts/acceptance.sh` on the documented Linux/amd64 8-core / 10-GB reference host.
+
+
+## Phase 17 acceptance hardening
+
+The acceptance test records the first unexpected traffic error through a bounded non-blocking error channel rather than shared mutable error state. CI also enforces the current no-`unsafe` policy against direct package imports.
+
+A conditional `[soak]` gate runs the same bounded acceptance workload for 60 seconds with one TCP session, 128 fixed callers, all required responses enabled, and a 100k request-PDU/s development threshold. This gate is useful for sustained-memory and goroutine validation, but it remains development evidence rather than the final 8-core/10-GB reference result.
