@@ -1,0 +1,280 @@
+", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.QuerySMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.FinalDate, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	return append(dst, byte(v.MessageState), v.ErrorCode), nil
++}
++
++func decodeCancelSM(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	var out protocol.CancelSM
++	var err error
++	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil {
++		return nil, err
++	}
++	if out.MessageID, err = r.cString(maxMessageIDLen); err != nil {
++		return nil, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil {
++		return nil, err
++	}
++	ton, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DestAddrTON = protocol.TON(ton)
++	npi, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DestAddrNPI = protocol.NPI(npi)
++	if out.DestinationAddr, err = r.cString(maxAddressLen); err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
++func encodeCancelSM(dst []byte, value any) ([]byte, error) {
++	var v protocol.CancelSM
++	switch typed := value.(type) {
++	case protocol.CancelSM:
++		v = typed
++	case *protocol.CancelSM:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil CancelSM", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.CancelSM, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.DestAddrTON), byte(v.DestAddrNPI))
++	return AppendCString(dst, v.DestinationAddr, maxAddressLen)
++}
++
++func decodeReplaceSM(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	var out protocol.ReplaceSM
++	var err error
++	if out.MessageID, err = r.cString(maxMessageIDLen); err != nil {
++		return nil, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil {
++		return nil, err
++	}
++	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil {
++		return nil, err
++	}
++	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil {
++		return nil, err
++	}
++	if out.RegisteredDelivery, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.SMDefaultMsgID, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	smLength, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	if smLength == 255 {
++		return nil, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
++	}
++	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
++func encodeReplaceSM(dst []byte, value any) ([]byte, error) {
++	var v protocol.ReplaceSM
++	switch typed := value.(type) {
++	case protocol.ReplaceSM:
++		v = typed
++	case *protocol.ReplaceSM:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil ReplaceSM", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.ReplaceSM, got %T", ErrInvalidPDUValue, value)
++	}
++	if len(v.ShortMessage) > maxShortMessageLength {
++		return dst, fmt.Errorf("%w: short_message length %d exceeds 254", ErrFieldTooLong, len(v.ShortMessage))
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, v.RegisteredDelivery, v.SMDefaultMsgID, byte(len(v.ShortMessage)))
++	return append(dst, v.ShortMessage...), nil
++}
++
++func decodeAlertNotification(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	var out protocol.AlertNotification
++	var err error
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxDataAddressLen); err != nil {
++		return nil, err
++	}
++	ton, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.ESMEAddrTON = protocol.TON(ton)
++	npi, err = r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.ESMEAddrNPI = protocol.NPI(npi)
++	if out.ESMEAddr, err = r.cString(maxDataAddressLen); err != nil {
++		return nil, err
++	}
++	if out.Optional, err = r.optional(); err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
++func encodeAlertNotification(dst []byte, value any) ([]byte, error) {
++	var v protocol.AlertNotification
++	switch typed := value.(type) {
++	case protocol.AlertNotification:
++		v = typed
++	case *protocol.AlertNotification:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil AlertNotification", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.AlertNotification, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	if dst, err = AppendCString(dst, v.SourceAddr, maxDataAddressLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.ESMEAddrTON), byte(v.ESMEAddrNPI))
++	if dst, err = AppendCString(dst, v.ESMEAddr, maxDataAddressLen); err != nil {
++		return dst, err
++	}
++	return appendOptional(dst, v.Optional)
++}
++
++func decodeOutbind(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil, err
++	}
++	r := bodyReader{src: body}
++	systemID, err := r.cString(maxSystemIDLen)
++	if err != nil {
++		return nil, err
++	}
++	password, err := r.cString(maxPasswordLen)
++	if err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return protocol.Outbind{SystemID: systemID, Password: password}, nil
++}
++
++func encodeOutbind(dst []byte, value any) ([]byte, error) {
++	var v protocol.Outbind
++	switch typed := value.(type) {
++	case protocol.Outbind:
++		v = typed
++	case *protocol.Outbind:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil Outbind", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.Outbind, got %T", ErrInvalidPDUValue, value)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.SystemID, maxSystemIDLen); err != nil {
++		return dst, err
++	}
++	return AppendCString(dst, v.Password, maxPasswordLen)
++}
++
++func decodeSubmitMulti(header Header, body []byte) (any, error) {
++	if err := requestStatusMustBeZero(header); err != nil {
++		return nil
