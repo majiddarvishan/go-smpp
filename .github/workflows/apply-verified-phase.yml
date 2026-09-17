@@ -21,7 +21,9 @@ jobs:
           cache: false
       - name: Prepare phase inputs
         run: |
-          if compgen -G '.codex/phase-patch/PATCH.b64-*' > /dev/null; then
+          if compgen -G '.codex/phase-patch/P13-*' > /dev/null; then
+            cat .codex/phase-patch/P13-* > /tmp/phase.patch
+          elif compgen -G '.codex/phase-patch/PATCH.b64-*' > /dev/null; then
             cat .codex/phase-patch/PATCH.b64-* | base64 -d | gzip -d > /tmp/phase.patch
           else
             cat .codex/phase-patch/part-* > /tmp/phase.patch
