@@ -19,6 +19,8 @@ import (
 const (
 	DefaultMaxPending          = 1024
 	DefaultTXQueueSize         = 1024
+	DefaultTXBatchItems        = 32
+	DefaultTXBatchBytes        = 64 << 10
 	DefaultReadBufferSize      = 64 << 10
 	DefaultResponseTimeout     = 30 * time.Second
 	DefaultSessionInitTimeout  = 30 * time.Second
@@ -76,6 +78,8 @@ type Config struct {
 	EnquireLinkTimeout  time.Duration
 	InactivityTimeout   time.Duration
 	TXQueueSize         int
+	TXBatchItems        int
+	TXBatchBytes        int
 	ReadBufferSize      int
 	Handler             Handler
 	Logger              *slog.Logger
@@ -173,6 +177,12 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	config.InactivityTimeout = defaultDuration(config.InactivityTimeout, DefaultInactivityTimeout)
 	if config.TXQueueSize <= 0 {
 		config.TXQueueSize = DefaultTXQueueSize
+	}
+	if config.TXBatchItems <= 0 {
+		config.TXBatchItems = DefaultTXBatchItems
+	}
+	if config.TXBatchBytes <= 0 {
+		config.TXBatchBytes = DefaultTXBatchBytes
 	}
 	if config.ReadBufferSize <= 0 {
 		config.ReadBufferSize = DefaultReadBufferSize
@@ -764,31 +774,80 @@ func (s *Session) rxLoop() {
 
 func (s *Session) txLoop() {
 	defer s.wg.Done()
+
+	// Opportunistically coalesce only work that is already queued. The TX loop
+	// never waits to form a batch, so an isolated PDU keeps the same latency
+	// behavior while bursts can amortize channel scheduling and TCP write
+	// syscalls. The bounds are per session and configurable.
+	batch := make([]txItem, 0, s.config.TXBatchItems)
+	writeBuffer := make([]byte, 0, s.config.TXBatchBytes)
+
 	for {
+		batch = batch[:0]
 		select {
 		case item := <-s.tx:
-			if item.kind == txRequest && !s.pending.exists(item.sequence) {
-				continue
+			if s.txItemActive(item) {
+				batch = append(batch, item)
 			}
-			// Commit a peer lifecycle decision before the response bytes become
-			// observable. This removes the bind-response race where a fast peer
-			// receives bind_resp and immediately sends its first bound-state PDU
-			// before the local TX goroutine has updated session state. If the write
-			// then fails, terminate closes the already-committed session anyway.
+		case <-s.done:
+			return
+		}
+		if len(batch) == 0 {
+			continue
+		}
+
+		batchBytes := len(batch[0].frame)
+		terminal := txItemTerminatesAfterWrite(batch[0])
+		for !terminal && len(batch) < s.config.TXBatchItems && batchBytes < s.config.TXBatchBytes {
+			select {
+			case item := <-s.tx:
+				if !s.txItemActive(item) {
+					continue
+				}
+				batch = append(batch, item)
+				batchBytes += len(item.frame)
+				terminal = txItemTerminatesAfterWrite(item)
+			default:
+				terminal = true // stop draining; do not wait for more work
+			}
+		}
+
+		// Lifecycle state must be committed before a response becomes visible on
+		// the wire. This preserves the existing bind-response race guarantee even
+		// when several already-queued PDUs share one transport write.
+		for i := range batch {
+			item := &batch[i]
 			if item.kind == txResponse && item.responseTo != 0 {
 				s.machine.CompleteInbound(item.responseTo, item.status)
 			}
-			if err := transport.WriteFull(s.conn, item.frame); err != nil {
-				if item.dispatched != nil {
-					item.dispatched <- err
-				}
-				s.terminate(err)
-				return
+		}
+
+		var err error
+		if len(batch) == 1 {
+			err = transport.WriteFull(s.conn, batch[0].frame)
+		} else {
+			writeBuffer = writeBuffer[:0]
+			for i := range batch {
+				writeBuffer = append(writeBuffer, batch[i].frame...)
 			}
-			now := time.Now()
-			s.noteActivityAt(now)
+			err = transport.WriteFull(s.conn, writeBuffer)
+		}
+		if err != nil {
+			for i := range batch {
+				if batch[i].dispatched != nil {
+					batch[i].dispatched <- err
+				}
+			}
+			s.terminate(err)
+			return
+		}
+
+		now := time.Now()
+		s.noteActivityAt(now)
+		for i := range batch {
+			item := &batch[i]
 			s.tracePacket(PacketOutbound, item.header, item.frame)
-			s.observeOutbound(item, now)
+			s.observeOutbound(*item, now)
 			if item.kind == txRequest && item.pending != nil {
 				if rtt, ok := item.pending.markDispatchAt(now); ok {
 					s.observeRTT(item.pending, item.sequence, rtt)
@@ -805,14 +864,20 @@ func (s *Session) txLoop() {
 				}
 				continue
 			}
-			if item.responseTo == protocol.CommandUnbind && item.status.OK() {
+			if txItemTerminatesAfterWrite(*item) {
 				s.terminate(ErrSessionClosed)
 				return
 			}
-		case <-s.done:
-			return
 		}
 	}
+}
+
+func (s *Session) txItemActive(item txItem) bool {
+	return item.kind != txRequest || s.pending.exists(item.sequence)
+}
+
+func txItemTerminatesAfterWrite(item txItem) bool {
+	return item.kind == txResponse && item.responseTo == protocol.CommandUnbind && item.status.OK()
 }
 
 func (s *Session) observeOutbound(item txItem, at time.Time) {
