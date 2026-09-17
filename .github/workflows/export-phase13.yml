@@ -1,4 +1,4 @@
-name: Export phase13 source
+name: Export current main source
 on:
   push:
     branches: [ codex/export-phase13 ]
@@ -9,10 +9,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 1
       - name: Pack source
-        run: tar --exclude=.git -czf /tmp/go-smpp-phase13-source.tar.gz .
+        run: tar --exclude=.git -czf /tmp/go-smpp-main-source.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
-          name: go-smpp-phase13-source
-          path: /tmp/go-smpp-phase13-source.tar.gz
+          name: go-smpp-main-source
+          path: /tmp/go-smpp-main-source.tar.gz
           retention-days: 1
