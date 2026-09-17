@@ -331,3 +331,25 @@ The experiment is still not the Phase 17 acceptance result: the required accepta
 The sustained test starts at one TCP session, uses fixed concurrent load-generator workers, samples heap/goroutine/outstanding-work bounds, requires every request to receive its SMPP response, and rejects unexpected traffic errors. The script then tries 2 and 4 sessions only if the preceding count fails the configured throughput target. After the first passing count it captures CPU, heap, mutex, and block profiles and records the exact environment and commit.
 
 Default final settings are a 60-second sustained window, 100,000 request-PDU/s minimum, 128 fixed callers, and the measured TX batch of 32. These defaults may be overridden for diagnostics, but a production acceptance report must state any override explicitly.
+
+
+## Phase 17 bounded-load CI checkpoint
+
+After enabling the measured batch-32 default and bounded request-completion channel reuse, CI run `35286044522` passed unit tests, race tests, the performance smoke matrix, and a sustained resource-bound smoke. The resource smoke ran one localhost TCP SMPP session with 64 fixed callers for 2 seconds and reported:
+
+```text
+request_pdu_s=205425
+completed=410878
+requests=410942
+responses=410942
+goroutines_baseline=10
+goroutines_max=74
+heap_peak_mib=3
+heap_retained_growth_mib=0
+pending_max=32
+window_max=32
+```
+
+This verifies on the CI development environment that required response processing is present, goroutine growth is tied to fixed workers/session machinery rather than message count, and outstanding timeout/window state remains bounded. The high-outstanding deadline benchmark is also allocation-free in current CI and is well below the end-to-end per-request cost.
+
+These facts do **not** close the final Phase 17 acceptance items. The 60-second 100k target, minimum practical session count, and sustained-memory acceptance must still be executed by `scripts/acceptance.sh` on the documented Linux/amd64 8-core / 10-GB reference host.

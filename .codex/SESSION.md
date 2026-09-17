@@ -151,6 +151,10 @@ The first Phase 17 profile showed the single-session localhost TCP path dominate
 
 The response-deadline record is now embedded in `pendingRequest`, the dispatch/receive timestamps are reused, caller parallelism is configurable in the benchmark lab, and the deadline microbenchmark has reached zero allocations in recent CI runs. An attempted outbound frame `sync.Pool` optimization was reverted after CI showed it increased bytes/op and allocations/op; Phase 17 remains profile-driven rather than keeping regressions.
 
+
+
+The Phase 17 short sustained CI checkpoint now verifies all mandatory SMPP responses, fixed-worker goroutine bounds, bounded pending/window state, and zero retained heap growth after GC in the sampled run. `PLAN.md` marks those non-reference-specific checks complete. Final 100k/minimum-session/sustained-memory acceptance remains open until `scripts/acceptance.sh` runs on the actual 8-core/10-GB reference environment.
+
 ## Exact next task
 
 Continue **Phase 17 — Performance acceptance and optimization** from `PLAN.md`. Re-profile the one-session localhost TCP path with the measured batch-32 scatter/gather fast path, then target the remaining request/response allocation and synchronization costs. Keep the 100k acceptance checkbox open until the documented Linux/amd64 8-core / 10-GB reference environment sustains the target with bounded memory/timeouts and the minimum practical session count.
