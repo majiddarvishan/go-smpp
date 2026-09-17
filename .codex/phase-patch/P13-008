@@ -1,0 +1,227 @@
+uint16 = 0x020C
+-	TLVTagSARTotalSegments   uint16 = 0x020E
+-	TLVTagSARSegmentSeqnum   uint16 = 0x020F
+-	TLVTagSCInterfaceVersion uint16 = 0x0210
+-	TLVTagMessagePayload     uint16 = 0x0424
++	TLVTagDestAddrSubunit          uint16 = 0x0005
++	TLVTagDestNetworkType          uint16 = 0x0006
++	TLVTagDestBearerType           uint16 = 0x0007
++	TLVTagDestTelematicsID         uint16 = 0x0008
++	TLVTagSourceAddrSubunit        uint16 = 0x000D
++	TLVTagSourceNetworkType        uint16 = 0x000E
++	TLVTagSourceBearerType         uint16 = 0x000F
++	TLVTagSourceTelematicsID       uint16 = 0x0010
++	TLVTagQOSTimeToLive            uint16 = 0x0017
++	TLVTagPayloadType              uint16 = 0x0019
++	TLVTagAdditionalStatusInfoText uint16 = 0x001D
++	TLVTagReceiptedMessageID       uint16 = 0x001E
++	TLVTagMSMsgWaitFacilities      uint16 = 0x0030
++	TLVTagPrivacyIndicator         uint16 = 0x0201
++	TLVTagSourceSubaddress         uint16 = 0x0202
++	TLVTagDestSubaddress           uint16 = 0x0203
++	TLVTagUserMessageReference     uint16 = 0x0204
++	TLVTagUserResponseCode         uint16 = 0x0205
++	TLVTagSourcePort               uint16 = 0x020A
++	TLVTagDestinationPort          uint16 = 0x020B
++	TLVTagSARMsgRefNum             uint16 = 0x020C
++	TLVTagLanguageIndicator        uint16 = 0x020D
++	TLVTagSARTotalSegments         uint16 = 0x020E
++	TLVTagSARSegmentSeqnum         uint16 = 0x020F
++	TLVTagSCInterfaceVersion       uint16 = 0x0210
++	TLVTagCallbackNumPresInd       uint16 = 0x0302
++	TLVTagCallbackNumAtag          uint16 = 0x0303
++	TLVTagNumberOfMessages         uint16 = 0x0304
++	TLVTagCallbackNum              uint16 = 0x0381
++	TLVTagDPFResult                uint16 = 0x0420
++	TLVTagSetDPF                   uint16 = 0x0421
++	TLVTagMSAvailabilityStatus     uint16 = 0x0422
++	TLVTagNetworkErrorCode         uint16 = 0x0423
++	TLVTagMessagePayload           uint16 = 0x0424
++	TLVTagDeliveryFailureReason    uint16 = 0x0425
++	TLVTagMoreMessagesToSend       uint16 = 0x0426
++	TLVTagMessageState             uint16 = 0x0427
++	TLVTagUSSDServiceOp            uint16 = 0x0501
++	TLVTagDisplayTime              uint16 = 0x1201
++	TLVTagSMSSignal                uint16 = 0x1203
++	TLVTagMSValidity               uint16 = 0x1204
++	TLVTagAlertOnMessageDelivery   uint16 = 0x130C
++	TLVTagITSReplyType             uint16 = 0x1380
++	TLVTagITSSessionInfo           uint16 = 0x1383
+ )
+ 
+ // BindRequest is the common body used by bind_transmitter, bind_receiver and
+diff --git a/protocol/pdu34_extra.go b/protocol/pdu34_extra.go
+new file mode 100644
+index 0000000..88add1e
+--- /dev/null
++++ b/protocol/pdu34_extra.go
+@@ -0,0 +1,146 @@
++package protocol
++
++// MessageState is the SMPP 3.4 query_sm_resp message_state value.
++type MessageState uint8
++
++const (
++	MessageStateEnroute       MessageState = 1
++	MessageStateDelivered     MessageState = 2
++	MessageStateExpired       MessageState = 3
++	MessageStateDeleted       MessageState = 4
++	MessageStateUndeliverable MessageState = 5
++	MessageStateAccepted      MessageState = 6
++	MessageStateUnknown       MessageState = 7
++	MessageStateRejected      MessageState = 8
++)
++
++// DestinationFlag identifies the submit_multi destination representation.
++type DestinationFlag uint8
++
++const (
++	DestinationSME              DestinationFlag = 1
++	DestinationDistributionList DestinationFlag = 2
++)
++
++// SubmitMultiDestination is one submit_multi destination. For DestinationSME,
++// TON/NPI and Address are encoded. For DestinationDistributionList, Address is
++// the distribution-list name and TON/NPI are ignored.
++type SubmitMultiDestination struct {
++	Flag    DestinationFlag
++	TON     TON
++	NPI     NPI
++	Address []byte
++}
++
++// UnsuccessfulSME is one submit_multi_resp unsuccessful destination entry.
++type UnsuccessfulSME struct {
++	DestAddrTON     TON
++	DestAddrNPI     NPI
++	DestinationAddr []byte
++	ErrorStatusCode CommandStatus
++}
++
++// SubmitMulti is the SMPP 3.4 submit_multi mandatory body plus ordered TLVs.
++type SubmitMulti struct {
++	ServiceType          []byte
++	SourceAddrTON        TON
++	SourceAddrNPI        NPI
++	SourceAddr           []byte
++	Destinations         []SubmitMultiDestination
++	ESMClass             uint8
++	ProtocolID           uint8
++	PriorityFlag         uint8
++	ScheduleDeliveryTime []byte
++	ValidityPeriod       []byte
++	RegisteredDelivery   uint8
++	ReplaceIfPresentFlag uint8
++	DataCoding           DataCoding
++	SMDefaultMsgID       uint8
++	ShortMessage         []byte
++	Optional             []OptionalParameter
++}
++
++// SubmitMultiResp is the SMPP 3.4 submit_multi_resp body.
++type SubmitMultiResp struct {
++	MessageID    []byte
++	Unsuccessful []UnsuccessfulSME
++}
++
++// DataSM is the SMPP 3.4 data_sm mandatory body plus ordered TLVs.
++type DataSM struct {
++	ServiceType        []byte
++	SourceAddrTON      TON
++	SourceAddrNPI      NPI
++	SourceAddr         []byte
++	DestAddrTON        TON
++	DestAddrNPI        NPI
++	DestinationAddr    []byte
++	ESMClass           uint8
++	RegisteredDelivery uint8
++	DataCoding         DataCoding
++	Optional           []OptionalParameter
++}
++
++// DataSMResp is the SMPP 3.4 data_sm_resp body plus ordered TLVs.
++type DataSMResp struct {
++	MessageID []byte
++	Optional  []OptionalParameter
++}
++
++// QuerySM is the SMPP 3.4 query_sm body.
++type QuerySM struct {
++	MessageID     []byte
++	SourceAddrTON TON
++	SourceAddrNPI NPI
++	SourceAddr    []byte
++}
++
++// QuerySMResp is the SMPP 3.4 query_sm_resp body.
++type QuerySMResp struct {
++	MessageID    []byte
++	FinalDate    []byte
++	MessageState MessageState
++	ErrorCode    uint8
++}
++
++// CancelSM is the SMPP 3.4 cancel_sm body.
++type CancelSM struct {
++	ServiceType     []byte
++	MessageID       []byte
++	SourceAddrTON   TON
++	SourceAddrNPI   NPI
++	SourceAddr      []byte
++	DestAddrTON     TON
++	DestAddrNPI     NPI
++	DestinationAddr []byte
++}
++
++// ReplaceSM is the SMPP 3.4 replace_sm body.
++type ReplaceSM struct {
++	MessageID            []byte
++	SourceAddrTON        TON
++	SourceAddrNPI        NPI
++	SourceAddr           []byte
++	ScheduleDeliveryTime []byte
++	ValidityPeriod       []byte
++	RegisteredDelivery   uint8
++	SMDefaultMsgID       uint8
++	ShortMessage         []byte
++}
++
++// AlertNotification is the one-way SMPP 3.4 alert_notification body.
++type AlertNotification struct {
++	SourceAddrTON TON
++	SourceAddrNPI NPI
++	SourceAddr    []byte
++	ESMEAddrTON   TON
++	ESMEAddrNPI   NPI
++	ESMEAddr      []byte
++	Optional      []OptionalParameter
++}
++
++// Outbind is the one-way SMPP 3.4 outbind body.
++type Outbind struct {
++	SystemID []byte
++	Password []byte
++}
+diff --git a/protocol/smpp34_conformance_test.go b/protocol/smpp34_conformance_test.go
+new file mode 100644
+index 0000000..d4d6310
+--- /dev/null
++++ b/protocol/smpp34_conformance_test.go
+@@ -0,0 +1,53 @@
++package protocol
++
++import "testing"
++
++func TestSMPP34CommandStatusValues(t *testing.T) {
++	values := map[CommandStatus]uint32{
++		StatusOK: 0x00000000, StatusInvalidMessageLength: 0x00000001, StatusInvalidCommandLength: 0x00000002,
++		StatusInvalidCommandID: 0x00000003, StatusInvalidBindState: 0x00000004, StatusAlreadyBound: 0x00000005,
++		StatusInvalidPriorityFlag: 0x00000006, StatusInvalidRegisteredDeliveryFlag: 0x00000007, StatusSystemError: 0x00000008,
++		StatusInvalidSourceAddress: 0x0000000A, StatusInvalidDestinationAddress: 0x0000000B, StatusInvalidMessageID: 0x0000000C,
++		StatusBindFailed: 0x0000000D, StatusInvalidPassword: 0x0000000E, StatusInvalidSystemID: 0x0000000F,
++		StatusCancelFailed: 0x00000011, StatusReplaceFailed: 0x00000013, StatusMessageQueueFull: 0x00000014,
++		StatusInvalidServiceType: 0x00000015, StatusInvalidNumberOfDestinations: 0x00000033, StatusInvalidDistributionListName: 0x00000034,
++		StatusInvalidDestinationFlag: 0x00000040, StatusInvalidSubmitWithReplace: 0x00000042, StatusInvalidESMClass: 0x00000043,
++		StatusCannotSubmitToDistributionList: 0x00000044, StatusSubmitFailed: 0x00000045, StatusInvalidSourceTON: 0x00000048,
++		StatusInvalidSourceNPI: 0x00000049, StatusInvalidDestinationTON: 0x00000050, StatusInvalidDestinationNPI: 0x00000051,
++		Status
