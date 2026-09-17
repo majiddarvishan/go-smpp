@@ -1,0 +1,254 @@
+, err
++	}
++	r := bodyReader{src: body}
++	var out protocol.SubmitMulti
++	var err error
++	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil {
++		return nil, err
++	}
++	ton, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrTON = protocol.TON(ton)
++	npi, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.SourceAddrNPI = protocol.NPI(npi)
++	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil {
++		return nil, err
++	}
++	count, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	if count == 0 || count == 255 {
++		return nil, fmt.Errorf("%w: number_of_dests must be 1..254", ErrInvalidPDUValue)
++	}
++	out.Destinations = make([]protocol.SubmitMultiDestination, 0, int(count))
++	for i := 0; i < int(count); i++ {
++		flag, err := r.uint8()
++		if err != nil {
++			return nil, err
++		}
++		destination := protocol.SubmitMultiDestination{Flag: protocol.DestinationFlag(flag)}
++		switch destination.Flag {
++		case protocol.DestinationSME:
++			ton, err := r.uint8()
++			if err != nil {
++				return nil, err
++			}
++			destination.TON = protocol.TON(ton)
++			npi, err := r.uint8()
++			if err != nil {
++				return nil, err
++			}
++			destination.NPI = protocol.NPI(npi)
++			if destination.Address, err = r.cString(maxAddressLen); err != nil {
++				return nil, err
++			}
++		case protocol.DestinationDistributionList:
++			if destination.Address, err = r.cString(maxDLNameLen); err != nil {
++				return nil, err
++			}
++		default:
++			return nil, &protocol.FatalError{
++				Kind:           protocol.FatalFrameBoundaryLost,
++				DeclaredLength: header.CommandLength,
++				Command:        header.CommandID,
++				Sequence:       header.SequenceNumber,
++				Reason:         fmt.Sprintf("unknown submit_multi dest_flag %d makes destination structure ambiguous", flag),
++			}
++		}
++		out.Destinations = append(out.Destinations, destination)
++	}
++	if out.ESMClass, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.ProtocolID, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.PriorityFlag, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil {
++		return nil, err
++	}
++	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil {
++		return nil, err
++	}
++	if out.RegisteredDelivery, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	if out.ReplaceIfPresentFlag, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	coding, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	out.DataCoding = protocol.DataCoding(coding)
++	if out.SMDefaultMsgID, err = r.uint8(); err != nil {
++		return nil, err
++	}
++	smLength, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	if smLength == 255 {
++		return nil, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
++	}
++	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
++		return nil, err
++	}
++	if out.Optional, err = r.optional(); err != nil {
++		return nil, err
++	}
++	if hasNonEmptyMessagePayload(out.Optional) && len(out.ShortMessage) != 0 {
++		return nil, ErrConflictingMessageData
++	}
++	return out, nil
++}
++
++func encodeSubmitMulti(dst []byte, value any) ([]byte, error) {
++	var v protocol.SubmitMulti
++	switch typed := value.(type) {
++	case protocol.SubmitMulti:
++		v = typed
++	case *protocol.SubmitMulti:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil SubmitMulti", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.SubmitMulti, got %T", ErrInvalidPDUValue, value)
++	}
++	if len(v.Destinations) == 0 || len(v.Destinations) > 254 {
++		return dst, fmt.Errorf("%w: submit_multi destinations must be 1..254", ErrInvalidPDUValue)
++	}
++	if len(v.ShortMessage) > maxShortMessageLength {
++		return dst, fmt.Errorf("%w: short_message length %d exceeds 254", ErrFieldTooLong, len(v.ShortMessage))
++	}
++	if hasNonEmptyMessagePayload(v.Optional) && len(v.ShortMessage) != 0 {
++		return dst, ErrConflictingMessageData
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
++	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(len(v.Destinations)))
++	for _, destination := range v.Destinations {
++		dst = append(dst, byte(destination.Flag))
++		switch destination.Flag {
++		case protocol.DestinationSME:
++			dst = append(dst, byte(destination.TON), byte(destination.NPI))
++			if dst, err = AppendCString(dst, destination.Address, maxAddressLen); err != nil {
++				return dst, err
++			}
++		case protocol.DestinationDistributionList:
++			if dst, err = AppendCString(dst, destination.Address, maxDLNameLen); err != nil {
++				return dst, err
++			}
++		default:
++			return dst, fmt.Errorf("%w: invalid submit_multi dest_flag %d", ErrInvalidPDUValue, destination.Flag)
++		}
++	}
++	dst = append(dst, v.ESMClass, v.ProtocolID, v.PriorityFlag)
++	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, v.RegisteredDelivery, v.ReplaceIfPresentFlag, byte(v.DataCoding), v.SMDefaultMsgID, byte(len(v.ShortMessage)))
++	dst = append(dst, v.ShortMessage...)
++	return appendOptional(dst, v.Optional)
++}
++
++func decodeSubmitMultiResp(header Header, body []byte) (any, error) {
++	if len(body) == 0 && !header.CommandStatus.OK() {
++		return protocol.SubmitMultiResp{}, nil
++	}
++	r := bodyReader{src: body}
++	messageID, err := r.cString(maxMessageIDLen)
++	if err != nil {
++		return nil, err
++	}
++	count, err := r.uint8()
++	if err != nil {
++		return nil, err
++	}
++	unsuccessful := make([]protocol.UnsuccessfulSME, 0, int(count))
++	for i := 0; i < int(count); i++ {
++		ton, err := r.uint8()
++		if err != nil {
++			return nil, err
++		}
++		npi, err := r.uint8()
++		if err != nil {
++			return nil, err
++		}
++		address, err := r.cString(maxAddressLen)
++		if err != nil {
++			return nil, err
++		}
++		status, err := r.uint32()
++		if err != nil {
++			return nil, err
++		}
++		unsuccessful = append(unsuccessful, protocol.UnsuccessfulSME{
++			DestAddrTON: protocol.TON(ton), DestAddrNPI: protocol.NPI(npi), DestinationAddr: address, ErrorStatusCode: protocol.CommandStatus(status),
++		})
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
++	return protocol.SubmitMultiResp{MessageID: messageID, Unsuccessful: unsuccessful}, nil
++}
++
++func encodeSubmitMultiResp(dst []byte, value any) ([]byte, error) {
++	var v protocol.SubmitMultiResp
++	switch typed := value.(type) {
++	case nil, protocol.EmptyBody, *protocol.EmptyBody:
++		return dst, nil
++	case protocol.SubmitMultiResp:
++		v = typed
++	case *protocol.SubmitMultiResp:
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil SubmitMultiResp", ErrInvalidPDUValue)
++		}
++		v = *typed
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.SubmitMultiResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
++	}
++	if len(v.Unsuccessful) > 255 {
++		return dst, fmt.Errorf("%w: no_unsuccess exceeds 255", ErrInvalidPDUValue)
++	}
++	var err error
++	if dst, err = AppendCString(dst, v.MessageID, maxMessageIDLen); err != nil {
++		return dst, err
++	}
++	dst = append(dst, byte(len(v.Unsuccessful)))
++	for _, unsuccessful := range v.Unsuccessful {
++		dst = append(dst, byte(unsuccessful.DestAddrTON), byte(unsuccessful.DestAddrNPI))
++		if dst, err = AppendCString(dst, unsuccessful.DestinationAddr, maxAddressLen); err != nil {
++			return dst, err
++		}
++		dst = binary.BigEndian.AppendUint32(dst, uint32(unsuccessful.ErrorStatusCode))
++	}
++	return dst, nil
++}
+diff --git a/protocol/pdu.go b/protocol/pdu.go
+index 52455dd..f334753 100644
+--- a/protocol/pdu.go
++++ b/protocol/pdu.go
+@@ -9,11 +9,50 @@ type OptionalParameter struct {
+ }
+ 
+ const (
+-	TLVTagSARMsgRefNum        
