@@ -1,0 +1,187 @@
+tMessage) != 0 {
+ 		return out, ErrConflictingMessageData
+ 	}
+@@ -355,14 +463,24 @@ func appendShortMessageBody(dst []byte, v shortMessageBody) ([]byte, error) {
+ 		return dst, ErrConflictingMessageData
+ 	}
+ 	var err error
+-	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil {
++		return dst, err
++	}
+ 	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
+-	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil {
++		return dst, err
++	}
+ 	dst = append(dst, byte(v.DestAddrTON), byte(v.DestAddrNPI))
+-	if dst, err = AppendCString(dst, v.DestinationAddr, maxAddressLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.DestinationAddr, maxAddressLen); err != nil {
++		return dst, err
++	}
+ 	dst = append(dst, v.ESMClass, v.ProtocolID, v.PriorityFlag)
+-	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil { return dst, err }
+-	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil { return dst, err }
++	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
++	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil {
++		return dst, err
++	}
+ 	dst = append(dst, v.RegisteredDelivery, v.ReplaceIfPresentFlag, byte(v.DataCoding), v.SMDefaultMsgID, byte(len(v.ShortMessage)))
+ 	dst = append(dst, v.ShortMessage...)
+ 	return appendOptional(dst, v.Optional)
+@@ -370,7 +488,9 @@ func appendShortMessageBody(dst []byte, v shortMessageBody) ([]byte, error) {
+ 
+ func decodeSubmitSM(header Header, body []byte) (any, error) {
+ 	decoded, err := decodeShortMessageBody(header, body)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	return protocol.SubmitSM{
+ 		ServiceType: decoded.ServiceType, SourceAddrTON: decoded.SourceAddrTON, SourceAddrNPI: decoded.SourceAddrNPI,
+ 		SourceAddr: decoded.SourceAddr, DestAddrTON: decoded.DestAddrTON, DestAddrNPI: decoded.DestAddrNPI,
+@@ -384,11 +504,15 @@ func decodeSubmitSM(header Header, body []byte) (any, error) {
+ func encodeSubmitSM(dst []byte, value any) ([]byte, error) {
+ 	var v protocol.SubmitSM
+ 	switch typed := value.(type) {
+-	case protocol.SubmitSM: v = typed
++	case protocol.SubmitSM:
++		v = typed
+ 	case *protocol.SubmitSM:
+-		if typed == nil { return dst, fmt.Errorf("%w: nil SubmitSM", ErrInvalidPDUValue) }
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil SubmitSM", ErrInvalidPDUValue)
++		}
+ 		v = *typed
+-	default: return dst, fmt.Errorf("%w: expected protocol.SubmitSM, got %T", ErrInvalidPDUValue, value)
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.SubmitSM, got %T", ErrInvalidPDUValue, value)
+ 	}
+ 	return appendShortMessageBody(dst, shortMessageBody{
+ 		ServiceType: v.ServiceType, SourceAddrTON: v.SourceAddrTON, SourceAddrNPI: v.SourceAddrNPI, SourceAddr: v.SourceAddr,
+@@ -402,7 +526,9 @@ func encodeSubmitSM(dst []byte, value any) ([]byte, error) {
+ 
+ func decodeDeliverSM(header Header, body []byte) (any, error) {
+ 	decoded, err := decodeShortMessageBody(header, body)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	return protocol.DeliverSM{
+ 		ServiceType: decoded.ServiceType, SourceAddrTON: decoded.SourceAddrTON, SourceAddrNPI: decoded.SourceAddrNPI,
+ 		SourceAddr: decoded.SourceAddr, DestAddrTON: decoded.DestAddrTON, DestAddrNPI: decoded.DestAddrNPI,
+@@ -416,11 +542,15 @@ func decodeDeliverSM(header Header, body []byte) (any, error) {
+ func encodeDeliverSM(dst []byte, value any) ([]byte, error) {
+ 	var v protocol.DeliverSM
+ 	switch typed := value.(type) {
+-	case protocol.DeliverSM: v = typed
++	case protocol.DeliverSM:
++		v = typed
+ 	case *protocol.DeliverSM:
+-		if typed == nil { return dst, fmt.Errorf("%w: nil DeliverSM", ErrInvalidPDUValue) }
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil DeliverSM", ErrInvalidPDUValue)
++		}
+ 		v = *typed
+-	default: return dst, fmt.Errorf("%w: expected protocol.DeliverSM, got %T", ErrInvalidPDUValue, value)
++	default:
++		return dst, fmt.Errorf("%w: expected protocol.DeliverSM, got %T", ErrInvalidPDUValue, value)
+ 	}
+ 	return appendShortMessageBody(dst, shortMessageBody{
+ 		ServiceType: v.ServiceType, SourceAddrTON: v.SourceAddrTON, SourceAddrNPI: v.SourceAddrNPI, SourceAddr: v.SourceAddr,
+@@ -441,8 +571,12 @@ func decodeSubmitSMResp(header Header, body []byte) (any, error) {
+ 	}
+ 	r := bodyReader{src: body}
+ 	messageID, err := r.cString(maxMessageIDLen)
+-	if err != nil { return nil, err }
+-	if err := r.requireDone(); err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
+ 	return protocol.SubmitSMResp{MessageID: messageID}, nil
+ }
+ 
+@@ -453,7 +587,9 @@ func encodeSubmitSMResp(dst []byte, value any) ([]byte, error) {
+ 	case protocol.SubmitSMResp:
+ 		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
+ 	case *protocol.SubmitSMResp:
+-		if typed == nil { return dst, fmt.Errorf("%w: nil SubmitSMResp", ErrInvalidPDUValue) }
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil SubmitSMResp", ErrInvalidPDUValue)
++		}
+ 		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
+ 	default:
+ 		return dst, fmt.Errorf("%w: expected protocol.SubmitSMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
+@@ -469,8 +605,12 @@ func decodeDeliverSMResp(_ Header, body []byte) (any, error) {
+ 	}
+ 	r := bodyReader{src: body}
+ 	messageID, err := r.cString(maxMessageIDLen)
+-	if err != nil { return nil, err }
+-	if err := r.requireDone(); err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
++	if err := r.requireDone(); err != nil {
++		return nil, err
++	}
+ 	return protocol.DeliverSMResp{MessageID: messageID}, nil
+ }
+ 
+@@ -482,7 +622,9 @@ func encodeDeliverSMResp(dst []byte, value any) ([]byte, error) {
+ 	case protocol.DeliverSMResp:
+ 		messageID = typed.MessageID
+ 	case *protocol.DeliverSMResp:
+-		if typed == nil { return dst, fmt.Errorf("%w: nil DeliverSMResp", ErrInvalidPDUValue) }
++		if typed == nil {
++			return dst, fmt.Errorf("%w: nil DeliverSMResp", ErrInvalidPDUValue)
++		}
+ 		messageID = typed.MessageID
+ 	default:
+ 		return dst, fmt.Errorf("%w: expected protocol.DeliverSMResp, got %T", ErrInvalidPDUValue, value)
+diff --git a/codec/smpp34_completeness_test.go b/codec/smpp34_completeness_test.go
+new file mode 100644
+index 0000000..cbfe493
+--- /dev/null
++++ b/codec/smpp34_completeness_test.go
+@@ -0,0 +1,207 @@
++package codec
++
++import (
++	"bytes"
++	"errors"
++	"testing"
++
++	"github.com/majiddarvishan/go-smpp/protocol"
++)
++
++func TestSMPP34RegistryCompleteCommandSet(t *testing.T) {
++	registry := mustSMPP34Registry(t)
++	commands := []protocol.CommandID{
++		protocol.CommandGenericNACK,
++		protocol.CommandBindReceiver, protocol.CommandBindReceiverResp,
++		protocol.CommandBindTransmitter, protocol.CommandBindTransmitterResp,
++		protocol.CommandQuerySM, protocol.CommandQuerySMResp,
++		protocol.CommandSubmitSM, protocol.CommandSubmitSMResp,
++		protocol.CommandDeliverSM, protocol.CommandDeliverSMResp,
++		protocol.CommandUnbind, protocol.CommandUnbindResp,
++		protocol.CommandReplaceSM, protocol.CommandReplaceSMResp,
++		protocol.CommandCancelSM, protocol.CommandCancelSMResp,
++		protocol.CommandBindTransceiver, protocol.CommandBindTransceiverResp,
++		protocol.CommandOutbind,
++		protocol.CommandEnquireLink, protocol.CommandEnquireLinkResp,
++		protocol.CommandSubmitMulti, protocol.CommandSubmitMultiResp,
++		protocol.CommandAlertNotification,
++		protocol.CommandDataSM, protocol.CommandDataSMResp,
++	}
++	if len(commands) != 27 {
++		t.Fatalf("test command matrix has %d entries, want 27", len(commands))
++	}
++	for _, id := range commands {
++		def, ok := registry.Command(id)
++		if !ok {
++			t.Fatalf("SMPP 3.4 command 0x%08x not re
