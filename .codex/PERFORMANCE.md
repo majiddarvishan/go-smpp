@@ -323,3 +323,11 @@ A same-run localhost TCP sweep on the hosted AMD EPYC 9V74 runner measured the s
 This experiment validates opportunistic scatter/gather batching as a material TCP optimization on that development runner. Based on this measured sweep, the session default is now 32 queued PDUs, bounded by `TXBatchBytes`; setting `TXBatchItems=1` disables coalescing for peers/workloads where that is preferable. The TX loop does not delay an isolated packet just to fill a batch. Performance-lab defaults now follow the production session default so ordinary smoke/profile runs exercise the measured fast path.
 
 The experiment is still not the Phase 17 acceptance result: the required acceptance host is Linux/amd64 with 8 CPU cores and 10 GB RAM, and sustained memory/goroutine/timeout bounds must also be verified there.
+
+## Phase 17 reference acceptance runner
+
+`scripts/acceptance.sh` is the authoritative final-acceptance entry point. It refuses to run the acceptance claim unless the host provides at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.26.x; it runs the production workload with `GOMAXPROCS=8` by default.
+
+The sustained test starts at one TCP session, uses fixed concurrent load-generator workers, samples heap/goroutine/outstanding-work bounds, requires every request to receive its SMPP response, and rejects unexpected traffic errors. The script then tries 2 and 4 sessions only if the preceding count fails the configured throughput target. After the first passing count it captures CPU, heap, mutex, and block profiles and records the exact environment and commit.
+
+Default final settings are a 60-second sustained window, 100,000 request-PDU/s minimum, 128 fixed callers, and the measured TX batch of 32. These defaults may be overridden for diagnostics, but a production acceptance report must state any override explicitly.
