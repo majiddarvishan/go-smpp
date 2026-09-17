@@ -1,0 +1,18 @@
+name: Export phase13 source
+on:
+  push:
+    branches: [ codex/export-phase13 ]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Pack source
+        run: tar --exclude=.git -czf /tmp/go-smpp-phase13-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-smpp-phase13-source
+          path: /tmp/go-smpp-phase13-source.tar.gz
+          retention-days: 1
