@@ -21,7 +21,9 @@ jobs:
           cache: false
       - name: Prepare phase inputs
         run: |
-          if compgen -G '.codex/phase-patch/P14-*' > /dev/null; then
+          if compgen -G '.codex/phase-patch/P15-*' > /dev/null; then
+            cat .codex/phase-patch/P15-* | base64 -d | gzip -d > /tmp/phase.patch
+          elif compgen -G '.codex/phase-patch/P14-*' > /dev/null; then
             cat .codex/phase-patch/P14-* | base64 -d | gzip -d > /tmp/phase.patch
           elif compgen -G '.codex/phase-patch/P13-*' > /dev/null; then
             # Four uploaded chunk files contain one transcription byte each.
