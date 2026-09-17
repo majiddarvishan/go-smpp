@@ -267,6 +267,46 @@ func (c *Client) SubmitSM(ctx context.Context, request protocol.SubmitSM) (proto
 	return sess.SubmitSM(ctx, request)
 }
 
+func (c *Client) DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error) {
+	sess, err := c.activeSession()
+	if err != nil {
+		return protocol.DataSMResp{}, err
+	}
+	return sess.DataSM(ctx, request)
+}
+
+func (c *Client) SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error) {
+	sess, err := c.activeSession()
+	if err != nil {
+		return protocol.SubmitMultiResp{}, err
+	}
+	return sess.SubmitMulti(ctx, request)
+}
+
+func (c *Client) QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error) {
+	sess, err := c.activeSession()
+	if err != nil {
+		return protocol.QuerySMResp{}, err
+	}
+	return sess.QuerySM(ctx, request)
+}
+
+func (c *Client) CancelSM(ctx context.Context, request protocol.CancelSM) error {
+	sess, err := c.activeSession()
+	if err != nil {
+		return err
+	}
+	return sess.CancelSM(ctx, request)
+}
+
+func (c *Client) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error {
+	sess, err := c.activeSession()
+	if err != nil {
+		return err
+	}
+	return sess.ReplaceSM(ctx, request)
+}
+
 func (c *Client) EnquireLink(ctx context.Context) error {
 	sess, err := c.activeSession()
 	if err != nil {

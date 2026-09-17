@@ -117,3 +117,95 @@ func TestStateMachineConcurrentReadsAndClose(t *testing.T) {
 		t.Fatalf("state=%s", m.State())
 	}
 }
+
+func TestSMPP34ExtendedOperationMatrix(t *testing.T) {
+	cases := []struct {
+		name    string
+		state   protocol.SessionState
+		role    Role
+		command protocol.CommandID
+		want    bool
+	}{
+		{"replace bound tx", protocol.StateBoundTX, RoleESME, protocol.CommandReplaceSM, true},
+		{"replace trx forbidden by 3.4", protocol.StateBoundTRX, RoleESME, protocol.CommandReplaceSM, false},
+		{"replace response bound tx", protocol.StateBoundTX, RoleSMSC, protocol.CommandReplaceSMResp, true},
+		{"replace response trx forbidden", protocol.StateBoundTRX, RoleSMSC, protocol.CommandReplaceSMResp, false},
+		{"data esme tx", protocol.StateBoundTX, RoleESME, protocol.CommandDataSM, true},
+		{"data esme rx", protocol.StateBoundRX, RoleESME, protocol.CommandDataSM, true},
+		{"data smsc trx", protocol.StateBoundTRX, RoleSMSC, protocol.CommandDataSM, true},
+		{"alert smsc rx", protocol.StateBoundRX, RoleSMSC, protocol.CommandAlertNotification, true},
+		{"alert esme invalid", protocol.StateBoundRX, RoleESME, protocol.CommandAlertNotification, false},
+		{"outbind smsc open", protocol.StateOpen, RoleSMSC, protocol.CommandOutbind, true},
+		{"bind receiver after outbind", protocol.StateOutbound, RoleESME, protocol.CommandBindReceiver, true},
+		{"bind transmitter after outbind invalid", protocol.StateOutbound, RoleESME, protocol.CommandBindTransmitter, false},
+		{"bind transceiver after outbind invalid", protocol.StateOutbound, RoleESME, protocol.CommandBindTransceiver, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CanIssue(tc.state, tc.role, tc.command); got != tc.want {
+				t.Fatalf("CanIssue(%s,%s,0x%08x)=%v want %v", tc.state, tc.role, uint32(tc.command), got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStateMachineOutbindToBindReceiver(t *testing.T) {
+	esme, err := NewStateMachine(RoleESME)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := esme.Open(); err != nil {
+		t.Fatal(err)
+	}
+	if err := esme.BeginInbound(protocol.CommandOutbind); err != nil {
+		t.Fatal(err)
+	}
+	if esme.State() != protocol.StateOutbound {
+		t.Fatalf("ESME state=%s want Outbound", esme.State())
+	}
+	if err := esme.BeginOutbound(protocol.CommandBindReceiver); err != nil {
+		t.Fatal(err)
+	}
+	esme.CompleteOutbound(protocol.CommandBindReceiver, protocol.StatusOK)
+	if esme.State() != protocol.StateBoundRX {
+		t.Fatalf("ESME state=%s want Bound_RX", esme.State())
+	}
+
+	smsc, err := NewStateMachine(RoleSMSC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := smsc.Open(); err != nil {
+		t.Fatal(err)
+	}
+	if err := smsc.BeginOutbound(protocol.CommandOutbind); err != nil {
+		t.Fatal(err)
+	}
+	if smsc.State() != protocol.StateOutbound {
+		t.Fatalf("SMSC state=%s want Outbound", smsc.State())
+	}
+	if err := smsc.BeginInbound(protocol.CommandBindReceiver); err != nil {
+		t.Fatal(err)
+	}
+	smsc.CompleteInbound(protocol.CommandBindReceiver, protocol.StatusOK)
+	if smsc.State() != protocol.StateBoundRX {
+		t.Fatalf("SMSC state=%s want Bound_RX", smsc.State())
+	}
+}
+
+func TestCancelOutboundOutbindRestoresOpen(t *testing.T) {
+	m, err := NewStateMachine(RoleSMSC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Open(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.BeginOutbound(protocol.CommandOutbind); err != nil {
+		t.Fatal(err)
+	}
+	m.CancelOutbound(protocol.CommandOutbind)
+	if m.State() != protocol.StateOpen {
+		t.Fatalf("state=%s want Open", m.State())
+	}
+}

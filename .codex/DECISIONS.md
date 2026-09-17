@@ -238,6 +238,14 @@ Strict UCS-2 rejects supplementary-plane characters. Emoji are emitted only thro
 
 **Reason:** Carrier/SMSC behavior around packing and surrogate pairs varies. Keeping encoding, packing, and segmentation explicit avoids silently changing wire semantics while still providing correct length accounting and reusable standards-oriented primitives.
 
+## D-042 — SMPP 3.4 one-way primitives and Outbind state
+
+**Decision:** `outbind` and `alert_notification` are explicit one-way SMPP primitives and are never inserted into the pending-response table or outbound request window. `Request`/`TryRequest` reject them; `SendOneWay` waits for complete transport dispatch once admitted to the TX queue. Inbound one-way PDUs may be delivered to the application handler but never generate a normal response PDU. An invalid-state one-way PDU is rejected with `generic_nack` rather than by inventing a response command.
+
+Sending or receiving `outbind` moves the shared state machine from `Open` to `Outbound`. In `Outbound`, an ESME may issue only `bind_receiver` as the bind primitive expected by SMPP 3.4; successful bind completion transitions both peers to `Bound_RX`. `replace_sm` is restricted to `Bound_TX` exactly as the SMPP 3.4 operation matrix specifies, while `data_sm` remains valid in all three bound modes for either peer.
+
+**Reason:** SMPP 3.4 defines no response PDU for `outbind` or `alert_notification`, and defines Outbind specifically as an SMSC request for the ESME to originate `bind_receiver`. Modeling these semantics explicitly avoids phantom pending entries, nonexistent response IDs, and incorrect TRX acceptance for `replace_sm`.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:

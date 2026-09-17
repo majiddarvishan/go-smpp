@@ -45,21 +45,33 @@ func NewSMPP34Registry(mode RegistryMode) (*Registry, error) {
 
 func registerSMPP34Commands(builder *RegistryBuilder) error {
 	definitions := []CommandDefinition{
+		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeEmpty},
 		{ID: protocol.CommandBindReceiver, Name: "bind_receiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
 		{ID: protocol.CommandBindReceiverResp, Name: "bind_receiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
 		{ID: protocol.CommandBindTransmitter, Name: "bind_transmitter", Decode: decodeBindRequest, Encode: encodeBindRequest},
 		{ID: protocol.CommandBindTransmitterResp, Name: "bind_transmitter_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
-		{ID: protocol.CommandBindTransceiver, Name: "bind_transceiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
-		{ID: protocol.CommandBindTransceiverResp, Name: "bind_transceiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
-		{ID: protocol.CommandUnbind, Name: "unbind", Decode: decodeRequestEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandEnquireLink, Name: "enquire_link", Decode: decodeRequestEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
-		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandQuerySM, Name: "query_sm", Decode: decodeQuerySM, Encode: encodeQuerySM},
+		{ID: protocol.CommandQuerySMResp, Name: "query_sm_resp", Decode: decodeQuerySMResp, Encode: encodeQuerySMResp},
 		{ID: protocol.CommandSubmitSM, Name: "submit_sm", Decode: decodeSubmitSM, Encode: encodeSubmitSM},
 		{ID: protocol.CommandSubmitSMResp, Name: "submit_sm_resp", Decode: decodeSubmitSMResp, Encode: encodeSubmitSMResp},
 		{ID: protocol.CommandDeliverSM, Name: "deliver_sm", Decode: decodeDeliverSM, Encode: encodeDeliverSM},
 		{ID: protocol.CommandDeliverSMResp, Name: "deliver_sm_resp", Decode: decodeDeliverSMResp, Encode: encodeDeliverSMResp},
+		{ID: protocol.CommandUnbind, Name: "unbind", Decode: decodeRequestEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandReplaceSM, Name: "replace_sm", Decode: decodeReplaceSM, Encode: encodeReplaceSM},
+		{ID: protocol.CommandReplaceSMResp, Name: "replace_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandCancelSM, Name: "cancel_sm", Decode: decodeCancelSM, Encode: encodeCancelSM},
+		{ID: protocol.CommandCancelSMResp, Name: "cancel_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandBindTransceiver, Name: "bind_transceiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
+		{ID: protocol.CommandBindTransceiverResp, Name: "bind_transceiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
+		{ID: protocol.CommandOutbind, Name: "outbind", Decode: decodeOutbind, Encode: encodeOutbind},
+		{ID: protocol.CommandEnquireLink, Name: "enquire_link", Decode: decodeRequestEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+		{ID: protocol.CommandSubmitMulti, Name: "submit_multi", Decode: decodeSubmitMulti, Encode: encodeSubmitMulti},
+		{ID: protocol.CommandSubmitMultiResp, Name: "submit_multi_resp", Decode: decodeSubmitMultiResp, Encode: encodeSubmitMultiResp},
+		{ID: protocol.CommandAlertNotification, Name: "alert_notification", Decode: decodeAlertNotification, Encode: encodeAlertNotification},
+		{ID: protocol.CommandDataSM, Name: "data_sm", Decode: decodeDataSM, Encode: encodeDataSM},
+		{ID: protocol.CommandDataSMResp, Name: "data_sm_resp", Decode: decodeDataSMResp, Encode: encodeDataSMResp},
 	}
 	for _, def := range definitions {
 		if err := builder.RegisterCommand(def); err != nil {
@@ -71,11 +83,50 @@ func registerSMPP34Commands(builder *RegistryBuilder) error {
 
 func registerSMPP34TLVs(builder *RegistryBuilder) error {
 	definitions := []TLVDefinition{
+		{Tag: protocol.TLVTagDestAddrSubunit, Name: "dest_addr_subunit"},
+		{Tag: protocol.TLVTagDestNetworkType, Name: "dest_network_type"},
+		{Tag: protocol.TLVTagDestBearerType, Name: "dest_bearer_type"},
+		{Tag: protocol.TLVTagDestTelematicsID, Name: "dest_telematics_id"},
+		{Tag: protocol.TLVTagSourceAddrSubunit, Name: "source_addr_subunit"},
+		{Tag: protocol.TLVTagSourceNetworkType, Name: "source_network_type"},
+		{Tag: protocol.TLVTagSourceBearerType, Name: "source_bearer_type"},
+		{Tag: protocol.TLVTagSourceTelematicsID, Name: "source_telematics_id"},
+		{Tag: protocol.TLVTagQOSTimeToLive, Name: "qos_time_to_live"},
+		{Tag: protocol.TLVTagPayloadType, Name: "payload_type"},
+		{Tag: protocol.TLVTagAdditionalStatusInfoText, Name: "additional_status_info_text"},
+		{Tag: protocol.TLVTagReceiptedMessageID, Name: "receipted_message_id"},
+		{Tag: protocol.TLVTagMSMsgWaitFacilities, Name: "ms_msg_wait_facilities"},
+		{Tag: protocol.TLVTagPrivacyIndicator, Name: "privacy_indicator"},
+		{Tag: protocol.TLVTagSourceSubaddress, Name: "source_subaddress"},
+		{Tag: protocol.TLVTagDestSubaddress, Name: "dest_subaddress"},
+		{Tag: protocol.TLVTagUserMessageReference, Name: "user_message_reference"},
+		{Tag: protocol.TLVTagUserResponseCode, Name: "user_response_code"},
+		{Tag: protocol.TLVTagSourcePort, Name: "source_port"},
+		{Tag: protocol.TLVTagDestinationPort, Name: "destination_port"},
 		{Tag: protocol.TLVTagSARMsgRefNum, Name: "sar_msg_ref_num"},
+		{Tag: protocol.TLVTagLanguageIndicator, Name: "language_indicator"},
 		{Tag: protocol.TLVTagSARTotalSegments, Name: "sar_total_segments"},
 		{Tag: protocol.TLVTagSARSegmentSeqnum, Name: "sar_segment_seqnum"},
 		{Tag: protocol.TLVTagSCInterfaceVersion, Name: "sc_interface_version"},
+		{Tag: protocol.TLVTagCallbackNumPresInd, Name: "callback_num_pres_ind"},
+		{Tag: protocol.TLVTagCallbackNumAtag, Name: "callback_num_atag"},
+		{Tag: protocol.TLVTagNumberOfMessages, Name: "number_of_messages"},
+		{Tag: protocol.TLVTagCallbackNum, Name: "callback_num"},
+		{Tag: protocol.TLVTagDPFResult, Name: "dpf_result"},
+		{Tag: protocol.TLVTagSetDPF, Name: "set_dpf"},
+		{Tag: protocol.TLVTagMSAvailabilityStatus, Name: "ms_availability_status"},
+		{Tag: protocol.TLVTagNetworkErrorCode, Name: "network_error_code"},
 		{Tag: protocol.TLVTagMessagePayload, Name: "message_payload"},
+		{Tag: protocol.TLVTagDeliveryFailureReason, Name: "delivery_failure_reason"},
+		{Tag: protocol.TLVTagMoreMessagesToSend, Name: "more_messages_to_send"},
+		{Tag: protocol.TLVTagMessageState, Name: "message_state"},
+		{Tag: protocol.TLVTagUSSDServiceOp, Name: "ussd_service_op"},
+		{Tag: protocol.TLVTagDisplayTime, Name: "display_time"},
+		{Tag: protocol.TLVTagSMSSignal, Name: "sms_signal"},
+		{Tag: protocol.TLVTagMSValidity, Name: "ms_validity"},
+		{Tag: protocol.TLVTagAlertOnMessageDelivery, Name: "alert_on_message_delivery"},
+		{Tag: protocol.TLVTagITSReplyType, Name: "its_reply_type"},
+		{Tag: protocol.TLVTagITSSessionInfo, Name: "its_session_info"},
 	}
 	for _, def := range definitions {
 		if err := builder.RegisterTLV(def); err != nil {
@@ -190,7 +241,7 @@ func decodeBindRequest(header Header, body []byte) (any, error) {
 	return protocol.BindRequest{
 		SystemID: systemID, Password: password, SystemType: systemType,
 		InterfaceVersion: protocol.InterfaceVersion(interfaceVersion),
-		AddressTON: protocol.TON(ton), AddressNPI: protocol.NPI(npi), AddressRange: addressRange,
+		AddressTON:       protocol.TON(ton), AddressNPI: protocol.NPI(npi), AddressRange: addressRange,
 	}, nil
 }
 
@@ -208,11 +259,19 @@ func encodeBindRequest(dst []byte, value any) ([]byte, error) {
 		return dst, fmt.Errorf("%w: expected protocol.BindRequest, got %T", ErrInvalidPDUValue, value)
 	}
 	var err error
-	if dst, err = AppendCString(dst, v.SystemID, maxSystemIDLen); err != nil { return dst, err }
-	if dst, err = AppendCString(dst, v.Password, maxPasswordLen); err != nil { return dst, err }
-	if dst, err = AppendCString(dst, v.SystemType, maxSystemTypeLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.SystemID, maxSystemIDLen); err != nil {
+		return dst, err
+	}
+	if dst, err = AppendCString(dst, v.Password, maxPasswordLen); err != nil {
+		return dst, err
+	}
+	if dst, err = AppendCString(dst, v.SystemType, maxSystemTypeLen); err != nil {
+		return dst, err
+	}
 	dst = append(dst, byte(v.InterfaceVersion), byte(v.AddressTON), byte(v.AddressNPI))
-	if dst, err = AppendCString(dst, v.AddressRange, maxAddressRangeLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.AddressRange, maxAddressRangeLen); err != nil {
+		return dst, err
+	}
 	return dst, nil
 }
 
@@ -319,28 +378,77 @@ func decodeShortMessageBody(header Header, body []byte) (shortMessageBody, error
 	r := bodyReader{src: body}
 	var out shortMessageBody
 	var err error
-	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil { return out, err }
-	ton, err := r.uint8(); if err != nil { return out, err }; out.SourceAddrTON = protocol.TON(ton)
-	npi, err := r.uint8(); if err != nil { return out, err }; out.SourceAddrNPI = protocol.NPI(npi)
-	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil { return out, err }
-	ton, err = r.uint8(); if err != nil { return out, err }; out.DestAddrTON = protocol.TON(ton)
-	npi, err = r.uint8(); if err != nil { return out, err }; out.DestAddrNPI = protocol.NPI(npi)
-	if out.DestinationAddr, err = r.cString(maxAddressLen); err != nil { return out, err }
-	if out.ESMClass, err = r.uint8(); err != nil { return out, err }
-	if out.ProtocolID, err = r.uint8(); err != nil { return out, err }
-	if out.PriorityFlag, err = r.uint8(); err != nil { return out, err }
-	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil { return out, err }
-	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil { return out, err }
-	if out.RegisteredDelivery, err = r.uint8(); err != nil { return out, err }
-	if out.ReplaceIfPresentFlag, err = r.uint8(); err != nil { return out, err }
-	coding, err := r.uint8(); if err != nil { return out, err }; out.DataCoding = protocol.DataCoding(coding)
-	if out.SMDefaultMsgID, err = r.uint8(); err != nil { return out, err }
-	smLength, err := r.uint8(); if err != nil { return out, err }
+	if out.ServiceType, err = r.cString(maxServiceTypeLen); err != nil {
+		return out, err
+	}
+	ton, err := r.uint8()
+	if err != nil {
+		return out, err
+	}
+	out.SourceAddrTON = protocol.TON(ton)
+	npi, err := r.uint8()
+	if err != nil {
+		return out, err
+	}
+	out.SourceAddrNPI = protocol.NPI(npi)
+	if out.SourceAddr, err = r.cString(maxAddressLen); err != nil {
+		return out, err
+	}
+	ton, err = r.uint8()
+	if err != nil {
+		return out, err
+	}
+	out.DestAddrTON = protocol.TON(ton)
+	npi, err = r.uint8()
+	if err != nil {
+		return out, err
+	}
+	out.DestAddrNPI = protocol.NPI(npi)
+	if out.DestinationAddr, err = r.cString(maxAddressLen); err != nil {
+		return out, err
+	}
+	if out.ESMClass, err = r.uint8(); err != nil {
+		return out, err
+	}
+	if out.ProtocolID, err = r.uint8(); err != nil {
+		return out, err
+	}
+	if out.PriorityFlag, err = r.uint8(); err != nil {
+		return out, err
+	}
+	if out.ScheduleDeliveryTime, err = r.cString(maxTimeFieldLen); err != nil {
+		return out, err
+	}
+	if out.ValidityPeriod, err = r.cString(maxTimeFieldLen); err != nil {
+		return out, err
+	}
+	if out.RegisteredDelivery, err = r.uint8(); err != nil {
+		return out, err
+	}
+	if out.ReplaceIfPresentFlag, err = r.uint8(); err != nil {
+		return out, err
+	}
+	coding, err := r.uint8()
+	if err != nil {
+		return out, err
+	}
+	out.DataCoding = protocol.DataCoding(coding)
+	if out.SMDefaultMsgID, err = r.uint8(); err != nil {
+		return out, err
+	}
+	smLength, err := r.uint8()
+	if err != nil {
+		return out, err
+	}
 	if smLength == 255 {
 		return out, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
 	}
-	if out.ShortMessage, err = r.octets(int(smLength)); err != nil { return out, err }
-	if out.Optional, err = r.optional(); err != nil { return out, err }
+	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
+		return out, err
+	}
+	if out.Optional, err = r.optional(); err != nil {
+		return out, err
+	}
 	if hasNonEmptyMessagePayload(out.Optional) && len(out.ShortMessage) != 0 {
 		return out, ErrConflictingMessageData
 	}
@@ -355,14 +463,24 @@ func appendShortMessageBody(dst []byte, v shortMessageBody) ([]byte, error) {
 		return dst, ErrConflictingMessageData
 	}
 	var err error
-	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.ServiceType, maxServiceTypeLen); err != nil {
+		return dst, err
+	}
 	dst = append(dst, byte(v.SourceAddrTON), byte(v.SourceAddrNPI))
-	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.SourceAddr, maxAddressLen); err != nil {
+		return dst, err
+	}
 	dst = append(dst, byte(v.DestAddrTON), byte(v.DestAddrNPI))
-	if dst, err = AppendCString(dst, v.DestinationAddr, maxAddressLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.DestinationAddr, maxAddressLen); err != nil {
+		return dst, err
+	}
 	dst = append(dst, v.ESMClass, v.ProtocolID, v.PriorityFlag)
-	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil { return dst, err }
-	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil { return dst, err }
+	if dst, err = AppendCString(dst, v.ScheduleDeliveryTime, maxTimeFieldLen); err != nil {
+		return dst, err
+	}
+	if dst, err = AppendCString(dst, v.ValidityPeriod, maxTimeFieldLen); err != nil {
+		return dst, err
+	}
 	dst = append(dst, v.RegisteredDelivery, v.ReplaceIfPresentFlag, byte(v.DataCoding), v.SMDefaultMsgID, byte(len(v.ShortMessage)))
 	dst = append(dst, v.ShortMessage...)
 	return appendOptional(dst, v.Optional)
@@ -370,7 +488,9 @@ func appendShortMessageBody(dst []byte, v shortMessageBody) ([]byte, error) {
 
 func decodeSubmitSM(header Header, body []byte) (any, error) {
 	decoded, err := decodeShortMessageBody(header, body)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return protocol.SubmitSM{
 		ServiceType: decoded.ServiceType, SourceAddrTON: decoded.SourceAddrTON, SourceAddrNPI: decoded.SourceAddrNPI,
 		SourceAddr: decoded.SourceAddr, DestAddrTON: decoded.DestAddrTON, DestAddrNPI: decoded.DestAddrNPI,
@@ -384,11 +504,15 @@ func decodeSubmitSM(header Header, body []byte) (any, error) {
 func encodeSubmitSM(dst []byte, value any) ([]byte, error) {
 	var v protocol.SubmitSM
 	switch typed := value.(type) {
-	case protocol.SubmitSM: v = typed
+	case protocol.SubmitSM:
+		v = typed
 	case *protocol.SubmitSM:
-		if typed == nil { return dst, fmt.Errorf("%w: nil SubmitSM", ErrInvalidPDUValue) }
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil SubmitSM", ErrInvalidPDUValue)
+		}
 		v = *typed
-	default: return dst, fmt.Errorf("%w: expected protocol.SubmitSM, got %T", ErrInvalidPDUValue, value)
+	default:
+		return dst, fmt.Errorf("%w: expected protocol.SubmitSM, got %T", ErrInvalidPDUValue, value)
 	}
 	return appendShortMessageBody(dst, shortMessageBody{
 		ServiceType: v.ServiceType, SourceAddrTON: v.SourceAddrTON, SourceAddrNPI: v.SourceAddrNPI, SourceAddr: v.SourceAddr,
@@ -402,7 +526,9 @@ func encodeSubmitSM(dst []byte, value any) ([]byte, error) {
 
 func decodeDeliverSM(header Header, body []byte) (any, error) {
 	decoded, err := decodeShortMessageBody(header, body)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return protocol.DeliverSM{
 		ServiceType: decoded.ServiceType, SourceAddrTON: decoded.SourceAddrTON, SourceAddrNPI: decoded.SourceAddrNPI,
 		SourceAddr: decoded.SourceAddr, DestAddrTON: decoded.DestAddrTON, DestAddrNPI: decoded.DestAddrNPI,
@@ -416,11 +542,15 @@ func decodeDeliverSM(header Header, body []byte) (any, error) {
 func encodeDeliverSM(dst []byte, value any) ([]byte, error) {
 	var v protocol.DeliverSM
 	switch typed := value.(type) {
-	case protocol.DeliverSM: v = typed
+	case protocol.DeliverSM:
+		v = typed
 	case *protocol.DeliverSM:
-		if typed == nil { return dst, fmt.Errorf("%w: nil DeliverSM", ErrInvalidPDUValue) }
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil DeliverSM", ErrInvalidPDUValue)
+		}
 		v = *typed
-	default: return dst, fmt.Errorf("%w: expected protocol.DeliverSM, got %T", ErrInvalidPDUValue, value)
+	default:
+		return dst, fmt.Errorf("%w: expected protocol.DeliverSM, got %T", ErrInvalidPDUValue, value)
 	}
 	return appendShortMessageBody(dst, shortMessageBody{
 		ServiceType: v.ServiceType, SourceAddrTON: v.SourceAddrTON, SourceAddrNPI: v.SourceAddrNPI, SourceAddr: v.SourceAddr,
@@ -441,8 +571,12 @@ func decodeSubmitSMResp(header Header, body []byte) (any, error) {
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
-	if err != nil { return nil, err }
-	if err := r.requireDone(); err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
+	if err := r.requireDone(); err != nil {
+		return nil, err
+	}
 	return protocol.SubmitSMResp{MessageID: messageID}, nil
 }
 
@@ -453,7 +587,9 @@ func encodeSubmitSMResp(dst []byte, value any) ([]byte, error) {
 	case protocol.SubmitSMResp:
 		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
 	case *protocol.SubmitSMResp:
-		if typed == nil { return dst, fmt.Errorf("%w: nil SubmitSMResp", ErrInvalidPDUValue) }
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil SubmitSMResp", ErrInvalidPDUValue)
+		}
 		return AppendCString(dst, typed.MessageID, maxMessageIDLen)
 	default:
 		return dst, fmt.Errorf("%w: expected protocol.SubmitSMResp or EmptyBody, got %T", ErrInvalidPDUValue, value)
@@ -469,8 +605,12 @@ func decodeDeliverSMResp(_ Header, body []byte) (any, error) {
 	}
 	r := bodyReader{src: body}
 	messageID, err := r.cString(maxMessageIDLen)
-	if err != nil { return nil, err }
-	if err := r.requireDone(); err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
+	if err := r.requireDone(); err != nil {
+		return nil, err
+	}
 	return protocol.DeliverSMResp{MessageID: messageID}, nil
 }
 
@@ -482,7 +622,9 @@ func encodeDeliverSMResp(dst []byte, value any) ([]byte, error) {
 	case protocol.DeliverSMResp:
 		messageID = typed.MessageID
 	case *protocol.DeliverSMResp:
-		if typed == nil { return dst, fmt.Errorf("%w: nil DeliverSMResp", ErrInvalidPDUValue) }
+		if typed == nil {
+			return dst, fmt.Errorf("%w: nil DeliverSMResp", ErrInvalidPDUValue)
+		}
 		messageID = typed.MessageID
 	default:
 		return dst, fmt.Errorf("%w: expected protocol.DeliverSMResp, got %T", ErrInvalidPDUValue, value)

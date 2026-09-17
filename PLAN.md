@@ -190,16 +190,16 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 13 — SMPP 3.4 completeness
 
-- [ ] Implement `data_sm` / response.
-- [ ] Implement `submit_multi` / response.
-- [ ] Implement `query_sm` / response.
-- [ ] Implement `cancel_sm` / response.
-- [ ] Implement `replace_sm` / response.
-- [ ] Implement `alert_notification`.
-- [ ] Implement `outbind` semantics.
-- [ ] Complete all SMPP 3.4 standard TLVs.
-- [ ] Complete SMPP 3.4 command-status coverage.
-- [ ] Run a full 3.4 conformance matrix.
+- [x] Implement `data_sm` / response.
+- [x] Implement `submit_multi` / response.
+- [x] Implement `query_sm` / response.
+- [x] Implement `cancel_sm` / response.
+- [x] Implement `replace_sm` / response.
+- [x] Implement `alert_notification`.
+- [x] Implement `outbind` semantics.
+- [x] Complete all SMPP 3.4 standard TLVs.
+- [x] Complete SMPP 3.4 command-status coverage.
+- [x] Run a full 3.4 conformance matrix.
 
 ## Phase 14 — SMPP 5.0 extensions
 

@@ -76,10 +76,14 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
 	}
 
 	switch command {
-	case protocol.CommandBindTransmitter, protocol.CommandBindReceiver, protocol.CommandBindTransceiver:
+	case protocol.CommandBindTransmitter, protocol.CommandBindTransceiver:
 		return state == protocol.StateOpen && role == RoleESME
-	case protocol.CommandBindTransmitterResp, protocol.CommandBindReceiverResp, protocol.CommandBindTransceiverResp:
+	case protocol.CommandBindReceiver:
+		return role == RoleESME && (state == protocol.StateOpen || state == protocol.StateOutbound)
+	case protocol.CommandBindTransmitterResp, protocol.CommandBindTransceiverResp:
 		return state == protocol.StateOpen && role == RoleSMSC
+	case protocol.CommandBindReceiverResp:
+		return role == RoleSMSC && (state == protocol.StateOpen || state == protocol.StateOutbound)
 	case protocol.CommandOutbind:
 		return state == protocol.StateOpen && role == RoleSMSC
 	case protocol.CommandUnbind:
@@ -88,10 +92,14 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
 		return bound || state == protocol.StateUnbound
 	case protocol.CommandEnquireLink, protocol.CommandEnquireLinkResp:
 		return bound
-	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandReplaceSM, protocol.CommandCancelSM:
+	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandCancelSM:
 		return role == RoleESME && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
-	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandReplaceSMResp, protocol.CommandCancelSMResp:
+	case protocol.CommandReplaceSM:
+		return role == RoleESME && state == protocol.StateBoundTX
+	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandCancelSMResp:
 		return role == RoleSMSC && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
+	case protocol.CommandReplaceSMResp:
+		return role == RoleSMSC && state == protocol.StateBoundTX
 	case protocol.CommandDeliverSM:
 		return role == RoleSMSC && (state == protocol.StateBoundRX || state == protocol.StateBoundTRX)
 	case protocol.CommandDeliverSMResp:
@@ -108,7 +116,7 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
 // StateMachine is shared by ESME and SMSC sessions. Normal state reads are
 // atomic; the mutex protects multi-step bind/unbind lifecycle transitions.
 type StateMachine struct {
-	role Role
+	role  Role
 	state atomic.Uint32
 
 	mu               sync.Mutex
@@ -186,6 +194,9 @@ func (m *StateMachine) BeginOutbound(command protocol.CommandID) error {
 		m.localUnbindFrom = state
 		m.state.Store(uint32(protocol.StateUnbound))
 	}
+	if command == protocol.CommandOutbind {
+		m.state.Store(uint32(protocol.StateOutbound))
+	}
 	return nil
 }
 
@@ -199,6 +210,9 @@ func (m *StateMachine) CancelOutbound(command protocol.CommandID) {
 	if command == protocol.CommandUnbind && m.State() == protocol.StateUnbound && m.localUnbindFrom != protocol.StateClosed {
 		m.state.Store(uint32(m.localUnbindFrom))
 		m.localUnbindFrom = protocol.StateClosed
+	}
+	if command == protocol.CommandOutbind && m.State() == protocol.StateOutbound {
+		m.state.Store(uint32(protocol.StateOpen))
 	}
 }
 
@@ -245,6 +259,9 @@ func (m *StateMachine) BeginInbound(command protocol.CommandID) error {
 	if command == protocol.CommandUnbind {
 		m.peerUnbindFrom = state
 		m.state.Store(uint32(protocol.StateUnbound))
+	}
+	if command == protocol.CommandOutbind {
+		m.state.Store(uint32(protocol.StateOutbound))
 	}
 	return nil
 }

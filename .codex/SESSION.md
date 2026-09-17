@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 12 are complete and verified locally. Phase 13 is next.
+Phase 0 through Phase 13 are complete and verified locally. Phase 14 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -68,6 +68,8 @@ Phase 11 completes SMSC/server mode with TCP/TLS listener construction, bind aut
 
 Phase 12 adds GSM 03.38 default/extension alphabet conversion, septet packing/unpacking, strict UCS-2, UTF-16BE surrogate-pair emoji support, explicit text encoding selection, binary payload helpers, UDH multipart segmentation/reassembly metadata, and SAR-TLV helpers. Segmentation counts septets/code units rather than Go runes and never splits a UTF-16 surrogate pair.
 
+Phase 13 completes the SMPP 3.4 command surface with `data_sm`, `submit_multi`, `query_sm`, `cancel_sm`, `replace_sm`, `alert_notification`, and `outbind`; registers all 44 SMPP 3.4 standard TLV tag identifiers; and verifies the complete named 3.4 command-status set. `outbind` and `alert_notification` are modeled as one-way primitives, never consume a pending/window slot, and never receive a synthetic response. Outbind moves both sides through `Outbound` and permits the ESME to originate `bind_receiver`. `replace_sm` is intentionally Bound_TX-only per the 3.4 operation matrix. Typed client/session/server convenience methods were added for the newly completed operations.
+
 ## Validation performed
 
 GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
@@ -104,12 +106,12 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 - thread-safe active runtime APIs; no goroutine-per-message/request/timeout model.
 - all queues/pending structures must remain bounded.
 - configurable request-response timeout; Session Init, Enquire Link and inactivity handling remain required.
-- auto-reconnect later, without hidden auto-resubmit of ambiguous requests.
+- auto-reconnect/rebind is implemented without hidden auto-resubmit of ambiguous requests.
 - fatal malformed/framing PDU => mandatory structured error log + close offending connection; no stream resynchronization.
-- GSM 03.38/GSM 7-bit, strict UCS-2, and UTF-16BE surrogate-pair/emoji support remain required in Phase 12.
+- GSM 03.38/GSM 7-bit, strict UCS-2, and UTF-16BE surrogate-pair/emoji support are implemented and must remain separate from the protocol hot path.
 - SMPP 3.4 complete first, architecture SMPP 5.0-aware.
 - no `unsafe` initially; minimal runtime dependencies.
 
 ## Exact next task
 
-Start **Phase 13 — SMPP 3.4 completeness** from `PLAN.md`. Implement the remaining SMPP 3.4 command bodies/codecs, outbind semantics, standard TLV coverage, status coverage, and a conformance matrix on the shared core.
+Start **Phase 14 — SMPP 5.0 extensions** from `PLAN.md`. Keep one shared core, negotiate peer capabilities per session, add v5-only TLVs/statuses and Cell Broadcast operations without weakening SMPP 3.4 compatibility or fatal-framing safety.

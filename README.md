@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 12 are complete and verified. The next implementation phase is Phase 13: SMPP 3.4 completeness.
+Phase 0 through Phase 13 are complete and verified. SMPP 3.4 command coverage is complete; the next implementation phase is Phase 14: SMPP 5.0 extensions.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -36,7 +36,7 @@ The repository includes:
 - ordered TLV scanning/encoding with duplicate and unknown/vendor TLV preservation
 - concurrency-safe registry builders and immutable frozen command/TLV lookup snapshots
 - vendor-specific command/TLV registration
-- SMPP 3.4 bind, unbind, enquire_link, generic_nack, submit_sm and deliver_sm request/response body codecs
+- complete SMPP 3.4 command/body coverage, including bind, submit/deliver, data_sm, submit_multi, query/cancel/replace, alert_notification, outbind, enquire_link, unbind and generic_nack
 - response sequence preservation through `0xffffffff`
 - `short_message` / `message_payload` exclusivity checks
 - specification-driven codec vectors and race-tested registry code
@@ -53,7 +53,7 @@ The shared runtime now includes:
 - bounded pending-request correlation
 - session-local outbound sequence generation with wrap inside `1..0x7fffffff`
 - inbound interoperability sequence handling through `0xffffffff`
-- synchronous/context-aware `Bind*`, `SubmitSM`, `DeliverSM`, `EnquireLink`, `Unbind`, and generic request APIs over the asynchronous engine
+- synchronous/context-aware typed APIs for SMPP 3.4 request/response operations plus explicit one-way APIs for `outbind` and `alert_notification` over the asynchronous engine
 - out-of-order response correlation and concurrent request safety
 - simultaneous inbound `deliver_sm` while outbound `submit_sm` remains outstanding
 - exactly-once terminal request completion across response, caller cancellation, future timeout completion, fatal protocol failure, and session loss
@@ -66,3 +66,7 @@ The runtime now also includes configurable request windowing/backpressure, share
 ## Message encoding
 
 The message layer supports GSM 03.38/GSM 7-bit (including the extension table and septet packing), strict UCS-2/BMP, UTF-16BE surrogate pairs for explicitly enabled emoji interoperability, binary payloads, 8-bit concatenation UDH, and SMPP SAR TLVs. Multipart thresholds are calculated from encoded septets/code units rather than Go rune count.
+## SMPP 3.4 completeness
+
+The shared codec registry covers all 27 SMPP 3.4 command/response identifiers and all 44 standard SMPP 3.4 TLV tag identifiers. The protocol package exposes the complete named SMPP 3.4 command-status set and query message states. `submit_multi` supports SME and Distribution List destinations plus per-destination unsuccessful results. `outbind` follows the SMPP 3.4 `Open -> Outbound -> bind_receiver -> Bound_RX` lifecycle; `alert_notification` and `outbind` are one-way and never consume request-window/pending correlation capacity.
+

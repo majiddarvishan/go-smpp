@@ -270,6 +270,31 @@ func (s *Server) DeliverSM(ctx context.Context, sess *session.Session, request p
 	return sess.DeliverSM(ctx, request)
 }
 
+// DataSM sends a server-originated data_sm over a bound session.
+func (s *Server) DataSM(ctx context.Context, sess *session.Session, request protocol.DataSM) (protocol.DataSMResp, error) {
+	if sess == nil || !s.owns(sess) {
+		return protocol.DataSMResp{}, ErrUnknownSession
+	}
+	return sess.DataSM(ctx, request)
+}
+
+// AlertNotification sends the one-way SMSC alert_notification primitive.
+func (s *Server) AlertNotification(ctx context.Context, sess *session.Session, notification protocol.AlertNotification) error {
+	if sess == nil || !s.owns(sess) {
+		return ErrUnknownSession
+	}
+	return sess.AlertNotification(ctx, notification)
+}
+
+// Outbind asks an OPEN ESME connection to originate bind_receiver. The shared
+// session state machine moves both peers through the Outbound state.
+func (s *Server) Outbind(ctx context.Context, sess *session.Session, request protocol.Outbind) error {
+	if sess == nil || !s.owns(sess) {
+		return ErrUnknownSession
+	}
+	return sess.Outbind(ctx, request)
+}
+
 func (s *Server) owns(sess *session.Session) bool {
 	s.mu.Lock()
 	_, ok := s.sessions[sess]

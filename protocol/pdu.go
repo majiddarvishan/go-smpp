@@ -9,11 +9,50 @@ type OptionalParameter struct {
 }
 
 const (
-	TLVTagSARMsgRefNum       uint16 = 0x020C
-	TLVTagSARTotalSegments   uint16 = 0x020E
-	TLVTagSARSegmentSeqnum   uint16 = 0x020F
-	TLVTagSCInterfaceVersion uint16 = 0x0210
-	TLVTagMessagePayload     uint16 = 0x0424
+	TLVTagDestAddrSubunit          uint16 = 0x0005
+	TLVTagDestNetworkType          uint16 = 0x0006
+	TLVTagDestBearerType           uint16 = 0x0007
+	TLVTagDestTelematicsID         uint16 = 0x0008
+	TLVTagSourceAddrSubunit        uint16 = 0x000D
+	TLVTagSourceNetworkType        uint16 = 0x000E
+	TLVTagSourceBearerType         uint16 = 0x000F
+	TLVTagSourceTelematicsID       uint16 = 0x0010
+	TLVTagQOSTimeToLive            uint16 = 0x0017
+	TLVTagPayloadType              uint16 = 0x0019
+	TLVTagAdditionalStatusInfoText uint16 = 0x001D
+	TLVTagReceiptedMessageID       uint16 = 0x001E
+	TLVTagMSMsgWaitFacilities      uint16 = 0x0030
+	TLVTagPrivacyIndicator         uint16 = 0x0201
+	TLVTagSourceSubaddress         uint16 = 0x0202
+	TLVTagDestSubaddress           uint16 = 0x0203
+	TLVTagUserMessageReference     uint16 = 0x0204
+	TLVTagUserResponseCode         uint16 = 0x0205
+	TLVTagSourcePort               uint16 = 0x020A
+	TLVTagDestinationPort          uint16 = 0x020B
+	TLVTagSARMsgRefNum             uint16 = 0x020C
+	TLVTagLanguageIndicator        uint16 = 0x020D
+	TLVTagSARTotalSegments         uint16 = 0x020E
+	TLVTagSARSegmentSeqnum         uint16 = 0x020F
+	TLVTagSCInterfaceVersion       uint16 = 0x0210
+	TLVTagCallbackNumPresInd       uint16 = 0x0302
+	TLVTagCallbackNumAtag          uint16 = 0x0303
+	TLVTagNumberOfMessages         uint16 = 0x0304
+	TLVTagCallbackNum              uint16 = 0x0381
+	TLVTagDPFResult                uint16 = 0x0420
+	TLVTagSetDPF                   uint16 = 0x0421
+	TLVTagMSAvailabilityStatus     uint16 = 0x0422
+	TLVTagNetworkErrorCode         uint16 = 0x0423
+	TLVTagMessagePayload           uint16 = 0x0424
+	TLVTagDeliveryFailureReason    uint16 = 0x0425
+	TLVTagMoreMessagesToSend       uint16 = 0x0426
+	TLVTagMessageState             uint16 = 0x0427
+	TLVTagUSSDServiceOp            uint16 = 0x0501
+	TLVTagDisplayTime              uint16 = 0x1201
+	TLVTagSMSSignal                uint16 = 0x1203
+	TLVTagMSValidity               uint16 = 0x1204
+	TLVTagAlertOnMessageDelivery   uint16 = 0x130C
+	TLVTagITSReplyType             uint16 = 0x1380
+	TLVTagITSSessionInfo           uint16 = 0x1383
 )
 
 // BindRequest is the common body used by bind_transmitter, bind_receiver and

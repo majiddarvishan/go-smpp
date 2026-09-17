@@ -81,6 +81,7 @@ type txKind uint8
 const (
 	txRequest txKind = iota + 1
 	txResponse
+	txOneWay
 )
 
 type txItem struct {
@@ -90,6 +91,7 @@ type txItem struct {
 	requestID  protocol.CommandID
 	responseTo protocol.CommandID
 	status     protocol.CommandStatus
+	dispatched chan error
 }
 
 // Session owns one TCP-compatible stream and runs independent long-lived RX and
@@ -235,7 +237,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if command.IsResponse() || command == protocol.CommandOutbind {
+	if command.IsResponse() || isOneWayCommand(command) {
 		return codec.DecodedPDU{}, fmt.Errorf("%w: command 0x%08x does not have synchronous request semantics", ErrUnexpectedPDU, uint32(command))
 	}
 	select {
@@ -320,6 +322,58 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	}
 }
 
+// SendOneWay dispatches an SMPP request primitive that has no response PDU.
+// The context governs admission to the TX queue. Once admitted, the call waits
+// until the complete frame has either been written or the session is lost, so
+// callers never receive context cancellation while the library is still
+// ambiguously deciding whether to put a one-way lifecycle PDU on the wire.
+func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, body any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !isOneWayCommand(command) {
+		return fmt.Errorf("%w: command 0x%08x is not a one-way SMPP primitive", ErrUnexpectedPDU, uint32(command))
+	}
+	select {
+	case <-s.done:
+		return s.requestCloseError()
+	default:
+	}
+	if err := s.machine.BeginOutbound(command); err != nil {
+		return err
+	}
+	reserved := true
+	defer func() {
+		if reserved {
+			s.machine.CancelOutbound(command)
+		}
+	}()
+
+	sequence := s.seq.Next()
+	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
+	frame, err := codec.EncodePDU(nil, header, body, s.registry)
+	if err != nil {
+		return err
+	}
+	dispatched := make(chan error, 1)
+	item := txItem{kind: txOneWay, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
+	select {
+	case s.tx <- item:
+		reserved = false
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.done:
+		return s.requestCloseError()
+	}
+
+	select {
+	case err := <-dispatched:
+		return err
+	case <-s.done:
+		return s.requestCloseError()
+	}
+}
+
 func (s *Session) waitCompleted(request *pendingRequest) (codec.DecodedPDU, error) {
 	result := <-request.done
 	return result.pdu, result.err
@@ -380,6 +434,75 @@ func (s *Session) DeliverSM(ctx context.Context, request protocol.DeliverSM) (pr
 		return protocol.DeliverSMResp{}, fmt.Errorf("%w: deliver_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
 	}
 	return body, nil
+}
+
+func (s *Session) DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error) {
+	pdu, err := s.Request(ctx, protocol.CommandDataSM, request)
+	if err != nil {
+		return protocol.DataSMResp{}, err
+	}
+	if err := responseError(pdu); err != nil {
+		return protocol.DataSMResp{}, err
+	}
+	body, ok := pdu.Body.(protocol.DataSMResp)
+	if !ok {
+		return protocol.DataSMResp{}, fmt.Errorf("%w: data_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
+	}
+	return body, nil
+}
+
+func (s *Session) SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error) {
+	pdu, err := s.Request(ctx, protocol.CommandSubmitMulti, request)
+	if err != nil {
+		return protocol.SubmitMultiResp{}, err
+	}
+	if err := responseError(pdu); err != nil {
+		return protocol.SubmitMultiResp{}, err
+	}
+	body, ok := pdu.Body.(protocol.SubmitMultiResp)
+	if !ok {
+		return protocol.SubmitMultiResp{}, fmt.Errorf("%w: submit_multi_resp body %T", ErrUnexpectedPDU, pdu.Body)
+	}
+	return body, nil
+}
+
+func (s *Session) QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error) {
+	pdu, err := s.Request(ctx, protocol.CommandQuerySM, request)
+	if err != nil {
+		return protocol.QuerySMResp{}, err
+	}
+	if err := responseError(pdu); err != nil {
+		return protocol.QuerySMResp{}, err
+	}
+	body, ok := pdu.Body.(protocol.QuerySMResp)
+	if !ok {
+		return protocol.QuerySMResp{}, fmt.Errorf("%w: query_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
+	}
+	return body, nil
+}
+
+func (s *Session) CancelSM(ctx context.Context, request protocol.CancelSM) error {
+	pdu, err := s.Request(ctx, protocol.CommandCancelSM, request)
+	if err != nil {
+		return err
+	}
+	return responseError(pdu)
+}
+
+func (s *Session) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error {
+	pdu, err := s.Request(ctx, protocol.CommandReplaceSM, request)
+	if err != nil {
+		return err
+	}
+	return responseError(pdu)
+}
+
+func (s *Session) AlertNotification(ctx context.Context, notification protocol.AlertNotification) error {
+	return s.SendOneWay(ctx, protocol.CommandAlertNotification, notification)
+}
+
+func (s *Session) Outbind(ctx context.Context, request protocol.Outbind) error {
+	return s.SendOneWay(ctx, protocol.CommandOutbind, request)
 }
 
 func (s *Session) EnquireLink(ctx context.Context) error {
@@ -550,10 +673,16 @@ func (s *Session) txLoop() {
 				s.machine.CompleteInbound(item.responseTo, item.status)
 			}
 			if err := transport.WriteFull(s.conn, item.frame); err != nil {
+				if item.dispatched != nil {
+					item.dispatched <- err
+				}
 				s.terminate(err)
 				return
 			}
 			s.noteActivity()
+			if item.dispatched != nil {
+				item.dispatched <- nil
+			}
 			if item.kind == txRequest {
 				if request, ok := s.pending.markDispatched(item.sequence); ok {
 					timeout, kind := s.responseTimeoutFor(item.requestID)
@@ -619,7 +748,22 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	}
 
 	if err := s.beginInbound(pdu.Header.CommandID); err != nil {
+		if isOneWayCommand(pdu.Header.CommandID) {
+			return s.queueGenericNACK(pdu.Header, protocol.StatusInvalidBindState)
+		}
 		return s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), protocol.StatusInvalidBindState, protocol.EmptyBody{})
+	}
+	if isOneWayCommand(pdu.Header.CommandID) {
+		if s.config.Handler != nil {
+			if _, err := s.config.Handler.Handle(s.ctx, s, pdu); err != nil {
+				s.logger.Error("SMPP one-way handler failed",
+					"event", "smpp_one_way_handler_error",
+					"command_id", fmt.Sprintf("0x%08x", uint32(pdu.Header.CommandID)),
+					"sequence_number", uint32(pdu.Header.SequenceNumber),
+					"error", err)
+			}
+		}
+		return nil
 	}
 	lifecycleReserved := isLifecycleRequest(pdu.Header.CommandID)
 
@@ -686,6 +830,10 @@ func isStandardSessionCommand(command protocol.CommandID) bool {
 	default:
 		return false
 	}
+}
+
+func isOneWayCommand(command protocol.CommandID) bool {
+	return command == protocol.CommandOutbind || command == protocol.CommandAlertNotification
 }
 
 func isLifecycleRequest(command protocol.CommandID) bool {
@@ -780,6 +928,25 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
 		pdu.Body = body
 	case protocol.DeliverSMResp:
 		body.MessageID = cloneBytes(body.MessageID)
+		pdu.Body = body
+	case protocol.DataSMResp:
+		body.MessageID = cloneBytes(body.MessageID)
+		body.Optional = cloneOptional(body.Optional)
+		pdu.Body = body
+	case protocol.SubmitMultiResp:
+		body.MessageID = cloneBytes(body.MessageID)
+		if len(body.Unsuccessful) > 0 {
+			entries := make([]protocol.UnsuccessfulSME, len(body.Unsuccessful))
+			copy(entries, body.Unsuccessful)
+			for i := range entries {
+				entries[i].DestinationAddr = cloneBytes(entries[i].DestinationAddr)
+			}
+			body.Unsuccessful = entries
+		}
+		pdu.Body = body
+	case protocol.QuerySMResp:
+		body.MessageID = cloneBytes(body.MessageID)
+		body.FinalDate = cloneBytes(body.FinalDate)
 		pdu.Body = body
 	case codec.RawBody:
 		pdu.Body = codec.RawBody(cloneBytes(body))
