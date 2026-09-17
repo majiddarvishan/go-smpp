@@ -61,10 +61,17 @@ func (m *deadlineManager) schedule(after time.Duration, kind TimeoutKind, comman
 // embeds this record in pendingRequest so ordinary request scheduling does not
 // require a separate heap allocation per outstanding deadline.
 func (m *deadlineManager) scheduleItem(item *deadlineItem, after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
+	return m.scheduleItemAt(item, time.Now(), after, kind, command, sequence)
+}
+
+// scheduleItemAt is the session hot-path form. dispatchedAt must be captured
+// immediately after WriteFull succeeds so the response timeout starts at the
+// documented full-dispatch boundary without another clock read.
+func (m *deadlineManager) scheduleItemAt(item *deadlineItem, dispatchedAt time.Time, after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
 	if after <= 0 || item == nil {
 		return nil
 	}
-	*item = deadlineItem{at: time.Now().Add(after), after: after, kind: kind, command: command, sequence: sequence, index: -1}
+	*item = deadlineItem{at: dispatchedAt.Add(after), after: after, kind: kind, command: command, sequence: sequence, index: -1}
 	m.mu.Lock()
 	wasFirst := len(m.heap) == 0 || item.at.Before(m.heap[0].at)
 	heap.Push(&m.heap, item)

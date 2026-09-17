@@ -33,4 +33,6 @@ jobs:
       - name: Phase 17 performance smoke
         env:
           SMPP_BENCH_SESSIONS: 1,2,4,8
-        run: go test -run '^$' -bench='Benchmark(InMemorySession|LocalhostTCP|LocalhostTLS)Bidirectional' -benchmem -benchtime=200ms ./internal/perflab
+        run: |
+          go test -run '^ -bench='BenchmarkDeadlineHighOutstanding' -benchmem -benchtime=300ms ./session
+          go test -run '^ -bench='Benchmark(InMemorySession|LocalhostTCP|LocalhostTLS)Bidirectional' -benchmem -benchtime=200ms ./internal/perflab

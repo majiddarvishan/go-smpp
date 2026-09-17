@@ -862,7 +862,7 @@ func (s *Session) txLoop() {
 			if item.kind == txRequest {
 				if request, ok := s.pending.markDispatched(item.sequence); ok {
 					timeout, kind := s.responseTimeoutFor(item.requestID)
-					deadline := s.deadlines.scheduleItem(&request.deadlineStorage, timeout, kind, item.requestID, item.sequence)
+					deadline := s.deadlines.scheduleItemAt(&request.deadlineStorage, now, timeout, kind, item.requestID, item.sequence)
 					request.attachDeadline(s.deadlines, deadline)
 				}
 				continue
@@ -928,7 +928,7 @@ func (s *Session) processFrame(frame []byte) error {
 		if pdu.Header.CommandID == protocol.CommandEnquireLinkResp {
 			s.metrics.enquireLinkResponses.Add(1)
 		}
-		s.handleResponse(pdu)
+		s.handleResponse(pdu, now)
 		return nil
 	}
 	s.metrics.requestsReceived.Add(1)
@@ -940,12 +940,12 @@ func (s *Session) processFrame(frame []byte) error {
 	return s.handleRequest(pdu)
 }
 
-func (s *Session) handleResponse(pdu codec.DecodedPDU) {
+func (s *Session) handleResponse(pdu codec.DecodedPDU, receivedAt time.Time) {
 	request, ok := s.pending.takeResponse(pdu.Header.SequenceNumber, pdu.Header.CommandID)
 	if !ok {
 		return // late, unmatched, duplicate, or response from another sequence space
 	}
-	if rtt, ok := request.markResponseAt(time.Now(), pdu.Header.CommandID, pdu.Header.CommandStatus); ok {
+	if rtt, ok := request.markResponseAt(receivedAt, pdu.Header.CommandID, pdu.Header.CommandStatus); ok {
 		s.observeRTT(request, pdu.Header.SequenceNumber, rtt)
 	}
 	s.machine.CompleteOutbound(request.requestID, pdu.Header.CommandStatus)
