@@ -1,0 +1,120 @@
+g through `0xffffffff`
+-- synchronous/context-aware `Bind*`, `SubmitSM`, `DeliverSM`, `EnquireLink`, `Unbind`, and generic request APIs over the asynchronous engine
++- synchronous/context-aware typed APIs for SMPP 3.4 request/response operations plus explicit one-way APIs for `outbind` and `alert_notification` over the asynchronous engine
+ - out-of-order response correlation and concurrent request safety
+ - simultaneous inbound `deliver_sm` while outbound `submit_sm` remains outstanding
+ - exactly-once terminal request completion across response, caller cancellation, future timeout completion, fatal protocol failure, and session loss
+@@ -66,3 +66,7 @@ The runtime now also includes configurable request windowing/backpressure, share
+ ## Message encoding
+ 
+ The message layer supports GSM 03.38/GSM 7-bit (including the extension table and septet packing), strict UCS-2/BMP, UTF-16BE surrogate pairs for explicitly enabled emoji interoperability, binary payloads, 8-bit concatenation UDH, and SMPP SAR TLVs. Multipart thresholds are calculated from encoded septets/code units rather than Go rune count.
++## SMPP 3.4 completeness
++
++The shared codec registry covers all 27 SMPP 3.4 command/response identifiers and all 44 standard SMPP 3.4 TLV tag identifiers. The protocol package exposes the complete named SMPP 3.4 command-status set and query message states. `submit_multi` supports SME and Distribution List destinations plus per-destination unsuccessful results. `outbind` follows the SMPP 3.4 `Open -> Outbound -> bind_receiver -> Bound_RX` lifecycle; `alert_notification` and `outbind` are one-way and never consume request-window/pending correlation capacity.
++
+diff --git a/client/client.go b/client/client.go
+index 73fc26f..defa3e9 100644
+--- a/client/client.go
++++ b/client/client.go
+@@ -267,6 +267,46 @@ func (c *Client) SubmitSM(ctx context.Context, request protocol.SubmitSM) (proto
+ 	return sess.SubmitSM(ctx, request)
+ }
+ 
++func (c *Client) DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error) {
++	sess, err := c.activeSession()
++	if err != nil {
++		return protocol.DataSMResp{}, err
++	}
++	return sess.DataSM(ctx, request)
++}
++
++func (c *Client) SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error) {
++	sess, err := c.activeSession()
++	if err != nil {
++		return protocol.SubmitMultiResp{}, err
++	}
++	return sess.SubmitMulti(ctx, request)
++}
++
++func (c *Client) QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error) {
++	sess, err := c.activeSession()
++	if err != nil {
++		return protocol.QuerySMResp{}, err
++	}
++	return sess.QuerySM(ctx, request)
++}
++
++func (c *Client) CancelSM(ctx context.Context, request protocol.CancelSM) error {
++	sess, err := c.activeSession()
++	if err != nil {
++		return err
++	}
++	return sess.CancelSM(ctx, request)
++}
++
++func (c *Client) ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error {
++	sess, err := c.activeSession()
++	if err != nil {
++		return err
++	}
++	return sess.ReplaceSM(ctx, request)
++}
++
+ func (c *Client) EnquireLink(ctx context.Context) error {
+ 	sess, err := c.activeSession()
+ 	if err != nil {
+ diff --git a/codec/smpp34.go b/codec/smpp34.go
+index a640b95..1f69b2c 100644
+--- a/codec/smpp34.go
++++ b/codec/smpp34.go
+@@ -45,21 +45,33 @@ func NewSMPP34Registry(mode RegistryMode) (*Registry, error) {
+ 
+ func registerSMPP34Commands(builder *RegistryBuilder) error {
+ 	definitions := []CommandDefinition{
++		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+ 		{ID: protocol.CommandBindReceiver, Name: "bind_receiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
+ 		{ID: protocol.CommandBindReceiverResp, Name: "bind_receiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
+ 		{ID: protocol.CommandBindTransmitter, Name: "bind_transmitter", Decode: decodeBindRequest, Encode: encodeBindRequest},
+ 		{ID: protocol.CommandBindTransmitterResp, Name: "bind_transmitter_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
+-		{ID: protocol.CommandBindTransceiver, Name: "bind_transceiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
+-		{ID: protocol.CommandBindTransceiverResp, Name: "bind_transceiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
+-		{ID: protocol.CommandUnbind, Name: "unbind", Decode: decodeRequestEmpty, Encode: encodeEmpty},
+-		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+-		{ID: protocol.CommandEnquireLink, Name: "enquire_link", Decode: decodeRequestEmpty, Encode: encodeEmpty},
+-		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
+-		{ID: protocol.CommandGenericNACK, Name: "generic_nack", Decode: decodeResponseEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandQuerySM, Name: "query_sm", Decode: decodeQuerySM, Encode: encodeQuerySM},
++		{ID: protocol.CommandQuerySMResp, Name: "query_sm_resp", Decode: decodeQuerySMResp, Encode: encodeQuerySMResp},
+ 		{ID: protocol.CommandSubmitSM, Name: "submit_sm", Decode: decodeSubmitSM, Encode: encodeSubmitSM},
+ 		{ID: protocol.CommandSubmitSMResp, Name: "submit_sm_resp", Decode: decodeSubmitSMResp, Encode: encodeSubmitSMResp},
+ 		{ID: protocol.CommandDeliverSM, Name: "deliver_sm", Decode: decodeDeliverSM, Encode: encodeDeliverSM},
+ 		{ID: protocol.CommandDeliverSMResp, Name: "deliver_sm_resp", Decode: decodeDeliverSMResp, Encode: encodeDeliverSMResp},
++		{ID: protocol.CommandUnbind, Name: "unbind", Decode: decodeRequestEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandUnbindResp, Name: "unbind_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandReplaceSM, Name: "replace_sm", Decode: decodeReplaceSM, Encode: encodeReplaceSM},
++		{ID: protocol.CommandReplaceSMResp, Name: "replace_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandCancelSM, Name: "cancel_sm", Decode: decodeCancelSM, Encode: encodeCancelSM},
++		{ID: protocol.CommandCancelSMResp, Name: "cancel_sm_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandBindTransceiver, Name: "bind_transceiver", Decode: decodeBindRequest, Encode: encodeBindRequest},
++		{ID: protocol.CommandBindTransceiverResp, Name: "bind_transceiver_resp", Decode: decodeBindResponse, Encode: encodeBindResponse},
++		{ID: protocol.CommandOutbind, Name: "outbind", Decode: decodeOutbind, Encode: encodeOutbind},
++		{ID: protocol.CommandEnquireLink, Name: "enquire_link", Decode: decodeRequestEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandEnquireLinkResp, Name: "enquire_link_resp", Decode: decodeResponseEmpty, Encode: encodeEmpty},
++		{ID: protocol.CommandSubmitMulti, Name: "submit_multi", Decode: decodeSubmitMulti, Encode: encodeSubmitMulti},
++		{ID: protocol.CommandSubmitMultiResp, Name: "submit_multi_resp", Decode: decodeSubmitMultiResp, Encode: encodeSubmitMultiResp},
++		{ID: protocol.CommandAlertNotification, Name: "alert_notification", Decode: decodeAlertNotification, Encode: encodeAlertNotification},
++		{ID: protocol.CommandDataSM, Name: "data_sm", Decode: decodeDataSM, Encode: encodeDataSM},
++		{ID: protocol.CommandDataSMResp, Name: "data_sm_resp", Decode: decodeDataSMResp, Encode: encodeDataSMResp},
+ 	}
+ 	for _, def := range definitions {
+ 		if err := builder.RegisterCommand(def); err != nil {
+@@ -71,11 +83,50 @@ func registerSMPP34Commands(builder *RegistryBuilder) error {
+ 
+ func registerSMPP34TLVs(builder *RegistryBuilder) error {
+ 	definitions := []TLVDefinition{
++		{Tag: protocol.TLVTagDestAddrSubunit, Name: "dest_addr_subunit"},
++		{Tag: protocol.TLVTagDestNetworkType, Name: "dest_network_type"},
++		{Tag: protocol.TLVTagDestBearerType, Name: "dest_bearer_type"},
++		{Tag: protocol.TLVTagDestTelematicsID, Name: "dest_telematics_id"},
++		{Tag: protocol.TLVTagSourceAddrSubunit, Name: "source_addr_subunit"},
++		{Tag: pro
