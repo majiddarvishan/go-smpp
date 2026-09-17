@@ -306,3 +306,20 @@ Every optimization remains subject to `go test -race`, bounded-memory requiremen
 The first Phase 17 experiment added bounded, no-wait TX coalescing and measured it immediately on the same hosted CI class. With batching enabled by default at 32 queued PDUs, localhost TCP throughput regressed from the Phase 16 baseline (for example one session from ~42.6k to ~39.2k request-PDU/s, four sessions from ~60.0k to ~53.4k), and TLS also regressed. In-memory throughput improved slightly in some cases, but the network result did not justify making batching the default.
 
 The batching implementation is therefore retained only as an explicit tuning option and the default is one PDU per transport write. This preserves a reproducible opt-in experiment without imposing a measured regression on normal sessions. The next optimization target is allocation pressure in the hot submit/deliver encode/request path.
+
+## Phase 17 measured TX batching experiment
+
+A same-run localhost TCP sweep on the hosted AMD EPYC 9V74 runner measured the scatter/gather TX path with one SMPP session, 64 concurrent callers, and required SMPP responses enabled:
+
+| TX batch | request-PDU/s | allocs/op | bytes/op |
+| ---: | ---: | ---: | ---: |
+| 1 | ~67,795 | 11 | ~977 |
+| 2 | ~108,144 | 12 | ~999 |
+| 4 | ~146,731 | 11 | ~988 |
+| 8 | ~167,931 | 11 | ~984 |
+| 16 | ~168,177 | 11 | ~983 |
+| 32 | ~182,512 | 11 | ~983 |
+
+This experiment validates opportunistic scatter/gather batching as a material TCP optimization on that development runner. The session default remains 32 queued PDUs, bounded by `TXBatchBytes`; the TX loop does not delay an isolated packet just to fill a batch. Performance-lab defaults now follow the production session default so ordinary smoke/profile runs exercise the measured fast path.
+
+The experiment is still not the Phase 17 acceptance result: the required acceptance host is Linux/amd64 with 8 CPU cores and 10 GB RAM, and sustained memory/goroutine/timeout bounds must also be verified there.

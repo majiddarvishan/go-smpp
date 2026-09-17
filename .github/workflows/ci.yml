@@ -43,6 +43,7 @@ jobs:
         env:
           SMPP_BENCH_SESSIONS: 1
           SMPP_BENCH_PARALLELISM: 16
+          SMPP_BENCH_TX_BATCH: 32
         run: |
           go test -run=^$ -bench=BenchmarkLocalhostTCPBidirectional/sessions_1 -benchmem -benchtime=2s ./internal/perflab             -cpuprofile=/tmp/phase17-cpu.pprof             -memprofile=/tmp/phase17-heap.pprof             -mutexprofile=/tmp/phase17-mutex.pprof             -blockprofile=/tmp/phase17-block.pprof
           echo '=== CPU top ==='

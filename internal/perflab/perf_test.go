@@ -273,11 +273,11 @@ func benchmarkBidirectional(b *testing.B, localhost, useTLS bool) {
 func benchmarkTXBatchItems() int {
 	raw := strings.TrimSpace(os.Getenv("SMPP_BENCH_TX_BATCH"))
 	if raw == "" {
-		return 1
+		return session.DefaultTXBatchItems
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
-		return 1
+		return session.DefaultTXBatchItems
 	}
 	return value
 }

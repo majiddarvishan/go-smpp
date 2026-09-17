@@ -6,6 +6,7 @@ OUT=${1:-"$ROOT/.bench"}
 BENCHTIME=${BENCHTIME:-3s}
 SESSIONS=${SMPP_BENCH_SESSIONS:-1}
 PARALLELISM=${SMPP_BENCH_PARALLELISM:-16}
+TX_BATCH=${SMPP_BENCH_TX_BATCH:-32}
 mkdir -p "$OUT"
 
 cd "$ROOT"
@@ -17,6 +18,7 @@ cd "$ROOT"
   echo "gomaxprocs=${GOMAXPROCS:-default}"
   echo "sessions=$SESSIONS"
   echo "parallelism_multiplier=$PARALLELISM"
+  echo "tx_batch=$TX_BATCH"
   uname -a
 } > "$OUT/environment.txt"
 
@@ -29,11 +31,11 @@ go test ./session -run '^$' -bench 'Benchmark(DeadlineHighOutstanding|LivenessAc
   | tee "$OUT/timers-window.txt"
 
 # End-to-end in-memory, localhost TCP, and TLS-over-TCP request/response paths.
-SMPP_BENCH_SESSIONS="$SESSIONS" SMPP_BENCH_PARALLELISM="$PARALLELISM" go test ./internal/perflab -run '^$' -bench 'Benchmark(InMemorySessionBidirectional|LocalhostTCPBidirectional|LocalhostTLSBidirectional)$' -benchmem -benchtime="$BENCHTIME" \
+SMPP_BENCH_SESSIONS="$SESSIONS" SMPP_BENCH_PARALLELISM="$PARALLELISM" SMPP_BENCH_TX_BATCH="$TX_BATCH" go test ./internal/perflab -run '^$' -bench 'Benchmark(InMemorySessionBidirectional|LocalhostTCPBidirectional|LocalhostTLSBidirectional)$' -benchmem -benchtime="$BENCHTIME" \
   | tee "$OUT/end-to-end.txt"
 
 # One focused run captures CPU, heap, block/mutex contention, scheduler trace, and GC activity.
-GODEBUG=gctrace=1 SMPP_BENCH_SESSIONS=1 SMPP_BENCH_PARALLELISM="$PARALLELISM" go test ./internal/perflab -run '^$' -bench 'BenchmarkInMemorySessionBidirectional/sessions_1$' -benchmem -benchtime="$BENCHTIME" \
+GODEBUG=gctrace=1 SMPP_BENCH_SESSIONS=1 SMPP_BENCH_PARALLELISM="$PARALLELISM" SMPP_BENCH_TX_BATCH="$TX_BATCH" go test ./internal/perflab -run '^$' -bench 'BenchmarkInMemorySessionBidirectional/sessions_1$' -benchmem -benchtime="$BENCHTIME" \
   -cpuprofile "$OUT/cpu.pprof" \
   -memprofile "$OUT/heap.pprof" \
   -mutexprofile "$OUT/mutex.pprof" \

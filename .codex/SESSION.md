@@ -145,6 +145,12 @@ Phase 15 adds tests for observability counters/events, opt-in packet tracing and
 - SMPP 3.4 complete first, architecture SMPP 5.0-aware.
 - no `unsafe` initially; minimal runtime dependencies.
 
+## Phase 17 progress — profile-guided TCP optimization
+
+The first Phase 17 profile showed the single-session localhost TCP path dominated by transport write syscalls. Opportunistic TX batching was therefore implemented and then upgraded to `net.Buffers` scatter/gather for plain `*net.TCPConn` sessions. A same-run batch sweep on a hosted AMD EPYC 9V74 runner improved one-session localhost TCP from roughly 67.8k request-PDU/s at batch 1 to roughly 182.5k request-PDU/s at batch 32 while processing all required SMPP responses. This is a development-run result, not the 8-core/10-GB acceptance result.
+
+The response-deadline record is now embedded in `pendingRequest`, the dispatch/receive timestamps are reused, caller parallelism is configurable in the benchmark lab, and the deadline microbenchmark has reached zero allocations in recent CI runs. An attempted outbound frame `sync.Pool` optimization was reverted after CI showed it increased bytes/op and allocations/op; Phase 17 remains profile-driven rather than keeping regressions.
+
 ## Exact next task
 
-Continue **Phase 17 — Performance acceptance and optimization** from `PLAN.md`. Use the Phase 16 profiles to reduce scheduler/channel overhead and per-request allocations first, re-run the same benchmark matrix after every significant change, and keep the 100k acceptance checkbox open until the documented Linux/amd64 8-core / 10-GB reference environment sustains the target with the minimum practical session count.
+Continue **Phase 17 — Performance acceptance and optimization** from `PLAN.md`. Re-profile the one-session localhost TCP path with the measured batch-32 scatter/gather fast path, then target the remaining request/response allocation and synchronization costs. Keep the 100k acceptance checkbox open until the documented Linux/amd64 8-core / 10-GB reference environment sustains the target with bounded memory/timeouts and the minimum practical session count.
