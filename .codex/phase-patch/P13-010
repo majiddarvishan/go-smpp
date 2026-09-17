@@ -1,0 +1,209 @@
+= net.Pipe()
++	defer peer.Close()
++	sess, err := New(local, Config{Role: RoleSMSC, SessionInitTimeout: -1, EnquireLinkInterval: -1, InactivityTimeout: -1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer sess.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	if _, err := sess.Request(ctx, protocol.CommandOutbind, protocol.Outbind{}); !errors.Is(err, ErrUnexpectedPDU) {
++		t.Fatalf("outbind request err=%v", err)
++	}
++	if _, err := sess.Request(ctx, protocol.CommandAlertNotification, protocol.AlertNotification{}); !errors.Is(err, ErrUnexpectedPDU) {
++		t.Fatalf("alert request err=%v", err)
++	}
++}
++
++func mustRegistryForPhase13(t *testing.T) *codec.Registry {
++	t.Helper()
++	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return registry
++}
++
++func TestSessionSMPP34ExtendedRequestMethods(t *testing.T) {
++	esmeConn, smscConn := net.Pipe()
++	smscHandler := HandlerFunc(func(_ context.Context, _ *Session, pdu codec.DecodedPDU) (Response, error) {
++		switch pdu.Header.CommandID {
++		case protocol.CommandBindTransmitter:
++			return Response{Status: protocol.StatusOK, Body: protocol.BindResponse{SystemID: []byte("smsc")}}, nil
++		case protocol.CommandDataSM:
++			return Response{Status: protocol.StatusOK, Body: protocol.DataSMResp{MessageID: []byte("d1"), Optional: []protocol.OptionalParameter{{Tag: protocol.TLVTagDPFResult, Value: []byte{1}}}}}, nil
++		case protocol.CommandSubmitMulti:
++			return Response{Status: protocol.StatusOK, Body: protocol.SubmitMultiResp{MessageID: []byte("m1"), Unsuccessful: []protocol.UnsuccessfulSME{{DestinationAddr: []byte("999"), ErrorStatusCode: protocol.StatusInvalidDestinationAddress}}}}, nil
++		case protocol.CommandQuerySM:
++			return Response{Status: protocol.StatusOK, Body: protocol.QuerySMResp{MessageID: []byte("m1"), MessageState: protocol.MessageStateDelivered}}, nil
++		case protocol.CommandCancelSM, protocol.CommandReplaceSM:
++			return Response{Status: protocol.StatusOK, Body: protocol.EmptyBody{}}, nil
++		default:
++			return Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, nil
++		}
++	})
++	smsc, err := New(smscConn, Config{Role: RoleSMSC, Handler: smscHandler})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer smsc.Close()
++	esme, err := New(esmeConn, Config{Role: RoleESME})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer esme.Close()
++
++	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++	defer cancel()
++	if _, err := esme.BindTransmitter(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
++		t.Fatal(err)
++	}
++	if got, err := esme.DataSM(ctx, protocol.DataSM{DestinationAddr: []byte("1")}); err != nil || string(got.MessageID) != "d1" || len(got.Optional) != 1 {
++		t.Fatalf("data_sm resp=%+v err=%v", got, err)
++	}
++	multi, err := esme.SubmitMulti(ctx, protocol.SubmitMulti{Destinations: []protocol.SubmitMultiDestination{{Flag: protocol.DestinationSME, Address: []byte("1")}}})
++	if err != nil || string(multi.MessageID) != "m1" || len(multi.Unsuccessful) != 1 || string(multi.Unsuccessful[0].DestinationAddr) != "999" {
++		t.Fatalf("submit_multi resp=%+v err=%v", multi, err)
++	}
++	query, err := esme.QuerySM(ctx, protocol.QuerySM{MessageID: []byte("m1")})
++	if err != nil || query.MessageState != protocol.MessageStateDelivered {
++		t.Fatalf("query resp=%+v err=%v", query, err)
++	}
++	if err := esme.CancelSM(ctx, protocol.CancelSM{MessageID: []byte("m1")}); err != nil {
++		t.Fatalf("cancel: %v", err)
++	}
++	if err := esme.ReplaceSM(ctx, protocol.ReplaceSM{MessageID: []byte("m1"), ShortMessage: []byte("new")}); err != nil {
++		t.Fatalf("replace: %v", err)
++	}
++}
+diff --git a/session/session.go b/session/session.go
+index dc1cfc5..2172fd5 100644
+--- a/session/session.go
++++ b/session/session.go
+@@ -81,6 +81,7 @@ type txKind uint8
+ const (
+ 	txRequest txKind = iota + 1
+ 	txResponse
++	txOneWay
+ )
+ 
+ type txItem struct {
+@@ -90,6 +91,7 @@ type txItem struct {
+ 	requestID  protocol.CommandID
+ 	responseTo protocol.CommandID
+ 	status     protocol.CommandStatus
++	dispatched chan error
+ }
+ 
+ // Session owns one TCP-compatible stream and runs independent long-lived RX and
+@@ -235,7 +237,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body
+ 	if ctx == nil {
+ 		ctx = context.Background()
+ 	}
+-	if command.IsResponse() || command == protocol.CommandOutbind {
++	if command.IsResponse() || isOneWayCommand(command) {
+ 		return codec.DecodedPDU{}, fmt.Errorf("%w: command 0x%08x does not have synchronous request semantics", ErrUnexpectedPDU, uint32(command))
+ 	}
+ 	select {
+@@ -320,6 +322,58 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body
+ 	}
+ }
+ 
++// SendOneWay dispatches an SMPP request primitive that has no response PDU.
++// The context governs admission to the TX queue. Once admitted, the call waits
++// until the complete frame has either been written or the session is lost, so
++// callers never receive context cancellation while the library is still
++// ambiguously deciding whether to put a one-way lifecycle PDU on the wire.
++func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, body any) error {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if !isOneWayCommand(command) {
++		return fmt.Errorf("%w: command 0x%08x is not a one-way SMPP primitive", ErrUnexpectedPDU, uint32(command))
++	}
++	select {
++	case <-s.done:
++		return s.requestCloseError()
++	default:
++	}
++	if err := s.machine.BeginOutbound(command); err != nil {
++		return err
++	}
++	reserved := true
++	defer func() {
++		if reserved {
++			s.machine.CancelOutbound(command)
++		}
++	}()
++
++	sequence := s.seq.Next()
++	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
++	frame, err := codec.EncodePDU(nil, header, body, s.registry)
++	if err != nil {
++		return err
++	}
++	dispatched := make(chan error, 1)
++	item := txItem{kind: txOneWay, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
++	select {
++	case s.tx <- item:
++		reserved = false
++	case <-ctx.Done():
++		return ctx.Err()
++	case <-s.done:
++		return s.requestCloseError()
++	}
++
++	select {
++	case err := <-dispatched:
++		return err
++	case <-s.done:
++		return s.requestCloseError()
++	}
++}
++
+ func (s *Session) waitCompleted(request *pendingRequest) (codec.DecodedPDU, error) {
+ 	result := <-request.done
+ 	return result.pdu, result.err
+@@ -382,6 +436,75 @@ func (s *Session) DeliverSM(ctx context.Context, request protocol.DeliverSM) (pr
+ 	return body, nil
+ }
+ 
++func (s *Session) DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error) {
++	pdu, err := s.Request(ctx, protocol.CommandDataSM, request)
++	if err != nil {
++		return protocol.DataSMResp{}, err
++	}
++	if err := responseError(pdu); err != nil {
++		return protocol.DataSMResp{}, err
++	}
++	body, ok := pdu.Body.(protocol.DataSMResp)
++	if !ok {
++		return protocol.DataSMResp{}, fmt.Errorf("%w: data_sm_resp body %T", ErrUnexpectedPDU, pdu.Body)
++	}
++	return body, nil
++}
++
++func (s *Session) SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error) {
++	pdu, err := s.Request(ctx, protocol.CommandSubmitMulti, request)
++	if err != nil {
++		return protocol.SubmitMultiResp{}, err
++	}
++	if err := responseError(pdu); err != nil {
++		return protocol.SubmitMultiResp{}, err
++	}
++	body, ok := pdu.Body.(protocol.SubmitMultiResp)
++	if !ok {
++		return protocol.SubmitMultiResp{}, fmt.Errorf("%w: submit_multi_resp body %T", ErrUnexpectedPDU, pdu.Body)
++	}
++	return body, nil
++}
++
++func (s *Session) QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error) {
++	pdu, err := s.Request(ctx, protocol.CommandQuerySM, request)
++	if err != nil {
++		return protocol.QuerySMResp{}, err
++	}
++	if err := responseError(pdu); err != nil {
++		return protocol.QuerySMResp{}, err
++	}
++	body, ok := pdu.Body.
