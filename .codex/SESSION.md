@@ -4,7 +4,7 @@
 
 Branch: `main`
 
-Phase 0 through Phase 14 are complete. Phase 14 adds SMPP 5.0 capability negotiation, Cell Broadcast operations, v5 TLVs/status codes, and congestion feedback while preserving the shared 3.4 core. Phase 15 is next.
+Phase 0 through Phase 15 are complete. Phase 15 adds low-overhead traffic/liveness/RTT/congestion metrics, opt-in event and packet-trace hooks, client reconnect metrics, and preserves mandatory fatal-protocol logging without enabling default per-PDU logs. Phase 16 is next.
 
 The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
 
@@ -74,6 +74,14 @@ Phase 14 extends that same core rather than introducing a parallel SMPP 5.0 stac
 
 The v5 registry adds six Cell Broadcast command IDs and 20 v5 TLV tags on top of the complete 3.4 registry, including `congestion_state`, broadcast/billing fields, number portability, and endpoint network/node identification. `broadcast_sm`, `query_broadcast_sm`, and `cancel_broadcast_sm` have typed session/client APIs. The codec accepts `congestion_state` on normal, header-only, and non-zero-status responses; error responses may carry TLVs without reintroducing their omitted standard body. `FlowController` receives validated 0..100 congestion feedback on the RX path and is intentionally separate from the hard request-window bound.
 
+## Phase 15 completed — observability without hot-path logging
+
+Each `Session` now exposes a lock-free `Metrics()` snapshot for sent/received requests and responses, protocol/liveness timeouts, Enquire Link activity, decode/fatal failures, response RTT samples, congestion feedback, and the bounded request-window snapshot. The client exposes reconnect and failed-reconnect counters without changing reconnect semantics.
+
+`Observer` provides optional typed session events and `PacketTracer` provides optional direction/header/length traces. Both are nil by default and use no background worker/queue. Raw PDU tracing is a separate `TraceRawPDU` opt-in because complete wire frames may contain bind credentials or SMS content. Normal traffic still produces no per-PDU `slog` records. Fatal structural/framing failures continue to emit the mandatory safe structured diagnostic before/while closing the offending TCP session, regardless of whether optional observability hooks are configured.
+
+RTT measurement is tied to the full-dispatch boundary. A very fast peer can return a response before the TX goroutine records its post-write timestamp; that race is preserved as a valid zero lower-bound RTT sample instead of dropping the sample. Congestion metrics are updated from negotiated SMPP 5.0 response feedback even if no adaptive `FlowController` is configured.
+
 ## Validation performed
 
 GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
@@ -101,6 +109,17 @@ Coverage added for these phases includes:
 
 The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request-PDU/s performance claim has been made yet.
 
+The Phase 15 apply gate runs on Go 1.26.x/Linux and requires all of the following before the phase commit can be pushed to `main`:
+
+```text
+git diff --check --cached
+go test ./...
+go test -race ./...
+go vet ./...
+```
+
+Phase 15 adds tests for observability counters/events, opt-in packet tracing and raw-trace gating, timeout/liveness counters, congestion metrics, reconnect metrics, fatal decode counters/logging, and ordinary-traffic no-log behavior.
+
 ## Important requirements to preserve
 
 - 100k aggregate bidirectional request-PDU/s target on 8 cores / 10 GB RAM with minimum practical TCP session count.
@@ -118,4 +137,4 @@ The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request
 
 ## Exact next task
 
-Start **Phase 15 — Observability without hot-path logging** from `PLAN.md`. Add counters/event hooks and optional tracing without introducing per-PDU default logging or weakening the mandatory fatal-protocol diagnostic path. Expose the already implemented congestion feedback as observability data without moving it onto a blocking hot path.
+Start **Phase 16 — Performance simulator and benchmark laboratory** from `PLAN.md`. Build the minimal high-throughput SMPP peer simulator and establish codec, in-memory session, localhost TCP, and TLS-over-TCP benchmark baselines. Begin with one bidirectional session and increase session count only if measurement requires it. Persist methodology/results in `.codex/PERFORMANCE.md`; do not claim the Phase 17 100k target before the reference acceptance run.

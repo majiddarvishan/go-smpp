@@ -100,6 +100,8 @@ The project benchmarks one session first, then increases connection count only i
 
 ## Current implementation state
 
-Phase 0 through Phase 7 are complete and verified. The shared state machine, TCP/TLS-over-TCP transport boundary, long-lived RX/TX engine, synchronous/context-aware public request API, bounded pending correlation, out-of-order completion, high inbound sequence interoperability, fatal-protocol structured logging/connection close, and concurrent client/server/session lifecycle are implemented.
+Phase 0 through Phase 15 are complete and verified. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, and low-overhead observability.
 
-Phase 8 is next and will add the real configurable SMPP outstanding-request window/backpressure policy. The existing `MaxPending` and TX queue bounds are defensive safety bounds, not a substitute for Phase 8. The actual response timeout scheduler, Session Init timer, Enquire Link scheduling/timeout, and inactivity timer remain Phase 9 work. Auto-reconnect remains Phase 10. Full SMSC/server policy remains Phase 11. GSM 7-bit and Unicode/emoji encoding remains Phase 12.
+Session observability provides atomic snapshots for traffic, response/liveness timeouts, Enquire Link activity, window state, RTT, decode/fatal failures, and SMPP 5.0 congestion feedback. Dialed clients expose reconnect counters. Event hooks and packet tracing are explicit opt-ins; raw wire-PDU copying requires a second explicit opt-in. Ordinary per-PDU logging remains disabled while mandatory structured fatal-protocol logging cannot be turned off through the observability configuration.
+
+Phase 16 is next and will build the high-throughput peer simulator and benchmark laboratory needed to measure codec/session/TCP/TLS behavior before Phase 17 performance acceptance. No 100k request-PDU/s acceptance claim is made until those benchmark phases are executed on the documented reference environment.

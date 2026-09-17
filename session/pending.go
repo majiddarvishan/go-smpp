@@ -3,6 +3,7 @@ package session
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/majiddarvishan/go-smpp/codec"
 	"github.com/majiddarvishan/go-smpp/protocol"
@@ -14,12 +15,17 @@ type requestResult struct {
 }
 
 type pendingRequest struct {
-	requestID     protocol.CommandID
-	bindVersion   protocol.InterfaceVersion
-	expectedID    protocol.CommandID
-	done          chan requestResult
-	dispatched    atomic.Bool
-	releaseWindow func()
+	requestID       protocol.CommandID
+	bindVersion     protocol.InterfaceVersion
+	expectedID      protocol.CommandID
+	done            chan requestResult
+	dispatched      atomic.Bool
+	dispatchedAt    atomic.Int64
+	responseAt      atomic.Int64
+	responseCommand atomic.Uint32
+	responseStatus  atomic.Uint32
+	rttRecorded     atomic.Bool
+	releaseWindow   func()
 
 	deadlineMu sync.Mutex
 	deadline   *deadlineItem
@@ -155,4 +161,41 @@ func (r *pendingRequest) finish() {
 	if release != nil {
 		release()
 	}
+}
+
+func (r *pendingRequest) markDispatchAt(at time.Time) (time.Duration, bool) {
+	r.dispatchedAt.Store(at.UnixNano())
+	return r.claimRTT()
+}
+
+func (r *pendingRequest) markResponseAt(at time.Time, command protocol.CommandID, status protocol.CommandStatus) (time.Duration, bool) {
+	r.responseCommand.Store(uint32(command))
+	r.responseStatus.Store(uint32(status))
+	r.responseAt.Store(at.UnixNano())
+	return r.claimRTT()
+}
+
+func (r *pendingRequest) claimRTT() (time.Duration, bool) {
+	dispatch := r.dispatchedAt.Load()
+	response := r.responseAt.Load()
+	if dispatch == 0 || response == 0 || !r.rttRecorded.CompareAndSwap(false, true) {
+		return 0, false
+	}
+	// A peer on an in-memory or extremely low-latency transport can return a
+	// response after WriteFull has completed but before the TX goroutine records
+	// its post-write timestamp. In that instrumentation race the true RTT is
+	// smaller than our scheduling gap, so expose a zero lower bound rather than
+	// dropping the sample or reporting a negative duration.
+	if response <= dispatch {
+		return 0, true
+	}
+	return time.Duration(response - dispatch), true
+}
+
+func (r *pendingRequest) responseMetadata() (protocol.CommandID, protocol.CommandStatus) {
+	command := protocol.CommandID(r.responseCommand.Load())
+	if command == 0 {
+		command = r.expectedID
+	}
+	return command, protocol.CommandStatus(r.responseStatus.Load())
 }

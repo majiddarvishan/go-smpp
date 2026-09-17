@@ -141,6 +141,9 @@ func TestClientReconnectRebindWithoutHiddenResubmit(t *testing.T) {
 	if c.ReconnectCount() != 1 {
 		t.Fatalf("reconnect count=%d", c.ReconnectCount())
 	}
+	if metrics := c.Metrics(); metrics.Reconnects != 1 {
+		t.Fatalf("client metrics=%+v", metrics)
+	}
 	if got := c.Session().Window().InUse; got != 0 {
 		t.Fatalf("window leaked across reconnect: %d", got)
 	}

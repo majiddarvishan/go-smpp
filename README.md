@@ -6,7 +6,7 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 14 are complete and verified. SMPP 3.4 command coverage is complete and the shared core now implements the planned SMPP 5.0 extensions; the next implementation phase is Phase 15: low-overhead observability.
+Phase 0 through Phase 15 are complete and verified. SMPP 3.4 command coverage, the planned SMPP 5.0 extensions, and low-overhead runtime observability are implemented; the next implementation phase is Phase 16: the performance simulator and benchmark laboratory.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -69,6 +69,9 @@ The same protocol/session core now supports a profile-selected SMPP 5.0 registry
 
 SMPP 5.0 coverage includes the six Cell Broadcast request/response command IDs (`broadcast_sm`, `query_broadcast_sm`, and `cancel_broadcast_sm`), the v5 command-status additions, `congestion_state`, billing, Cell Broadcast, number-portability, and source/destination network/node-identification TLVs. `congestion_state` is accepted on successful, failed, and header-only response PDUs and is surfaced through a lightweight `FlowController` callback; the hard outstanding-request window remains a separate safety bound. Unknown/duplicate TLVs continue to retain their ordered wire representation.
 
+## Observability
+
+Each session exposes lock-free snapshots for request/response counts, protocol and liveness timeouts, Enquire Link activity, decode/fatal failures, RTT samples, congestion feedback, and outstanding-window state. Dialed clients expose reconnect and reconnect-failure counters. Optional event and packet-trace callbacks are disabled by default; enabling raw packet tracing is an explicit opt-in because raw PDUs may contain credentials or message content. Normal per-PDU logging remains disabled, while fatal malformed/framing input always emits its structured diagnostic before the offending TCP session is closed.
 
 ## Message encoding
 

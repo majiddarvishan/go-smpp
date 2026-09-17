@@ -67,6 +67,9 @@ type Config struct {
 	WindowSize          int
 	WindowObserver      WindowObserver
 	FlowController      FlowController
+	Observer            Observer
+	PacketTracer        PacketTracer
+	TraceRawPDU         bool
 	ResponseTimeout     time.Duration
 	SessionInitTimeout  time.Duration
 	EnquireLinkInterval time.Duration
@@ -88,11 +91,13 @@ const (
 
 type txItem struct {
 	kind       txKind
+	header     codec.Header
 	frame      []byte
 	sequence   protocol.SequenceNumber
 	requestID  protocol.CommandID
 	responseTo protocol.CommandID
 	status     protocol.CommandStatus
+	pending    *pendingRequest
 	dispatched chan error
 }
 
@@ -119,6 +124,7 @@ type Session struct {
 	createdAt    time.Time
 	lastActivity atomic.Int64
 	peerCaps     atomic.Value // protocol.PeerCapabilities
+	metrics      sessionMetrics
 
 	closeOnce sync.Once
 	wg        sync.WaitGroup
@@ -342,7 +348,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 		return codec.DecodedPDU{}, err
 	}
 
-	item := txItem{kind: txRequest, frame: frame, sequence: sequence, requestID: command}
+	item := txItem{kind: txRequest, header: header, frame: frame, sequence: sequence, requestID: command, pending: request}
 	select {
 	case s.tx <- item:
 		reserved = false
@@ -403,7 +409,7 @@ func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, bo
 		return err
 	}
 	dispatched := make(chan error, 1)
-	item := txItem{kind: txOneWay, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
+	item := txItem{kind: txOneWay, header: header, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
 	select {
 	case s.tx <- item:
 		reserved = false
@@ -636,12 +642,23 @@ func (s *Session) expireDeadline(item *deadlineItem) {
 	err := &TimeoutError{Kind: item.kind, Command: item.command, Sequence: item.sequence, After: item.after}
 	request, won := s.pending.completeError(item.sequence, err)
 	if won {
+		s.metrics.responseTimeouts.Add(1)
+		eventKind := EventResponseTimeout
+		if item.kind == TimeoutEnquireLink {
+			s.metrics.enquireLinkTimeouts.Add(1)
+			eventKind = EventEnquireLinkTimeout
+		}
+		s.emitEvent(Event{Kind: eventKind, Command: item.command, Sequence: item.sequence, Timeout: item.kind, Duration: item.after})
 		s.machine.CancelOutbound(request.requestID)
 	}
 }
 
 func (s *Session) noteActivity() {
-	s.lastActivity.Store(time.Now().UnixNano())
+	s.noteActivityAt(time.Now())
+}
+
+func (s *Session) noteActivityAt(at time.Time) {
+	s.lastActivity.Store(at.UnixNano())
 }
 
 func (s *Session) lastActivityTime() time.Time {
@@ -662,6 +679,8 @@ func (s *Session) livenessLoop() {
 		case now := <-ticker.C:
 			state := s.State()
 			if (state == protocol.StateOpen || state == protocol.StateOutbound) && s.config.SessionInitTimeout > 0 && now.Sub(s.createdAt) >= s.config.SessionInitTimeout {
+				s.metrics.sessionInitTimeouts.Add(1)
+				s.emitEvent(Event{Kind: EventSessionInitTimeout, At: now, Timeout: TimeoutSessionInit, Duration: s.config.SessionInitTimeout})
 				s.terminate(&TimeoutError{Kind: TimeoutSessionInit, After: s.config.SessionInitTimeout})
 				return
 			}
@@ -670,6 +689,8 @@ func (s *Session) livenessLoop() {
 			}
 			idle := now.Sub(s.lastActivityTime())
 			if s.config.InactivityTimeout > 0 && idle >= s.config.InactivityTimeout {
+				s.metrics.inactivityTimeouts.Add(1)
+				s.emitEvent(Event{Kind: EventInactivityTimeout, At: now, Timeout: TimeoutInactivity, Duration: s.config.InactivityTimeout})
 				s.terminate(&TimeoutError{Kind: TimeoutInactivity, After: s.config.InactivityTimeout})
 				return
 			}
@@ -764,7 +785,15 @@ func (s *Session) txLoop() {
 				s.terminate(err)
 				return
 			}
-			s.noteActivity()
+			now := time.Now()
+			s.noteActivityAt(now)
+			s.tracePacket(PacketOutbound, item.header, item.frame)
+			s.observeOutbound(item, now)
+			if item.kind == txRequest && item.pending != nil {
+				if rtt, ok := item.pending.markDispatchAt(now); ok {
+					s.observeRTT(item.pending, item.sequence, rtt)
+				}
+			}
 			if item.dispatched != nil {
 				item.dispatched <- nil
 			}
@@ -786,6 +815,24 @@ func (s *Session) txLoop() {
 	}
 }
 
+func (s *Session) observeOutbound(item txItem, at time.Time) {
+	event := Event{At: at, Command: item.header.CommandID, Sequence: item.header.SequenceNumber, Status: item.header.CommandStatus}
+	if item.kind == txResponse {
+		s.metrics.responsesSent.Add(1)
+		event.Kind = EventResponseSent
+		s.emitEvent(event)
+		return
+	}
+	s.metrics.requestsSent.Add(1)
+	event.Kind = EventRequestSent
+	s.emitEvent(event)
+	if item.header.CommandID == protocol.CommandEnquireLink {
+		s.metrics.enquireLinkSent.Add(1)
+		event.Kind = EventEnquireLinkSent
+		s.emitEvent(event)
+	}
+}
+
 func (s *Session) processFrame(frame []byte) error {
 	pdu, err := codec.DecodePDU(frame, s.registry)
 	if err != nil {
@@ -793,6 +840,8 @@ func (s *Session) processFrame(frame []byte) error {
 		if errors.As(err, &fatal) {
 			return err
 		}
+		s.metrics.decodeFailures.Add(1)
+		s.emitEvent(Event{Kind: EventDecodeFailure, Reason: err.Error()})
 		header, headerErr := codec.DecodeHeader(frame)
 		if headerErr != nil {
 			return headerErr
@@ -802,10 +851,23 @@ func (s *Session) processFrame(frame []byte) error {
 		_ = s.queueGenericNACK(header, protocol.StatusInvalidMessageLength)
 		return nil
 	}
-	s.noteActivity()
+	now := time.Now()
+	s.noteActivityAt(now)
+	s.tracePacket(PacketInbound, pdu.Header, frame)
 	if pdu.Header.CommandID.IsResponse() {
+		s.metrics.responsesReceived.Add(1)
+		s.emitEvent(Event{Kind: EventResponseReceived, At: now, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, Status: pdu.Header.CommandStatus})
+		if pdu.Header.CommandID == protocol.CommandEnquireLinkResp {
+			s.metrics.enquireLinkResponses.Add(1)
+		}
 		s.handleResponse(pdu)
 		return nil
+	}
+	s.metrics.requestsReceived.Add(1)
+	s.emitEvent(Event{Kind: EventRequestReceived, At: now, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, Status: pdu.Header.CommandStatus})
+	if pdu.Header.CommandID == protocol.CommandEnquireLink {
+		s.metrics.enquireLinkReceived.Add(1)
+		s.emitEvent(Event{Kind: EventEnquireLinkReceived, At: now, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber})
 	}
 	return s.handleRequest(pdu)
 }
@@ -814,6 +876,9 @@ func (s *Session) handleResponse(pdu codec.DecodedPDU) {
 	request, ok := s.pending.takeResponse(pdu.Header.SequenceNumber, pdu.Header.CommandID)
 	if !ok {
 		return // late, unmatched, duplicate, or response from another sequence space
+	}
+	if rtt, ok := request.markResponseAt(time.Now(), pdu.Header.CommandID, pdu.Header.CommandStatus); ok {
+		s.observeRTT(request, pdu.Header.SequenceNumber, rtt)
 	}
 	s.machine.CompleteOutbound(request.requestID, pdu.Header.CommandStatus)
 	if pdu.Header.CommandStatus.OK() && isBindRequest(request.requestID) {
@@ -832,6 +897,12 @@ func (s *Session) handleResponse(pdu codec.DecodedPDU) {
 	if request.requestID == protocol.CommandUnbind && pdu.Header.CommandStatus.OK() {
 		s.terminate(ErrSessionClosed)
 	}
+}
+
+func (s *Session) observeRTT(request *pendingRequest, sequence protocol.SequenceNumber, rtt time.Duration) {
+	s.metrics.noteRTT(rtt)
+	command, status := request.responseMetadata()
+	s.emitEvent(Event{Kind: EventResponseRTT, Command: command, Sequence: sequence, Status: status, Duration: rtt})
 }
 
 func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
@@ -960,7 +1031,7 @@ func (s *Session) queueResponse(request codec.Header, responseID protocol.Comman
 	if err != nil {
 		return err
 	}
-	item := txItem{kind: txResponse, frame: frame, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status}
+	item := txItem{kind: txResponse, header: header, frame: frame, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status}
 	if responseID == protocol.CommandGenericNACK {
 		item.responseTo = 0
 	}
@@ -979,6 +1050,10 @@ func (s *Session) terminate(cause error) {
 	s.closeOnce.Do(func() {
 		var fatal *protocol.FatalError
 		if errors.As(cause, &fatal) {
+			s.metrics.decodeFailures.Add(1)
+			s.metrics.fatalProtocolErrors.Add(1)
+			s.emitEvent(Event{Kind: EventDecodeFailure, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
+			s.emitEvent(Event{Kind: EventFatalProtocolError, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
 			s.logFatal(fatal)
 		}
 		s.errMu.Lock()
@@ -1149,7 +1224,7 @@ func requiresSMPP50(command protocol.CommandID) bool {
 }
 
 func (s *Session) observeCongestion(pdu codec.DecodedPDU) {
-	if s.config.FlowController == nil || !s.PeerCapabilities().SupportsSMPP50 {
+	if !s.PeerCapabilities().SupportsSMPP50 {
 		return
 	}
 	optional := responseOptionalParameters(pdu.Body)
@@ -1157,9 +1232,14 @@ func (s *Session) observeCongestion(pdu codec.DecodedPDU) {
 	if err != nil || !present {
 		return
 	}
-	s.config.FlowController.OnCongestion(CongestionEvent{
-		State: state, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, At: time.Now(),
-	})
+	now := time.Now()
+	s.metrics.noteCongestion(state)
+	s.emitEvent(Event{Kind: EventCongestionState, At: now, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, Congestion: state})
+	if s.config.FlowController != nil {
+		s.config.FlowController.OnCongestion(CongestionEvent{
+			State: state, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, At: now,
+		})
+	}
 }
 
 func responseOptionalParameters(body any) []protocol.OptionalParameter {

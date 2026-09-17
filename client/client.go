@@ -84,7 +84,8 @@ type Client struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	reconnects atomic.Uint64
+	reconnects        atomic.Uint64
+	reconnectFailures atomic.Uint64
 }
 
 func Dial(ctx context.Context, config Config) (*Client, error) {
@@ -167,6 +168,15 @@ func (c *Client) Session() *session.Session {
 }
 
 func (c *Client) ReconnectCount() uint64 { return c.reconnects.Load() }
+
+// Metrics returns a lock-free snapshot of client lifecycle counters. Session
+// traffic metrics remain available from the current Session.
+func (c *Client) Metrics() MetricsSnapshot {
+	return MetricsSnapshot{
+		Reconnects:        c.reconnects.Load(),
+		ReconnectFailures: c.reconnectFailures.Load(),
+	}
+}
 
 // LastLoss returns the most recent terminal error from a replaced/lost SMPP
 // session. It remains available after a successful reconnect so applications
@@ -451,6 +461,7 @@ func (c *Client) bindProfileSnapshot() *bindProfile {
 }
 
 func (c *Client) recordReconnectError(err error) {
+	c.reconnectFailures.Add(1)
 	c.mu.Lock()
 	c.lastErr = err
 	c.signalLocked()

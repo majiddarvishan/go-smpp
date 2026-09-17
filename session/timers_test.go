@@ -100,6 +100,9 @@ func TestResponseTimeoutStartsAfterFullDispatch(t *testing.T) {
 	if got := sess.Window().InUse; got != 0 {
 		t.Fatalf("window in use after timeout=%d", got)
 	}
+	if got := sess.Metrics().ResponseTimeouts; got != 1 {
+		t.Fatalf("response timeout metric=%d want 1", got)
+	}
 	if err := <-peerErr; err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +129,9 @@ func TestSessionInitTimeout(t *testing.T) {
 	var timeout *TimeoutError
 	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutSessionInit {
 		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
+	}
+	if got := sess.Metrics().SessionInitTimeouts; got != 1 {
+		t.Fatalf("session init timeout metric=%d want 1", got)
 	}
 }
 
@@ -243,6 +249,10 @@ func TestAutomaticEnquireLinkTimeoutClosesSession(t *testing.T) {
 	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutEnquireLink {
 		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
 	}
+	metrics := sess.Metrics()
+	if metrics.ResponseTimeouts != 1 || metrics.EnquireLinkTimeouts != 1 || metrics.EnquireLinkSent != 1 {
+		t.Fatalf("enquire timeout metrics=%+v", metrics)
+	}
 }
 
 func TestInactivityTimeoutClosesBoundSession(t *testing.T) {
@@ -283,6 +293,9 @@ func TestInactivityTimeoutClosesBoundSession(t *testing.T) {
 	var timeout *TimeoutError
 	if !errors.As(sess.Err(), &timeout) || timeout.Kind != TimeoutInactivity {
 		t.Fatalf("terminal error=%T %v", sess.Err(), sess.Err())
+	}
+	if got := sess.Metrics().InactivityTimeouts; got != 1 {
+		t.Fatalf("inactivity timeout metric=%d want 1", got)
 	}
 }
 

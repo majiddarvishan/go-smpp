@@ -258,6 +258,16 @@ Sending or receiving `outbind` moves the shared state machine from `Open` to `Ou
 
 **Reason:** The v5 specification defines `congestion_state` as response feedback for adaptive rate control, but a hard in-flight bound is still required as a local memory/correlation safety invariant and as fallback when peers do not send feedback. Keeping policy outside the core lets later performance work compare controllers without destabilizing request completion semantics.
 
+## D-045 — Observability is atomic-by-default; callbacks and packet tracing are opt-in
+
+**Decision:** Every active `Session` maintains bounded lock-free counters for request/response traffic, timeout/liveness outcomes, Enquire Link activity, decode/fatal failures, RTT samples, congestion feedback, and the existing request-window snapshot. Dialed clients expose reconnect/reconnect-failure counters. Metrics snapshots do not enumerate or retain individual requests.
+
+Application event callbacks (`Observer`) and packet tracing (`PacketTracer`) are optional and nil by default. When configured, callbacks run synchronously on the goroutine producing the event and therefore must return quickly; the core does not create observability worker goroutines or unbounded queues. Packet traces expose header/direction/length by default. Copying the complete raw PDU requires the separate explicit `TraceRawPDU` opt-in because raw bind/message bodies may contain credentials or user content.
+
+Per-PDU log output remains disabled by default. Mandatory `slog` diagnostics for fatal structural/framing corruption remain unconditional and are not routed through optional tracing, so disabling observability callbacks cannot suppress the required fatal log. Congestion metrics are recorded whenever valid negotiated SMPP 5.0 feedback is received even when no adaptive `FlowController` is installed.
+
+**Reason:** The 100k request-PDU/s target needs useful production diagnostics without formatting/logging every packet, spawning background work, or retaining per-request telemetry. Always-available atomic snapshots provide a small bounded cost; richer callbacks/copies are explicit deployment choices.
+
 ## Open decisions
 
 The following remain to be decided in later phases and recorded here:

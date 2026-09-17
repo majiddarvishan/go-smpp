@@ -213,12 +213,12 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 15 — Observability without hot-path logging
 
-- [ ] Define zero/low-overhead counters and event hooks.
-- [ ] Expose requests sent/received, responses, response timeouts, session-init timeouts, inactivity expirations, enquire-link activity, outstanding window, RTT, reconnects and decode failures.
-- [ ] Emit mandatory structured error logs for fatal malformed/framing PDUs before/while terminating the offending session; these rare error logs are distinct from disabled-by-default per-PDU tracing.
-- [ ] Expose congestion-state data when available.
-- [ ] Provide optional packet tracing outside the default hot path.
-- [ ] Keep per-PDU logging disabled by default.
+- [x] Define zero/low-overhead counters and event hooks.
+- [x] Expose requests sent/received, responses, response timeouts, session-init timeouts, inactivity expirations, enquire-link activity, outstanding window, RTT, reconnects and decode failures.
+- [x] Emit mandatory structured error logs for fatal malformed/framing PDUs before/while terminating the offending session; these rare error logs are distinct from disabled-by-default per-PDU tracing.
+- [x] Expose congestion-state data when available.
+- [x] Provide optional packet tracing outside the default hot path.
+- [x] Keep per-PDU logging disabled by default.
 
 ## Phase 16 — Performance simulator and benchmark laboratory
 

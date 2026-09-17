@@ -84,6 +84,10 @@ func TestSMPP50NegotiationBroadcastAndCongestionFeedback(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("congestion feedback not delivered")
 	}
+	metrics := esme.Metrics()
+	if metrics.CongestionSamples != 1 || metrics.LastCongestionState != 87 {
+		t.Fatalf("congestion metrics=%+v", metrics)
+	}
 
 	query, err := esme.QueryBroadcastSM(ctx, protocol.QueryBroadcastSM{MessageID: []byte("broadcast-1"), SourceAddr: []byte("123")})
 	if err != nil || string(query.MessageID) != "broadcast-1" {

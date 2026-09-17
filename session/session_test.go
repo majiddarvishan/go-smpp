@@ -294,6 +294,10 @@ func TestFatalFramingErrorLogsAndClosesConnection(t *testing.T) {
 	if !strings.Contains(logs.String(), "smpp_protocol_fatal") || !strings.Contains(logs.String(), "connection_closed") {
 		t.Fatalf("fatal diagnostic missing: %s", logs.String())
 	}
+	metrics := sess.Metrics()
+	if metrics.FatalProtocolErrors != 1 || metrics.DecodeFailures != 1 {
+		t.Fatalf("fatal metrics=%+v", metrics)
+	}
 	_ = peerConn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 	if _, err := peerConn.Write([]byte{0, 0, 0, 16}); err == nil {
 		t.Fatal("peer write unexpectedly succeeded after fatal close")
