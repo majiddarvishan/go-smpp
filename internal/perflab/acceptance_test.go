@@ -2,7 +2,6 @@ package perflab
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -11,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/majiddarvishan/go-smpp/session"
 )
 
 func TestPhase17ReferenceAcceptance(t *testing.T) {
