@@ -155,6 +155,10 @@ The response-deadline record is now embedded in `pendingRequest`, the dispatch/r
 
 The Phase 17 short sustained CI checkpoint now verifies all mandatory SMPP responses, fixed-worker goroutine bounds, bounded pending/window state, and zero retained heap growth after GC in the sampled run. `PLAN.md` marks those non-reference-specific checks complete. Final 100k/minimum-session/sustained-memory acceptance remains open until `scripts/acceptance.sh` runs on the actual 8-core/10-GB reference environment.
 
+
+
+Phase 17 now has a successful 60-second development soak: one TCP session, 128 fixed callers, ~352,587 request-PDU/s, ~21.15M request/response transactions, 3 MiB peak sampled heap, zero retained heap growth after GC, and bounded pending/window high water of 64. The no-`unsafe` CI gate also passes. These results are development evidence only; the remaining Phase 17 blockers are the actual 8-core/10-GB reference throughput run and its minimum-session-count result.
+
 ## Exact next task
 
-Continue **Phase 17 — Performance acceptance and optimization** from `PLAN.md`. Re-profile the one-session localhost TCP path with the measured batch-32 scatter/gather fast path, then target the remaining request/response allocation and synchronization costs. Keep the 100k acceptance checkbox open until the documented Linux/amd64 8-core / 10-GB reference environment sustains the target with bounded memory/timeouts and the minimum practical session count.
+Complete the remaining **Phase 17 — Performance acceptance** gate on the labeled `smpp-reference` self-hosted Linux/amd64 runner. Dispatch `.github/workflows/reference-acceptance.yml`; it runs `scripts/acceptance.sh`, starts with one TCP session, raises the count only if needed, enforces Go 1.26.x / at least 8 CPUs / at least 10 GiB RAM, and uploads the reference evidence. Do not start Phase 18 or mark the two remaining Phase 17 checkboxes until that run succeeds.

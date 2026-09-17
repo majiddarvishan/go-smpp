@@ -83,6 +83,10 @@ The message layer supports GSM 03.38/GSM 7-bit (including the extension table an
 The shared codec registry covers all 27 SMPP 3.4 command/response identifiers and all 44 standard SMPP 3.4 TLV tag identifiers. The protocol package exposes the complete named SMPP 3.4 command-status set and query message states. `submit_multi` supports SME and Distribution List destinations plus per-destination unsuccessful results. `outbind` follows the SMPP 3.4 `Open -> Outbound -> bind_receiver -> Bound_RX` lifecycle; `alert_notification` and `outbind` are one-way and never consume request-window/pending correlation capacity.
 
 
+
+
+Phase 17 development validation has sustained more than 100k request PDUs/s for 60 seconds with a single localhost TCP session while keeping required SMPP responses enabled and outstanding work bounded. This is a development-run result, not the reference-machine acceptance result. The final acceptance workflow is available as `SMPP reference performance acceptance` and requires a self-hosted runner labeled `smpp-reference` that satisfies the documented 8-core / 10-GB Linux/amd64 contract.
+
 ## Performance laboratory
 
 Phase 16 adds a minimal SMSC-side simulator plus repeatable Go benchmarks for codec-only, in-memory session, localhost TCP, TLS-over-TCP, timeout/window, and bidirectional traffic paths. The default end-to-end benchmark starts with one SMPP session; additional session counts are selected explicitly with `SMPP_BENCH_SESSIONS` so connection count is increased only when measurement requires it.

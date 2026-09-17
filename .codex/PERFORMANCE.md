@@ -360,3 +360,28 @@ These facts do **not** close the final Phase 17 acceptance items. The 60-second 
 The acceptance test records the first unexpected traffic error through a bounded non-blocking error channel rather than shared mutable error state. CI also enforces the current no-`unsafe` policy against direct package imports.
 
 A conditional `[soak]` gate runs the same bounded acceptance workload for 60 seconds with one TCP session, 128 fixed callers, all required responses enabled, and a 100k request-PDU/s development threshold. This gate is useful for sustained-memory and goroutine validation, but it remains development evidence rather than the final 8-core/10-GB reference result.
+
+
+## Phase 17 60-second development soak
+
+CI run `35286650141` completed the conditional 60-second one-session TCP soak with 128 fixed callers and the 100,000 request-PDU/s development threshold enabled:
+
+```text
+duration=1m0s
+sessions=1
+callers=128
+request_pdu_s=352587
+completed=21155211
+requests=21155339
+responses=21155339
+goroutines_baseline=10
+goroutines_max=138
+heap_peak_mib=3
+heap_retained_growth_mib=0
+pending_max=64
+window_max=64
+```
+
+The same CI run passed unit tests, `go test -race`, deadline/session performance smoke tests, the short resource-bound smoke, and the direct-import no-`unsafe` enforcement. This closes the sustained-memory, bounded-goroutine/timeout, response-processing, profile-before-optimization, and current no-`unsafe` Phase 17 checks.
+
+The development soak also demonstrates that one TCP session can exceed 100k request-PDU/s on that hosted runner, but it is intentionally **not** used to close the reference-machine throughput or minimum-session-count requirements. Those two items require the labeled `smpp-reference` self-hosted runner and `scripts/acceptance.sh`.

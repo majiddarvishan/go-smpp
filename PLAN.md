@@ -238,11 +238,11 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
 - [ ] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.
-- [ ] Verify bounded memory under sustained load.
+- [x] Verify bounded memory under sustained load.
 - [x] Verify no goroutine-per-message growth pattern.
 - [x] Verify configured timeout tracking remains bounded and does not become a throughput bottleneck.
 - [x] Profile before every significant optimization.
-- [ ] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
+- [x] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
