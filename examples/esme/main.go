@@ -64,6 +64,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("message_id=%s
-", resp.MessageID)
+	fmt.Printf("message_id=%s\n", resp.MessageID)
 }
