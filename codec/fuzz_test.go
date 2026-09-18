@@ -27,3 +27,21 @@ func FuzzFramer(f *testing.F) {
 		})
 	})
 }
+
+
+func FuzzDecodePDU(f *testing.F) {
+	registry, err := NewSMPP34Registry(RegistryCompatible)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add([]byte{})
+	f.Add([]byte{0, 0, 0, 16, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 1})
+	f.Add([]byte{0, 0, 0, 15})
+
+	f.Fuzz(func(t *testing.T, frame []byte) {
+		// The fuzz contract is panic-freedom and bounded parsing. Structurally
+		// invalid inputs may return typed fatal errors; compatible unknown
+		// commands may decode as RawBody.
+		_, _ = DecodePDU(frame, registry)
+	})
+}
