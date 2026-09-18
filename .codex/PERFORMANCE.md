@@ -301,11 +301,11 @@ The first optimization pass should preserve protocol semantics and target measur
 
 Every optimization remains subject to `go test -race`, bounded-memory requirements, fail-closed framing behavior, and the no-hidden-resubmit reconnect rule.
 
-### Phase 17 experiment: opportunistic TX batching
+### Phase 17 experiment history: TX batching
 
-The first Phase 17 experiment added bounded, no-wait TX coalescing and measured it immediately on the same hosted CI class. With batching enabled by default at 32 queued PDUs, localhost TCP throughput regressed from the Phase 16 baseline (for example one session from ~42.6k to ~39.2k request-PDU/s, four sessions from ~60.0k to ~53.4k), and TLS also regressed. In-memory throughput improved slightly in some cases, but the network result did not justify making batching the default.
+The first Phase 17 batching experiment used bounded no-wait byte coalescing. On that hosted CI class it regressed localhost TCP and TLS, so that implementation was not accepted as the final default.
 
-The batching implementation is therefore retained only as an explicit tuning option and the default is one PDU per transport write. This preserves a reproducible opt-in experiment without imposing a measured regression on normal sessions. The next optimization target is allocation pressure in the hot submit/deliver encode/request path.
+A later same-run experiment replaced the extra copy with `net.Buffers` scatter/gather for plain `*net.TCPConn` sessions. That version materially improved one-session localhost TCP throughput and became the measured default at 32 already-queued PDUs, still bounded by `TXBatchBytes`. An isolated PDU is never delayed merely to fill a batch, and `TXBatchItems=1` remains available to disable batching.
 
 ## Phase 17 measured TX batching experiment
 
@@ -385,3 +385,12 @@ window_max=64
 The same CI run passed unit tests, `go test -race`, deadline/session performance smoke tests, the short resource-bound smoke, and the direct-import no-`unsafe` enforcement. This closes the sustained-memory, bounded-goroutine/timeout, response-processing, profile-before-optimization, and current no-`unsafe` Phase 17 checks.
 
 The development soak also demonstrates that one TCP session can exceed 100k request-PDU/s on that hosted runner, but it is intentionally **not** used to close the reference-machine throughput or minimum-session-count requirements. Those two items require the labeled `smpp-reference` self-hosted runner and `scripts/acceptance.sh`.
+
+## Phase 17 final reference gate
+
+All implementation-side Phase 17 work is complete. The only open acceptance items are the two checks that explicitly require execution on the documented Linux/amd64 reference host with at least 8 logical CPUs and at least 10 GiB RAM:
+
+- sustain at least 100,000 aggregate bidirectional request PDUs/s while processing all required SMPP responses;
+- record the minimum practical TCP session count, starting at one session and increasing only if necessary.
+
+The authoritative command remains `scripts/acceptance.sh .bench/phase17-reference`. The GitHub workflow `SMPP reference performance acceptance` targets the self-hosted label `smpp-reference`; a passing run is required before those two PLAN checkboxes are changed to `[x]`. Standard public GitHub-hosted Linux runners currently provide 4 CPUs, so they are intentionally treated as development evidence rather than a substitute for the 8-core reference gate.

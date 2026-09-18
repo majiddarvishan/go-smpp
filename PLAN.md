@@ -235,6 +235,8 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 17 — Performance acceptance and optimization
 
+> Reference gate status: implementation complete; final throughput/session-count evidence must come from the `smpp-reference` 8-core/10-GB Linux/amd64 runner before the two remaining checkboxes can be closed.
+
 - [ ] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
 - [ ] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.

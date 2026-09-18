@@ -183,4 +183,4 @@ The first eight Phase 19 checklist items are complete. The final two remain bloc
 
 ## Exact next task
 
-Wait for and inspect the Phase 17 reference acceptance result on the labeled `smpp-reference` runner. If it succeeds, publish the exact reference environment, minimum passing TCP session count, sustained request-PDU/s, memory/goroutine bounds, and commit; then mark the performance-publication item complete and create the first production-ready release/tag. If no eligible runner is online, keep those two Phase 19 items open.
+Phase 17 implementation and development validation are complete. The remaining gate is external execution only: bring a Linux/amd64 self-hosted GitHub Actions runner online with label `smpp-reference`, at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.26.x support. The queued/reference workflow runs `scripts/acceptance.sh`, tests one TCP session first, and increases to 2/4 only if required. Do not mark the final two Phase 17 checkboxes complete from a 4-core hosted runner or from extrapolation.
