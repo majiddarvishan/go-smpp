@@ -6,9 +6,20 @@ The project targets SMPP 3.4 first while keeping the core architecture ready for
 
 ## Current status
 
-Phase 0 through Phase 16 are complete and verified. Phase 17 is in progress: the performance laboratory, minimal SMPP peer simulator, TCP/TLS bidirectional benchmarks, timer/window benchmarks, and profiling scripts are now established, and optimization work is driven by measured end-to-end profiles rather than microbenchmarks alone.
+Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The remaining production-release blockers are the Phase 17 reference-machine throughput/minimum-session result, publication of that reference evidence, and the first production-ready tag.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
+
+## Documentation
+
+- [Public API compatibility](docs/API_COMPATIBILITY.md)
+- [Concurrency guarantees](docs/CONCURRENCY.md)
+- [Timeout and liveness semantics](docs/TIMEOUTS_AND_LIVENESS.md)
+- [Interoperability, GSM7 and Unicode/emoji](docs/INTEROPERABILITY.md)
+- [Vendor extensions](docs/VENDOR_EXTENSIONS.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [ESME example](examples/esme/main.go)
+- [SMSC/server example](examples/smsc/main.go)
 
 ## Design targets
 
