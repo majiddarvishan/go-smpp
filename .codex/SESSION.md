@@ -159,6 +159,12 @@ The Phase 17 short sustained CI checkpoint now verifies all mandatory SMPP respo
 
 Phase 17 now has a successful 60-second development soak: one TCP session, 128 fixed callers, ~352,587 request-PDU/s, ~21.15M request/response transactions, 3 MiB peak sampled heap, zero retained heap growth after GC, and bounded pending/window high water of 64. The no-`unsafe` CI gate also passes. These results are development evidence only; the remaining Phase 17 blockers are the actual 8-core/10-GB reference throughput run and its minimum-session-count result.
 
+## Phase 17 reference-run status
+
+Reference workflow run `35289231617` was triggered from commit `5c12ee45a67070452c8b5611906c986fbbe0fbb7`. Its `reference-acceptance` job is queued waiting for a self-hosted Linux/x64 runner carrying the `smpp-reference` label. The ordinary CI run for the same commit completed successfully, including unit tests, race tests, performance smoke, sustained resource-bound smoke, and the no-`unsafe` gate.
+
+The reference workflow now supports both manual `workflow_dispatch` and a main-branch commit message containing `[reference]`; this makes the queued job start automatically once an eligible runner is online. The final two Phase 17 checkboxes remain intentionally open until that exact reference contract succeeds.
+
 ## Exact next task
 
-Complete the remaining **Phase 17 — Performance acceptance** gate on the labeled `smpp-reference` self-hosted Linux/amd64 runner. Dispatch `.github/workflows/reference-acceptance.yml`; it runs `scripts/acceptance.sh`, starts with one TCP session, raises the count only if needed, enforces Go 1.26.x / at least 8 CPUs / at least 10 GiB RAM, and uploads the reference evidence. Do not start Phase 18 or mark the two remaining Phase 17 checkboxes until that run succeeds.
+Bring an eligible `smpp-reference` self-hosted Linux/amd64 runner online with at least 8 logical CPUs and 10 GiB RAM. The already-queued run `35289231617` will execute `scripts/acceptance.sh`, test one TCP session first and increase the session count only if needed, then upload the reference evidence. Do not start Phase 18 or mark the two remaining Phase 17 checkboxes until that run succeeds.
