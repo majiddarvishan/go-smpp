@@ -87,6 +87,12 @@ The shared codec registry covers all 27 SMPP 3.4 command/response identifiers an
 
 Phase 17 development validation has sustained more than 100k request PDUs/s for 60 seconds with a single localhost TCP session while keeping required SMPP responses enabled and outstanding work bounded. This is a development-run result, not the reference-machine acceptance result. The final acceptance workflow is available as `SMPP reference performance acceptance` and requires a self-hosted runner labeled `smpp-reference` that satisfies the documented 8-core / 10-GB Linux/amd64 contract.
 
+## Reliability and malformed-peer behavior
+
+Reliability validation covers fragmented and coalesced TCP streams, out-of-order and unexpected responses, receive-side sequence values through `0xffffffff`, disconnects across bind/idle/full-window states, timeout storms and late responses, liveness timers, slow handlers/peers, and concurrent close/timeout/reconnect races. The repository runs the complete suite under Go's race detector and includes codec fuzz-smoke targets.
+
+Structural/framing corruption is fail-closed: invalid `command_length`, oversized/truncated frames, impossible mandatory-field boundaries, and invalid TLV lengths terminate only the offending TCP session. The decoder never scans ahead for a plausible next header on the same connection. Fatal diagnostics are mandatory but log safe structural metadata rather than credentials, message text, or raw PDU content by default.
+
 ## Performance laboratory
 
 Phase 16 adds a minimal SMSC-side simulator plus repeatable Go benchmarks for codec-only, in-memory session, localhost TCP, TLS-over-TCP, timeout/window, and bidirectional traffic paths. The default end-to-end benchmark starts with one SMPP session; additional session counts are selected explicitly with `SMPP_BENCH_SESSIONS` so connection count is increased only when measurement requires it.

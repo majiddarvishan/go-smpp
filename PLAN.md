@@ -246,20 +246,20 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
-- [ ] Test fragmented and coalesced TCP streams end to end.
-- [ ] Test out-of-order responses.
-- [ ] Test malformed, oversized and truncated PDUs end to end.
-- [ ] Test invalid `command_length`, impossible mandatory-field lengths, invalid TLV lengths and corrupted frames; assert the offending connection closes and no byte-stream resynchronization is attempted.
-- [ ] Verify each fatal structural/framing rejection emits the required diagnostic log without exposing sensitive message/authentication content by default.
-- [ ] Test duplicate/unexpected sequence numbers.
-- [ ] Test interoperability sequence numbers above `0x7fffffff` through `0xffffffff` on inbound requests.
-- [ ] Test disconnect during bind, idle state and full outstanding window.
-- [ ] Test delayed responses, late responses and timeout storms.
-- [ ] Test Session Init timeout, Enquire Link timeout/liveness and inactivity timeout scenarios.
-- [ ] Test simultaneous response-vs-timeout, timeout-vs-close and reconnect-vs-close races.
-- [ ] Test slow peers and application handlers.
-- [ ] Run `go test -race` scenarios.
-- [ ] Run sustained soak tests with concurrent API callers.
+- [x] Test fragmented and coalesced TCP streams end to end.
+- [x] Test out-of-order responses.
+- [x] Test malformed, oversized and truncated PDUs end to end.
+- [x] Test invalid `command_length`, impossible mandatory-field lengths, invalid TLV lengths and corrupted frames; assert the offending connection closes and no byte-stream resynchronization is attempted.
+- [x] Verify each fatal structural/framing rejection emits the required diagnostic log without exposing sensitive message/authentication content by default.
+- [x] Test duplicate/unexpected sequence numbers.
+- [x] Test interoperability sequence numbers above `0x7fffffff` through `0xffffffff` on inbound requests.
+- [x] Test disconnect during bind, idle state and full outstanding window.
+- [x] Test delayed responses, late responses and timeout storms.
+- [x] Test Session Init timeout, Enquire Link timeout/liveness and inactivity timeout scenarios.
+- [x] Test simultaneous response-vs-timeout, timeout-vs-close and reconnect-vs-close races.
+- [x] Test slow peers and application handlers.
+- [x] Run `go test -race` scenarios.
+- [x] Run sustained soak tests with concurrent API callers.
 
 ## Phase 19 — Release readiness
 

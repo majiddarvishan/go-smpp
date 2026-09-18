@@ -100,8 +100,13 @@ The project benchmarks one session first, then increases connection count only i
 
 ## Current implementation state
 
-Phase 0 through Phase 16 are complete and verified. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, low-overhead observability, and a reproducible performance simulator/benchmark laboratory.
+Phase 0 through Phase 16 and Phase 18 are complete and verified; Phase 17 remains open only for its reference-machine throughput/minimum-session acceptance. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, low-overhead observability, and a reproducible performance simulator/benchmark laboratory.
 
 Session observability provides atomic snapshots for traffic, response/liveness timeouts, Enquire Link activity, window state, RTT, decode/fatal failures, and SMPP 5.0 congestion feedback. Dialed clients expose reconnect counters. Event hooks and packet tracing are explicit opt-ins; raw wire-PDU copying requires a second explicit opt-in. Ordinary per-PDU logging remains disabled while mandatory structured fatal-protocol logging cannot be turned off through the observability configuration.
 
 Phase 16 is complete. Phase 17 is now the active phase: profile-guided optimization and acceptance on the documented Linux/amd64 8-core / 10-GB reference environment. No 100k request-PDU/s acceptance claim is made until that reference run sustains the target with the minimum practical session count.
+
+
+## Phase 18 reliability coverage
+
+The repository now has explicit end-to-end reliability/chaos coverage for real TCP fragmentation/coalescing, fail-closed malformed/oversized/truncated frames, invalid mandatory/TLV lengths, no byte-stream resynchronization, safe fatal diagnostics, unexpected/duplicate responses, receive-side sequence values through 0xffffffff, disconnects across bind/idle/full-window states, late response storms, liveness timers, close/timeout/reconnect races, slow handlers/peers, fuzz-smoke runs, race-detector runs, and sustained concurrent-caller soak behavior.

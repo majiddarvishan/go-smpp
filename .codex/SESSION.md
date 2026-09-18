@@ -165,6 +165,14 @@ Reference workflow run `35289231617` was triggered from commit `5c12ee45a6707045
 
 The reference workflow now supports both manual `workflow_dispatch` and a main-branch commit message containing `[reference]`; this makes the queued job start automatically once an eligible runner is online. The final two Phase 17 checkboxes remain intentionally open until that exact reference contract succeeds.
 
+## Phase 18 completed — reliability, fuzzing and chaos
+
+Phase 18 is complete and verified in GitHub Actions run `35289809937` on Go 1.26.x/Linux amd64. The run passed the full unit suite, `go test -race ./...`, both codec fuzz-smoke targets, protocol/codec benchmarks, the Phase 17 performance smoke, the sustained resource-bound smoke, and the no-`unsafe` gate.
+
+Phase 18 added explicit end-to-end coverage for fragmented and coalesced real TCP traffic, malformed/oversized/truncated frames, invalid mandatory-field and TLV lengths, fail-closed no-resynchronization behavior, fatal-log redaction, unexpected and duplicate responses, disconnects during bind/idle/full-window states, late-response timeout storms, slow application handlers, and slow peers with blocked TX. Existing out-of-order, high inbound sequence, Session Init, Enquire Link, inactivity, exactly-once completion, reconnect/close race, and 60-second concurrent soak coverage are now part of the Phase 18 acceptance set.
+
+The two reference-machine-only Phase 17 checkboxes remain open. Reference run `35289231617` is still queued waiting for a self-hosted Linux/x64 runner labeled `smpp-reference`; Phase 18 completion does not change or weaken that acceptance requirement.
+
 ## Exact next task
 
-Bring an eligible `smpp-reference` self-hosted Linux/amd64 runner online with at least 8 logical CPUs and 10 GiB RAM. The already-queued run `35289231617` will execute `scripts/acceptance.sh`, test one TCP session first and increase the session count only if needed, then upload the reference evidence. Do not start Phase 18 or mark the two remaining Phase 17 checkboxes until that run succeeds.
+Start **Phase 19 — Release readiness**. Freeze/document public API and concurrency/timeout/fatal-framing compatibility guarantees, add client/server examples and package docs, document vendor extensions plus GSM 7-bit/Unicode interoperability, and prepare reproducible release/performance documentation. Do not mark the reference-performance publication or production-ready release/tag complete until the pending Phase 17 reference-machine gate succeeds.
