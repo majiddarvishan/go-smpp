@@ -263,14 +263,14 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 19 — Release readiness
 
-- [ ] Freeze and document public API compatibility policy.
-- [ ] Document concurrency guarantees for every public mutable type.
-- [ ] Document timeout/liveness configuration and exact semantics.
-- [ ] Document fatal malformed-PDU connection-close and diagnostic logging policy.
-- [ ] Add examples for ESME client and SMSC/server.
-- [ ] Complete package documentation.
-- [ ] Document interoperability quirks and vendor-extension APIs.
-- [ ] Document GSM 7-bit and Unicode/emoji interoperability behavior and peer-capability caveats.
+- [x] Freeze and document public API compatibility policy.
+- [x] Document concurrency guarantees for every public mutable type.
+- [x] Document timeout/liveness configuration and exact semantics.
+- [x] Document fatal malformed-PDU connection-close and diagnostic logging policy.
+- [x] Add examples for ESME client and SMSC/server.
+- [x] Complete package documentation.
+- [x] Document interoperability quirks and vendor-extension APIs.
+- [x] Document GSM 7-bit and Unicode/emoji interoperability behavior and peer-capability caveats.
 - [ ] Publish reproducible performance results for the reference machine.
 - [ ] Tag the first production-ready release.
 
