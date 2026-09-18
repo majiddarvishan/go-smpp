@@ -39,8 +39,7 @@ func main() {
 		}),
 		SubmitHandler: server.SubmitHandlerFunc(func(_ context.Context, _ *session.Session, req protocol.SubmitSM) (server.SubmitResult, error) {
 			id := ids.Add(1)
-			fmt.Printf("submit from=%s to=%s bytes=%d
-", req.SourceAddr, req.DestinationAddr, len(req.ShortMessage))
+			fmt.Printf("submit from=%s to=%s bytes=%d\n", req.SourceAddr, req.DestinationAddr, len(req.ShortMessage))
 			return server.SubmitResult{
 				Status:    protocol.StatusOK,
 				MessageID: []byte(fmt.Sprintf("%d", id)),
