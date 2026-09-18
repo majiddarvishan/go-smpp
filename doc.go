@@ -1,7 +1,12 @@
-// Package smpp provides the public entry point for the go-smpp library.
+// Package smpp is the module-level documentation anchor for go-smpp.
 //
-// The initial implementation targets SMPP 3.4 over TCP while keeping the
-// protocol core extensible for SMPP 5.0. High-level client and server APIs are
-// added in later implementation phases; low-level protocol primitives live in
-// package protocol.
+// High-level ESME functionality lives in package client, SMSC functionality in
+// package server, the shared concurrent runtime in package session, wire framing
+// and registries in package codec, wire types/constants in package protocol,
+// text/binary encodings in package encoding, SMS segmentation/reassembly in
+// package message, and TCP/TLS adapters in package transport.
+//
+// The supported transport model is TCP, optionally wrapped in TLS. See the
+// repository docs directory for API compatibility, concurrency, timeout,
+// interoperability, and release policies.
 package smpp
