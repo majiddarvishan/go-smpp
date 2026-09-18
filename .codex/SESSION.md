@@ -173,6 +173,14 @@ Phase 18 added explicit end-to-end coverage for fragmented and coalesced real TC
 
 The two reference-machine-only Phase 17 checkboxes remain open. Reference run `35289231617` is still queued waiting for a self-hosted Linux/x64 runner labeled `smpp-reference`; Phase 18 completion does not change or weaken that acceptance requirement.
 
+## Phase 19 progress — release readiness documentation
+
+The release-facing API is now frozen for Phase 19 and documented under `docs/`. The repository now includes explicit compatibility, concurrency, timeout/liveness, malformed-PDU/fail-closed, vendor-extension, GSM7, strict UCS-2, UTF-16BE/emoji, and release-checklist documentation. Compileable ESME and SMSC/server examples live under `examples/`, and all public package `doc.go` files were refreshed to match the implemented runtime.
+
+A compile-time release-critical API contract test guards the primary client/server/session/registry/encoding entry points. GitHub Actions run `35290678344` completed successfully after the example fixes, including unit tests, race tests, Phase 18 fuzz smoke, protocol/codec benchmarks, performance smoke, resource-bound smoke, and the no-`unsafe` gate.
+
+The first eight Phase 19 checklist items are complete. The final two remain blocked on the Phase 17 reference-machine acceptance evidence and the production-ready tag. Reference run `35289231617` is still queued waiting for a self-hosted Linux/x64 runner labeled `smpp-reference`.
+
 ## Exact next task
 
-Start **Phase 19 — Release readiness**. Freeze/document public API and concurrency/timeout/fatal-framing compatibility guarantees, add client/server examples and package docs, document vendor extensions plus GSM 7-bit/Unicode interoperability, and prepare reproducible release/performance documentation. Do not mark the reference-performance publication or production-ready release/tag complete until the pending Phase 17 reference-machine gate succeeds.
+Wait for and inspect the Phase 17 reference acceptance result on the labeled `smpp-reference` runner. If it succeeds, publish the exact reference environment, minimum passing TCP session count, sustained request-PDU/s, memory/goroutine bounds, and commit; then mark the performance-publication item complete and create the first production-ready release/tag. If no eligible runner is online, keep those two Phase 19 items open.
