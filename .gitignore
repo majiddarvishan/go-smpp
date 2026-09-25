@@ -1,0 +1,23 @@
+# Test binaries and coverage
+*.test
+*.out
+coverage.txt
+
+# Profiling artifacts
+*.prof
+*.pprof
+cpu.out
+mem.out
+block.out
+mutex.out
+trace.out
+
+# Build output
+/dist/
+/bin/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
