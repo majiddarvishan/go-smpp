@@ -215,6 +215,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		createdAt:   now,
 	}
 	s.lastActivity.Store(now.UnixNano())
+	s.window.onUnderflow = s.reportWindowUnderflow
 	s.peerCaps.Store(protocol.PeerCapabilities{})
 	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)
 	s.wg.Add(4)
@@ -309,7 +310,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	windowOwned := true
 	defer func() {
 		if windowOwned {
-			s.window.release()
+			_ = s.window.release()
 		}
 	}()
 
@@ -325,7 +326,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 
 	done := s.acquireRequestCompletion()
 	defer s.releaseRequestCompletion(done)
-	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: done, releaseWindow: s.window.release}
+	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: done, releaseWindow: func() { _ = s.window.release() }}
 	if isBindRequest(command) {
 		switch typed := body.(type) {
 		case protocol.BindRequest:

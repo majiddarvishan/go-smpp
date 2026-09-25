@@ -28,6 +28,11 @@ const (
 	EventFatalProtocolError
 	EventCongestionState
 	EventResponseRTT
+	// EventWindowUnderflow is emitted when the outbound window was released
+	// without a matching acquisition. It always indicates a library defect and
+	// should be alarmed on; window occupancy accounting is unreliable from that
+	// point on, though the session keeps running.
+	EventWindowUnderflow
 )
 
 func (k EventKind) String() string {
@@ -60,6 +65,8 @@ func (k EventKind) String() string {
 		return "congestion_state"
 	case EventResponseRTT:
 		return "response_rtt"
+	case EventWindowUnderflow:
+		return "window_underflow"
 	default:
 		return "unknown"
 	}
@@ -244,4 +251,16 @@ func (s *Session) tracePacket(direction PacketDirection, header codec.Header, fr
 		trace.RawPDU = append([]byte(nil), frame...)
 	}
 	s.config.PacketTracer.TracePacket(trace)
+}
+
+// reportWindowUnderflow is invoked by the request window when a release found
+// no token to return. The window keeps running with degraded accounting; this
+// hook exists so operators can alarm on the defect rather than discover it as
+// a process crash.
+func (s *Session) reportWindowUnderflow() {
+	s.emitEvent(Event{
+		Kind:   EventWindowUnderflow,
+		At:     time.Now(),
+		Reason: "outbound window released without acquisition",
+	})
 }
