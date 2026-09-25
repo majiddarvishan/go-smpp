@@ -1,0 +1,17 @@
+run:
+  timeout: 5m
+
+# Phase 0 (Task 0.5): start with golangci-lint's own default set, made
+# explicit here rather than left implicit, plus staticcheck (already part of
+# the default set in the pinned CI version, kept listed for clarity and so it
+# stays on if the default set ever changes). gocognit and funlen are
+# deliberately deferred to Phase 4, where the large-file split happens.
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused

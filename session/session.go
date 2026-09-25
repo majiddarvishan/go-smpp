@@ -708,10 +708,6 @@ func (s *Session) expireDeadline(item *deadlineItem) {
 	}
 }
 
-func (s *Session) noteActivity() {
-	s.noteActivityAt(time.Now())
-}
-
 func (s *Session) noteActivityAt(at time.Time) {
 	s.lastActivity.Store(at.UnixNano())
 }
