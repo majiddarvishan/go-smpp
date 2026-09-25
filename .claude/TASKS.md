@@ -31,15 +31,18 @@ Estimate: trivial. Blocks everything else only in the sense that it blocks any r
 - [ ] **0.1** Add `LICENSE` file (C6a) — *release blocker*
   - Decide MIT vs Apache-2.0 (Apache-2.0 if a patent grant matters for telecom deployments).
   - Acceptance: file present at repo root; README references it; `go.mod` untouched.
-- [ ] **0.2** Add `.gitignore` (C6b)
+- [x] **0.2** Add `.gitignore` (C6b)
   - Acceptance: covers `*.test`, `*.out`, `*.prof`, `/dist/`; `git status` stays clean after a
     local benchmark run.
-- [ ] **0.3** Format the whole tree: `gofmt -w .` (C1)
+  - Done in `ec72e0b`.
+- [x] **0.3** Format the whole tree: `gofmt -w .` (C1)
   - Acceptance: `gofmt -l .` prints nothing; `go test ./...` still passes; the diff is
     formatting-only (no logic changes) and lands as its own commit.
-- [ ] **0.4** Add a CI format gate (C1, T2)
+  - Done in `190483f`.
+- [x] **0.4** Add a CI format gate (C1, T2)
   - Acceptance: a step fails on non-empty `gofmt -l .` output; verified by a deliberately
     unformatted branch.
+  - Done in `7b691dc` (`.github/workflows/ci.yml`, "Enforce gofmt" step).
 - [ ] **0.5** Add `.golangci.yml` + lint CI step (C2)
   - Start with the default set plus `staticcheck`. Defer `gocognit`/`funlen` until Phase 4.
   - Acceptance: lint passes with zero findings, or a documented `//nolint` with a reason for each
@@ -53,22 +56,33 @@ Estimate: trivial. Blocks everything else only in the sense that it blocks any r
 Goal: eliminate paths where the library can panic a host process or hang indefinitely.
 Estimate: small–medium. Highest priority after Phase 0.
 
-- [ ] **1.1** Remove the panic from `requestWindow.release()` (B1)
+- [x] **1.1** Remove the panic from `requestWindow.release()` (B1)
   - Make it total: return `bool`, add an underflow counter, emit an observer event. Keep the
     panic only behind a test-only strict-invariants flag.
   - Files: `session/window.go`, `session/observability.go`, `session/pending.go`, `session/session.go`
   - Acceptance: a unit test that double-releases and asserts no panic plus a non-zero counter;
     existing window tests still pass; `AGENTS.md` invariant (no unbounded growth) untouched.
-- [ ] **1.2** Copy-before-append in `ensureSCInterfaceVersion` (B5)
+  - Done in `564fca6`.
+- [x] **1.2** Copy-before-append in `ensureSCInterfaceVersion` (B5)
   - Files: `session/session.go:1301-1313`
   - Acceptance: a test that supplies a `BindTransceiverResp` with a spare-capacity `Optional`
     slice, applies the injection twice, and asserts the first response is unmodified.
-- [ ] **1.3** De-couple liveness supervision from window saturation (B3)
+  - Done in `6a9c0ed`.
+- [x] **1.3** De-couple liveness supervision from window saturation (B3)
   - Issue the keepalive with `wait=false`, skip the tick on `ErrWindowFull`, and escalate only if
     no response of any kind was observed for the interval. Optionally reserve one lifecycle slot.
   - Files: `session/session.go` (`livenessLoop`, `EnquireLink`), `session/window.go`
   - Acceptance: a test with a saturated window where an expired `InactivityTimeout` still
     terminates the session within one resolution tick.
+  - Done in `ff9f8d1` (started, but left non-building, in `3c7c4ce`). The "escalate only if no
+    response of any kind was observed" acceptance is satisfied structurally: `ErrWindowFull`
+    causes the tick to be skipped so it cannot itself escalate, and the pre-existing, independent
+    `InactivityTimeout` check (based on activity of any kind, checked earlier in the same tick)
+    remains the backstop that fires once the window frees up or the interval genuinely elapses.
+    Any other `tryEnquireLink` outcome (timeout, rejection, session loss) still terminates
+    immediately, unchanged from the prior blocking behaviour, so `TestAutomaticEnquireLinkTimeoutClosesSession`
+    still passes. The optional "reserve one lifecycle slot" was not done — left as a follow-up if
+    `ErrWindowFull` skips prove too slow to detect a truly dead peer in practice.
 - [ ] **1.4** Add write deadlines (B2, closes SEC1)
   - New `Config.WriteTimeout` (default 30 s; `-1` disables). `txLoop` sets it before each write
     and clears it after. `os.ErrDeadlineExceeded` → `terminate()`, consistent with the existing
