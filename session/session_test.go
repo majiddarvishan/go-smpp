@@ -332,3 +332,51 @@ func readOnePDU(conn net.Conn, registry *codec.Registry) (codec.DecodedPDU, erro
 	}
 	return codec.DecodePDU(frame, registry)
 }
+
+func TestEnsureSCInterfaceVersionDoesNotMutateCallerSlice(t *testing.T) {
+	// A caller that reuses a response template will hand us an Optional slice
+	// with spare capacity. Appending in place would corrupt it.
+	template := protocol.BindResponse{
+		SystemID: []byte("smsc"),
+		Optional: make([]protocol.OptionalParameter, 1, 4),
+	}
+	template.Optional[0] = protocol.OptionalParameter{
+		Tag: protocol.TLVTagAdditionalStatusInfoText, Value: []byte("ok"),
+	}
+	originalTag := template.Optional[0].Tag
+	originalValue := string(template.Optional[0].Value)
+
+	first := ensureSCInterfaceVersion(template, protocol.InterfaceVersion34).(protocol.BindResponse)
+	second := ensureSCInterfaceVersion(template, protocol.InterfaceVersion50).(protocol.BindResponse)
+
+	if len(template.Optional) != 1 {
+		t.Fatalf("caller slice length changed to %d", len(template.Optional))
+	}
+	if template.Optional[0].Tag != originalTag || string(template.Optional[0].Value) != originalValue {
+		t.Fatalf("caller element mutated: %+v", template.Optional[0])
+	}
+	if len(first.Optional) != 2 || len(second.Optional) != 2 {
+		t.Fatalf("injected lengths = %d, %d; want 2, 2", len(first.Optional), len(second.Optional))
+	}
+	if got := first.Optional[1].Value[0]; got != byte(protocol.InterfaceVersion34) {
+		t.Fatalf("first injection overwritten: got 0x%02x", got)
+	}
+	if got := second.Optional[1].Value[0]; got != byte(protocol.InterfaceVersion50) {
+		t.Fatalf("second injection wrong: got 0x%02x", got)
+	}
+}
+
+func TestEnsureSCInterfaceVersionPreservesExplicitTag(t *testing.T) {
+	explicit := protocol.BindResponse{
+		Optional: []protocol.OptionalParameter{{
+			Tag: protocol.TLVTagSCInterfaceVersion, Value: []byte{byte(protocol.InterfaceVersion34)},
+		}},
+	}
+	got := ensureSCInterfaceVersion(explicit, protocol.InterfaceVersion50).(protocol.BindResponse)
+	if len(got.Optional) != 1 {
+		t.Fatalf("tag count = %d, want 1", len(got.Optional))
+	}
+	if got.Optional[0].Value[0] != byte(protocol.InterfaceVersion34) {
+		t.Fatal("explicitly supplied narrower version was overwritten")
+	}
+}

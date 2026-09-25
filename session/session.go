@@ -1306,7 +1306,14 @@ func ensureSCInterfaceVersion(body any, version protocol.InterfaceVersion) any {
 				return response
 			}
 		}
-		response.Optional = append(response.Optional, protocol.OptionalParameter{
+		// The caller still owns response.Optional. Appending in place would
+		// write into its backing array whenever it has spare capacity, so a
+		// reused BindResponse template would silently accumulate the tag or
+		// have an unrelated element overwritten. Copy into a new slice sized
+		// exactly for the result.
+		injected := make([]protocol.OptionalParameter, len(response.Optional), len(response.Optional)+1)
+		copy(injected, response.Optional)
+		response.Optional = append(injected, protocol.OptionalParameter{
 			Tag: protocol.TLVTagSCInterfaceVersion, Value: []byte{byte(version)},
 		})
 		return response
