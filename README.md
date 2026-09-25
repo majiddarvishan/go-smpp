@@ -123,3 +123,7 @@ SMPP_BENCH_SESSIONS=1,2,4 BENCHTIME=3s ./scripts/bench.sh .bench
 ```
 
 The script records benchmark output plus CPU, heap, mutex, block, scheduler-trace, and GC artifacts. These development-machine results are diagnostic only; the Phase 17 100k acceptance result is reserved for the documented Linux/amd64 8-core / 10-GB reference machine.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
