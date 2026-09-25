@@ -647,6 +647,18 @@ func (s *Session) EnquireLink(ctx context.Context) error {
 	return responseError(pdu)
 }
 
+// tryEnquireLink is the liveness-supervision variant of EnquireLink. It never
+// waits for window capacity: the supervisor must not be parked behind
+// application traffic, because a keepalive that blocks cannot detect the very
+// stall it exists to detect.
+func (s *Session) tryEnquireLink(ctx context.Context) error {
+	pdu, err := s.TryRequest(ctx, protocol.CommandEnquireLink, protocol.EmptyBody{})
+	if err != nil {
+		return err
+	}
+	return responseError(pdu)
+}
+
 func (s *Session) Unbind(ctx context.Context) error {
 	pdu, err := s.Request(ctx, protocol.CommandUnbind, protocol.EmptyBody{})
 	if err != nil {
@@ -738,15 +750,7 @@ func (s *Session) livenessLoop() {
 				return
 			}
 			if s.config.EnquireLinkInterval > 0 && idle >= s.config.EnquireLinkInterval {
-				if err := s.EnquireLink(s.ctx); err != nil {
-					select {
-					case <-s.done:
-						return
-					default:
-						s.terminate(err)
-						return
-					}
-				}
+				s.startKeepalive()
 			}
 		case <-s.done:
 			return
