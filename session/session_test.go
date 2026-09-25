@@ -304,6 +304,95 @@ func TestFatalFramingErrorLogsAndClosesConnection(t *testing.T) {
 	}
 }
 
+// TestLivenessInactivityTimeoutFiresDespiteSaturatedWindow reproduces finding
+// B3: the liveness supervisor must not get stuck behind a saturated
+// outstanding-request window. With WindowSize=1, one held SubmitSM occupies
+// the only slot, so every EnquireLink attempt the supervisor makes must
+// immediately observe ErrWindowFull rather than block waiting for a slot that
+// will never free up. If the supervisor blocked there instead, it would never
+// reach the independent InactivityTimeout check on a later tick, and the
+// session would hang open against an unresponsive peer forever.
+func TestLivenessInactivityTimeoutFiresDespiteSaturatedWindow(t *testing.T) {
+	sessionConn, peerConn := net.Pipe()
+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peerDone := make(chan error, 1)
+	go func() {
+		// Answer the bind, then go silent: never answer the SubmitSM that
+		// follows (so the one window slot stays held) and never answer any
+		// EnquireLink either.
+		bind, err := readOnePDU(peerConn, registry)
+		if err != nil {
+			peerDone <- err
+			return
+		}
+		resp := codec.ResponseHeader(bind.Header, protocol.CommandBindTransceiverResp, protocol.StatusOK)
+		frame, err := codec.EncodePDU(nil, resp, protocol.BindResponse{SystemID: []byte("smsc")}, registry)
+		if err != nil {
+			peerDone <- err
+			return
+		}
+		if err := transport.WriteFull(peerConn, frame); err != nil {
+			peerDone <- err
+			return
+		}
+		buf := make([]byte, 4096)
+		for {
+			if _, err := peerConn.Read(buf); err != nil {
+				peerDone <- nil
+				return
+			}
+		}
+	}()
+
+	sess, err := New(sessionConn, Config{
+		Role:                RoleESME,
+		WindowSize:          1,
+		ResponseTimeout:     time.Minute, // must outlive the test: only inactivity should end the session
+		EnquireLinkInterval: 20 * time.Millisecond,
+		EnquireLinkTimeout:  time.Minute,
+		InactivityTimeout:   60 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Saturate the single window slot with a request the peer will never
+	// answer, then give it time to actually be dispatched before asserting
+	// anything about liveness.
+	go func() {
+		_, _ = sess.SubmitSM(context.Background(), protocol.SubmitSM{DestinationAddr: []byte("1")})
+	}()
+	deadline := time.Now().Add(time.Second)
+	for sess.Window().InUse == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("submit_sm never occupied the window slot")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	select {
+	case <-sess.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session did not terminate on inactivity while the window was saturated")
+	}
+	var timeoutErr *TimeoutError
+	if !errors.As(sess.Err(), &timeoutErr) || timeoutErr.Kind != TimeoutInactivity {
+		t.Fatalf("terminal error = %v, want a TimeoutInactivity TimeoutError", sess.Err())
+	}
+	<-peerDone
+}
+
 func waitState(t *testing.T, sess *Session, want protocol.SessionState) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

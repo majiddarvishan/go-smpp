@@ -750,7 +750,22 @@ func (s *Session) livenessLoop() {
 				return
 			}
 			if s.config.EnquireLinkInterval > 0 && idle >= s.config.EnquireLinkInterval {
-				s.startKeepalive()
+				// tryEnquireLink never blocks behind window saturation. A full
+				// window only means application traffic is currently maximal,
+				// not that the peer has gone silent, so ErrWindowFull is not
+				// grounds to tear down the session — skip this tick and let a
+				// later one, once a slot is free, actually probe the peer. Any
+				// other outcome (a real timeout, a rejection, or session loss)
+				// is treated exactly as a blocking EnquireLink always was.
+				if err := s.tryEnquireLink(s.ctx); err != nil && !errors.Is(err, ErrWindowFull) {
+					select {
+					case <-s.done:
+						return
+					default:
+						s.terminate(err)
+						return
+					}
+				}
 			}
 		case <-s.done:
 			return
