@@ -124,7 +124,7 @@ type Session struct {
 	window      *requestWindow
 	completions chan chan requestResult
 	deadlines   *deadlineManager
-	seq       sequenceGenerator
+	seq         sequenceGenerator
 
 	createdAt    time.Time
 	lastActivity atomic.Int64

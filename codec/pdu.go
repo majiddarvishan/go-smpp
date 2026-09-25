@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	ErrInvalidPDUValue          = errors.New("smpp codec: invalid PDU value")
-	ErrPDUFrameLengthMismatch  = errors.New("smpp codec: PDU frame length does not match command_length")
-	ErrConflictingMessageData  = errors.New("smpp codec: short_message and message_payload must not both carry data")
+	ErrInvalidPDUValue        = errors.New("smpp codec: invalid PDU value")
+	ErrPDUFrameLengthMismatch = errors.New("smpp codec: PDU frame length does not match command_length")
+	ErrConflictingMessageData = errors.New("smpp codec: short_message and message_payload must not both carry data")
 )
 
 // RawBody is a borrowed view of an unresolved, structurally valid PDU body.

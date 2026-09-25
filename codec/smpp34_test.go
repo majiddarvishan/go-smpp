@@ -260,7 +260,7 @@ func TestMessagePayloadConflictsWithShortMessage(t *testing.T) {
 	registry := mustSMPP34Registry(t)
 	body := protocol.SubmitSM{
 		ShortMessage: []byte("x"),
-		Optional: []protocol.OptionalParameter{{Tag: protocol.TLVTagMessagePayload, Value: []byte("payload")}},
+		Optional:     []protocol.OptionalParameter{{Tag: protocol.TLVTagMessagePayload, Value: []byte("payload")}},
 	}
 	_, err := EncodePDU(nil, Header{CommandID: protocol.CommandSubmitSM, SequenceNumber: 1}, body, registry)
 	if !errors.Is(err, ErrConflictingMessageData) {

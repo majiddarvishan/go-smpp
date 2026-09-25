@@ -134,11 +134,11 @@ func TestPhase18TCPFragmentationAndCoalescingEndToEnd(t *testing.T) {
 
 func TestPhase18FatalFramingMatrixClosesAndRedacts(t *testing.T) {
 	tests := []struct {
-		name       string
-		maxPDU     uint32
-		wire       func() []byte
-		closePeer  bool
-		sensitive  string
+		name      string
+		maxPDU    uint32
+		wire      func() []byte
+		closePeer bool
+		sensitive string
 	}{
 		{
 			name: "invalid command length and following plausible frame",
@@ -253,7 +253,7 @@ func TestPhase18InvalidTLVLengthClosesWithoutResynchronization(t *testing.T) {
 	var logs bytes.Buffer
 	sess, err := New(sessionConn, Config{
 		Role: RoleSMSC, Handler: handler,
-		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		Logger:              slog.New(slog.NewTextHandler(&logs, nil)),
 		EnquireLinkInterval: -1, InactivityTimeout: -1,
 	})
 	if err != nil {
@@ -440,7 +440,10 @@ func TestPhase18DisconnectDuringBindIdleAndFullWindow(t *testing.T) {
 				case protocol.CommandBindTransceiver:
 					return Response{Status: protocol.StatusOK, Body: protocol.BindResponse{SystemID: []byte("smsc")}}, nil
 				case protocol.CommandSubmitSM:
-					select { case entered <- struct{}{}: default: }
+					select {
+					case entered <- struct{}{}:
+					default:
+					}
 					<-release
 					return Response{Status: protocol.StatusOK, Body: protocol.SubmitSMResp{MessageID: []byte("late")}}, nil
 				default:

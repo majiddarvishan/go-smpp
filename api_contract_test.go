@@ -22,18 +22,18 @@ var (
 	_ = (*client.Client).Close
 
 	_ func(context.Context, server.Config) (*server.Server, error) = server.Listen
-	_ func(context.Context, server.Config) error                  = server.ListenAndServe
-	_ = (*server.Server).Serve
-	_ = (*server.Server).DeliverSM
-	_ = (*server.Server).Close
+	_ func(context.Context, server.Config) error                   = server.ListenAndServe
+	_                                                              = (*server.Server).Serve
+	_                                                              = (*server.Server).DeliverSM
+	_                                                              = (*server.Server).Close
 
 	_ func(net.Conn, session.Config) (*session.Session, error) = session.New
-	_ = (*session.Session).Request
-	_ = (*session.Session).TryRequest
-	_ = (*session.Session).SubmitSM
-	_ = (*session.Session).DeliverSM
-	_ = (*session.Session).Metrics
-	_ = (*session.Session).Close
+	_                                                          = (*session.Session).Request
+	_                                                          = (*session.Session).TryRequest
+	_                                                          = (*session.Session).SubmitSM
+	_                                                          = (*session.Session).DeliverSM
+	_                                                          = (*session.Session).Metrics
+	_                                                          = (*session.Session).Close
 
 	_ = codec.NewSMPP34RegistryBuilder
 	_ = codec.NewSMPP50RegistryBuilder

@@ -28,7 +28,6 @@ func FuzzFramer(f *testing.F) {
 	})
 }
 
-
 func FuzzDecodePDU(f *testing.F) {
 	registry, err := NewSMPP34Registry(RegistryCompatible)
 	if err != nil {

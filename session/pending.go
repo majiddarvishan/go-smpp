@@ -30,8 +30,8 @@ type pendingRequest struct {
 	deadlineStorage deadlineItem
 	deadlineMu      sync.Mutex
 	deadline        *deadlineItem
-	deadlines  *deadlineManager
-	finished   bool
+	deadlines       *deadlineManager
+	finished        bool
 }
 
 type pendingTable struct {
