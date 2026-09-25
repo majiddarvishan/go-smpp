@@ -28,9 +28,10 @@ reuses the pool.
 Goal: make the project usable and CI-enforced on formatting. No behavioural change.
 Estimate: trivial. Blocks everything else only in the sense that it blocks any release.
 
-- [ ] **0.1** Add `LICENSE` file (C6a) — *release blocker*
+- [x] **0.1** Add `LICENSE` file (C6a) — *release blocker*
   - Decide MIT vs Apache-2.0 (Apache-2.0 if a patent grant matters for telecom deployments).
   - Acceptance: file present at repo root; README references it; `go.mod` untouched.
+  - Done in `16d9b84`. Chose Apache-2.0 per the note above (telecom/patent grant).
 - [x] **0.2** Add `.gitignore` (C6b)
   - Acceptance: covers `*.test`, `*.out`, `*.prof`, `/dist/`; `git status` stays clean after a
     local benchmark run.
@@ -43,12 +44,15 @@ Estimate: trivial. Blocks everything else only in the sense that it blocks any r
   - Acceptance: a step fails on non-empty `gofmt -l .` output; verified by a deliberately
     unformatted branch.
   - Done in `7b691dc` (`.github/workflows/ci.yml`, "Enforce gofmt" step).
-- [ ] **0.5** Add `.golangci.yml` + lint CI step (C2)
+- [x] **0.5** Add `.golangci.yml` + lint CI step (C2)
   - Start with the default set plus `staticcheck`. Defer `gocognit`/`funlen` until Phase 4.
   - Acceptance: lint passes with zero findings, or a documented `//nolint` with a reason for each
     suppression.
+  - Done in `104403d`, pinned to `golangci-lint-action@v7` / `golangci-lint v1.62.2` (v8+ needs
+    golangci-lint v2's different config schema, not attempted here). Zero findings after removing
+    `Session.noteActivity` (see 4.3 below).
 
-**Exit criteria:** clean `gofmt -l .`, clean lint, LICENSE present, gates wired in CI.
+**Exit criteria:** clean `gofmt -l .`, clean lint, LICENSE present, gates wired in CI. **Met.**
 
 ---
 
@@ -191,10 +195,14 @@ Goal: make each concern independently reviewable. Behaviour-preserving only.
     `responseOptionalParameters` parallel switches.
   - Acceptance: a new body type that fails to implement the interface is caught by a compile
     error or a single loud test, not silently.
-- [ ] **4.3** Remove dead code (C3)
+- [ ] **4.3** Remove dead code (C3) — *partially done*
   - `Session.noteActivity` (`session.go:698`); move `deadlineManager.schedule` into a `_test.go`
     helper or document it as test-only.
   - Acceptance: `unused`/lint reports zero dead symbols.
+  - `Session.noteActivity` removed in `104403d` (forced by 0.5's new lint gate). Still open:
+    `deadlineManager.schedule` is real dead-code-in-production-file — it's called only from
+    `_test.go` files, which `unused` correctly doesn't flag, but it still belongs in a test helper
+    per the acceptance note; left for this phase's file-split work.
 - [ ] **4.4** Annotate deliberate duplication (A6)
   - Doc comments on `protocol.SubmitSM` and `protocol.DeliverSM` stating the identical layout is
     intentional per SMPP 3.4 and must not be merged.
