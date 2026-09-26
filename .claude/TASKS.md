@@ -87,7 +87,7 @@ Estimate: small–medium. Highest priority after Phase 0.
     immediately, unchanged from the prior blocking behaviour, so `TestAutomaticEnquireLinkTimeoutClosesSession`
     still passes. The optional "reserve one lifecycle slot" was not done — left as a follow-up if
     `ErrWindowFull` skips prove too slow to detect a truly dead peer in practice.
-- [ ] **1.4** Add write deadlines (B2, closes SEC1)
+- [x] **1.4** Add write deadlines (B2, closes SEC1)
   - New `Config.WriteTimeout` (default 30 s; `-1` disables). `txLoop` sets it before each write
     and clears it after. `os.ErrDeadlineExceeded` → `terminate()`, consistent with the existing
     fail-closed model.
@@ -95,16 +95,23 @@ Estimate: small–medium. Highest priority after Phase 0.
   - Acceptance: a test with a peer that accepts the connection, reads nothing, and lets the
     buffers fill — the session terminates within the configured timeout rather than hanging. Also
     document the new field.
-- [ ] **1.5** Re-decide completion-channel pooling (B4)
+  - Done in `4e6af29`. No special-case branch needed for the deadline error: `txLoop`'s existing
+    `if err != nil { s.terminate(err) }` already treats every write error as fatal, so
+    `os.ErrDeadlineExceeded` flows through the same path unchanged. Documented in
+    `docs/TIMEOUTS_AND_LIVENESS.md`.
+- [x] **1.5** Re-decide completion-channel pooling (B4)
   - Under `-race` (CI or a Linux box), stress the pool. Either delete the pool (allocate the
     channel per request) or add an atomic generation check so a stale send cannot be delivered to
     a recycled channel.
   - Files: `session/session.go`, `session/pending.go`
   - Acceptance: `go test -race ./...` green in CI; the chosen outcome documented in
     `docs/CONCURRENCY.md`. If the pool is deleted, record the measured allocation delta.
+  - Done in `185941e`. Chose deletion, per the review's own stated preference. Measured delta on
+    `BenchmarkInMemorySessionBidirectional`: 10→12 allocs/op, 873→1009 B/op; latency/throughput
+    unchanged within noise. Documented in `docs/CONCURRENCY.md`.
 
 **Exit criteria:** no `panic` reachable from any library path; a stalled peer cannot hold a
-session open past the configured timeout; race suite green in CI with 1.5 resolved.
+session open past the configured timeout; race suite green in CI with 1.5 resolved. **Met.**
 
 ---
 
