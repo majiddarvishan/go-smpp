@@ -351,6 +351,22 @@ dst = slices.Grow(dst, HeaderSize)[:len(dst)+HeaderSize]
 
 Removes two allocations per encoded PDU.
 
+**Correction after implementation (Task 2.1):** this claim does not hold on this codebase.
+`go build -gcflags=-m` on the pre-fix code reports `make([]byte, 16) does not escape` at both
+sites — go1.22's escape analysis already proves the temporary is fully consumed by the
+immediately-following `append` and elides the heap allocation. An allocation profile
+(`-memprofilerate=1`, `pprof -alloc_objects`) of `BenchmarkEncodeSubmitSM` confirms it: 100% of the
+2 allocs/op attribute to `slices.Grow` in `reservePDUCapacity` (the unavoidable first allocation of
+the backing array, since `dst` starts `nil`) and to the `body any` interface-boxing at the
+benchmark's own call site — none to `pdu.go:76` or `:87`. `B/op` and `allocs/op` are unchanged
+before/after (288 B, 2 allocs). The fix landed anyway (`slices.Grow` is the same idiom already used
+in `reservePDUCapacity`, and removing a `make`+append-spread pattern is a reasonable consistency
+improvement on its own), but the allocation-count justification above was wrong for this compiler,
+and no throughput/memory win should be attributed to it. The real second allocation — boxing a
+value body into `any` at each `EncodePDU`/`Request` call site — is a different, likely harder-to-fix
+issue (would need an `EncodePDU` signature change to avoid `any`) and is not addressed by this task;
+noted in `TASKS.md` as a candidate for whoever picks up the remainder of Phase 2.
+
 ### P3 — registry uses map lookups on the hot path · S3 (perf)
 
 `Registry.ResolveCommand` hits a `map[protocol.CommandID]*CommandDef` on **every** encode and

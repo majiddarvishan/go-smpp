@@ -3,6 +3,7 @@ package codec
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/majiddarvishan/go-smpp/protocol"
 )
@@ -73,7 +74,7 @@ func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte,
 			return dst, fmt.Errorf("%w: no encoder for command 0x%08x", ErrInvalidPDUValue, uint32(header.CommandID))
 		}
 		start := len(dst)
-		dst = append(dst, make([]byte, HeaderSize)...)
+		dst = slices.Grow(dst, HeaderSize)[:len(dst)+HeaderSize]
 		dst = append(dst, raw...)
 		header.CommandLength = uint32(len(dst) - start)
 		if err := EncodeHeader(dst[start:start+HeaderSize], header); err != nil {
@@ -84,7 +85,7 @@ func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte,
 
 	dst = reservePDUCapacity(dst, header.CommandID, body)
 	start := len(dst)
-	dst = append(dst, make([]byte, HeaderSize)...)
+	dst = slices.Grow(dst, HeaderSize)[:len(dst)+HeaderSize]
 	dst, err = def.Encode(dst, body)
 	if err != nil {
 		return dst[:start], err

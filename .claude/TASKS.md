@@ -119,11 +119,22 @@ session open past the configured timeout; race suite green in CI with 1.5 resolv
 Goal: remove steady-state allocations on the send path. **Profile-driven** per `AGENTS.md`;
 land each behind the `[profile]` CI gate with before/after numbers in the commit message.
 
-- [ ] **2.1** Fix the header-scratch allocation (P2) — trivial, measurable, do first
+- [x] **2.1** Fix the header-scratch allocation (P2) — trivial, measurable, do first
   - Replace `append(dst, make([]byte, HeaderSize)...)` with `slices.Grow`.
   - Files: `codec/pdu.go:76,87`
   - Acceptance: `codec` benchmarks show zero or reduced `B/op` per encode; `go test ./codec/`
     green.
+  - Done. Landed anyway as a consistency fix, but the profile it was supposed to be driven by
+    disproved the premise: go1.22's escape analysis already proved the original `make()` temporary
+    non-escaping (`does not escape` in `-gcflags=-m`), and an alloc-object profile of
+    `BenchmarkEncodeSubmitSM` attributes 100% of the 2 allocs/op to `reservePDUCapacity`'s
+    `slices.Grow` (unavoidable — `dst` starts `nil`) and to `body any` interface-boxing at the call
+    site, none to `pdu.go:76/:87`. `B/op`/`allocs/op` unchanged before/after (288 B, 2 allocs).
+    Full writeup and the discovered `body any` boxing cost in `.claude/CODE_REVIEW.md`'s P2 entry.
+    New candidate surfaced by this measurement, not yet a numbered task: removing the `any` box on
+    the `Request`/`EncodePDU` body parameter would need an API-shape change and is real send-path
+    allocation cost — worth a profile-driven look whenever 2.2/2.3 get here, since it's the same
+    hot path.
 - [ ] **2.2** Pool outbound frames (P1) — the largest single win
   - `sync.Pool` of frame buffers per session; `request()`/`SendOneWay()`/response path acquire,
     `txLoop` returns after the batch is fully handed to the transport. Size from
