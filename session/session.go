@@ -99,6 +99,7 @@ type txItem struct {
 	kind       txKind
 	header     codec.Header
 	frame      []byte
+	framePtr   *[]byte
 	sequence   protocol.SequenceNumber
 	requestID  protocol.CommandID
 	responseTo protocol.CommandID
@@ -126,6 +127,7 @@ type Session struct {
 	window    *requestWindow
 	deadlines *deadlineManager
 	seq       sequenceGenerator
+	frames    *framePool
 
 	createdAt    time.Time
 	lastActivity atomic.Int64
@@ -213,6 +215,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
 		pending:   newPendingTable(config.MaxPending),
 		window:    newRequestWindow(config.WindowSize, config.WindowObserver),
+		frames:    newFramePool(),
 		createdAt: now,
 	}
 	s.lastActivity.Store(now.UnixNano())
@@ -365,23 +368,29 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	windowOwned = false // pendingRequest now owns the slot until terminal removal.
 
 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
-	frame, err := codec.EncodePDU(nil, header, body, s.registry)
+	hint, _ := codec.EncodedPDUSizeHint(command, body)
+	framePtr := s.frames.get(hint)
+	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.frames.put(framePtr)
 		_, _ = s.pending.completeError(sequence, err)
 		return codec.DecodedPDU{}, err
 	}
+	*framePtr = frame
 
-	item := txItem{kind: txRequest, header: header, frame: frame, sequence: sequence, requestID: command, pending: request}
+	item := txItem{kind: txRequest, header: header, frame: frame, framePtr: framePtr, sequence: sequence, requestID: command, pending: request}
 	select {
 	case s.tx <- item:
 		reserved = false
 	case <-ctx.Done():
+		s.frames.put(framePtr)
 		if _, won := s.pending.completeError(sequence, ctx.Err()); won {
 			return codec.DecodedPDU{}, ctx.Err()
 		}
 		reserved = false
 		return s.waitCompleted(request)
 	case <-s.done:
+		s.frames.put(framePtr)
 		reserved = false
 		return s.waitCompleted(request)
 	}
@@ -427,18 +436,24 @@ func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, bo
 
 	sequence := s.seq.Next()
 	header := codec.Header{CommandID: command, CommandStatus: protocol.StatusOK, SequenceNumber: sequence}
-	frame, err := codec.EncodePDU(nil, header, body, s.registry)
+	hint, _ := codec.EncodedPDUSizeHint(command, body)
+	framePtr := s.frames.get(hint)
+	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.frames.put(framePtr)
 		return err
 	}
+	*framePtr = frame
 	dispatched := make(chan error, 1)
-	item := txItem{kind: txOneWay, header: header, frame: frame, sequence: sequence, requestID: command, dispatched: dispatched}
+	item := txItem{kind: txOneWay, header: header, frame: frame, framePtr: framePtr, sequence: sequence, requestID: command, dispatched: dispatched}
 	select {
 	case s.tx <- item:
 		reserved = false
 	case <-ctx.Done():
+		s.frames.put(framePtr)
 		return ctx.Err()
 	case <-s.done:
+		s.frames.put(framePtr)
 		return s.requestCloseError()
 	}
 
@@ -826,6 +841,12 @@ func (s *Session) txLoop() {
 		case item := <-s.tx:
 			if s.txItemActive(item) {
 				batch = append(batch, item)
+			} else {
+				// A txRequest whose pending entry is already gone (cancelled or
+				// completed by a race elsewhere) before this loop ever dequeued
+				// it. Its frame was never going to be written; hand the buffer
+				// back now rather than losing it to the garbage collector.
+				s.frames.put(item.framePtr)
 			}
 		case <-s.done:
 			return
@@ -840,6 +861,7 @@ func (s *Session) txLoop() {
 			select {
 			case item := <-s.tx:
 				if !s.txItemActive(item) {
+					s.frames.put(item.framePtr)
 					continue
 				}
 				batch = append(batch, item)
@@ -891,6 +913,11 @@ func (s *Session) txLoop() {
 				if batch[i].dispatched != nil {
 					batch[i].dispatched <- err
 				}
+				// The write attempt for this batch has already returned (with
+				// this error), so nothing will read batch[i].frame again — the
+				// same write-completion boundary as the success path below,
+				// just reached via the error branch instead.
+				s.frames.put(batch[i].framePtr)
 			}
 			s.terminate(err)
 			return
@@ -901,6 +928,14 @@ func (s *Session) txLoop() {
 		for i := range batch {
 			item := &batch[i]
 			s.tracePacket(PacketOutbound, item.header, item.frame)
+			// The write has completed and tracePacket — the only reader of
+			// item.frame after the write — has already run, so the buffer is
+			// safe to return now. Clear both fields so any future change to
+			// this loop that accidentally reads item.frame afterward fails
+			// loudly (nil slice) instead of silently reading recycled memory.
+			s.frames.put(item.framePtr)
+			item.frame = nil
+			item.framePtr = nil
 			s.observeOutbound(*item, now)
 			if item.kind == txRequest && item.pending != nil {
 				if rtt, ok := item.pending.markDispatchAt(now); ok {
@@ -1146,11 +1181,15 @@ func (s *Session) queueGenericNACK(request codec.Header, status protocol.Command
 
 func (s *Session) queueResponse(request codec.Header, responseID protocol.CommandID, status protocol.CommandStatus, body any) error {
 	header := codec.ResponseHeader(request, responseID, status)
-	frame, err := codec.EncodePDU(nil, header, body, s.registry)
+	hint, _ := codec.EncodedPDUSizeHint(responseID, body)
+	framePtr := s.frames.get(hint)
+	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.frames.put(framePtr)
 		return err
 	}
-	item := txItem{kind: txResponse, header: header, frame: frame, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status}
+	*framePtr = frame
+	item := txItem{kind: txResponse, header: header, frame: frame, framePtr: framePtr, sequence: request.SequenceNumber, responseTo: request.CommandID, status: status}
 	if responseID == protocol.CommandGenericNACK {
 		item.responseTo = 0
 	}
@@ -1158,6 +1197,7 @@ func (s *Session) queueResponse(request codec.Header, responseID protocol.Comman
 	case s.tx <- item:
 		return nil
 	case <-s.done:
+		s.frames.put(framePtr)
 		return s.requestCloseError()
 	}
 }

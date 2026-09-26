@@ -18,6 +18,23 @@ func reservePDUCapacity(dst []byte, command protocol.CommandID, body any) []byte
 	return slices.Grow(dst, HeaderSize+bodyLen)
 }
 
+// EncodedPDUSizeHint returns an estimate of the fully encoded frame size
+// (header plus body) for command with the given body value, and whether an
+// estimate is available at all. It exists for callers that pre-size a
+// reusable buffer — for example, a per-session outbound frame pool — so a
+// brand-new buffer does not start undersized and force an immediate regrowth
+// on its first use. EncodePDU does not depend on this hint for correctness:
+// it grows its destination as needed regardless of whether a hint was used to
+// size it, and regardless of whether the hint (when available) undershoots
+// the PDU's actual encoded size.
+func EncodedPDUSizeHint(command protocol.CommandID, body any) (int, bool) {
+	bodyLen, ok := encodedBodySizeHint(command, body)
+	if !ok {
+		return 0, false
+	}
+	return HeaderSize + bodyLen, true
+}
+
 func encodedBodySizeHint(command protocol.CommandID, body any) (int, bool) {
 	switch command {
 	case protocol.CommandSubmitSM:

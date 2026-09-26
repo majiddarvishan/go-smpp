@@ -135,7 +135,7 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
     the `Request`/`EncodePDU` body parameter would need an API-shape change and is real send-path
     allocation cost — worth a profile-driven look whenever 2.2/2.3 get here, since it's the same
     hot path.
-- [ ] **2.2** Pool outbound frames (P1) — the largest single win
+- [x] **2.2** Pool outbound frames (P1) — the largest single win
   - `sync.Pool` of frame buffers per session; `request()`/`SendOneWay()`/response path acquire,
     `txLoop` returns after the batch is fully handed to the transport. Size from
     `encodedBodySizeHint`.
@@ -143,6 +143,32 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
   - Acceptance: before/after `-benchmem` on the send path; Phase 17 acceptance run shows reduced
     `maxHeapMB`; the write-completion lifetime boundary is stated in `docs/CONCURRENCY.md`;
     `unsafe` ban unaffected.
+  - Done. `codec.EncodedPDUSizeHint` exported (wraps `encodedBodySizeHint`) so `session` can size
+    without a new `codec` dependency surface beyond one function. Pool is `*[]byte`-based (a raw
+    `[]byte` boxed into `sync.Pool`'s `any` allocates on every `Put`, which would reintroduce
+    exactly what this removes). Write-completion boundary (write returns, and on the success path
+    specifically, after `tracePacket` — the only post-write reader of `item.frame`, and one that
+    already never retains a bare reference) is written up in `docs/CONCURRENCY.md`, "Outbound frame
+    pool lifetime". `unsafe` ban confirmed unaffected (`go list ... | grep unsafe` empty on the full
+    module including tests).
+    `-benchmem` on `BenchmarkInMemorySessionBidirectional/sessions_1`: 12→10 allocs/op, 1009→~905
+    B/op — reproducible, matches expectation. The `maxHeapMB` half of the acceptance criterion did
+    **not** show a clear result at sandbox scale (`TestPhase17ReferenceAcceptance` with
+    `SMPP_ACCEPTANCE_DURATION=8s`, `SESSION_COUNT=4`, `CALLERS=128`): one comparison tied at 3 MiB,
+    another showed a 1 MiB *increase* that tracked a slightly higher completed-request count rather
+    than a regression — a ~100 B/op difference is under both this metric's 1 MiB granularity and
+    single-sample noise at this scale. Recorded as an honest gap in `docs/CONCURRENCY.md` rather
+    than claimed; confirming the heap effect needs the documented reference machine, not available
+    here.
+    Correctness evidence: `session/pool_content_test.go` — sequential (500 iterations) and
+    concurrent (40 goroutines × 50) `SubmitSM` calls each carrying a globally unique,
+    peer-verified `SourceAddr`, clean under `go test -race -count`. `session/pool_test.go` covers
+    the pool's own logic (hint sizing, default capacity, oversized-buffer eviction, nil-safety,
+    concurrent get/put) but deliberately does **not** assert object-identity reuse across a
+    get/put/get: `sync.Pool`'s own docs disclaim any such relationship, an earlier version of that
+    test asserted it anyway and flaked under `-race -count=10`, and the actual correctness property
+    (no cross-request content corruption) is what the content tests prove instead, independent of
+    whether reuse happens on a given run.
 - [ ] **2.3** Clone decoded responses into one arena (P4) — reuses 2.2's pool
   - Files: `session/session.go` (`ownDecodedPDU`)
   - Acceptance: one allocation per response instead of one per byte-slice field; no borrowed
