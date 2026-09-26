@@ -89,7 +89,7 @@ Request(ctx, cmd, body)
   │
   ├─ window.acquire(ctx, done, wait)        bounded concurrency (token channel, cap 1024)
   ├─ machine.BeginOutbound(cmd)             SMPP operation/state matrix check
-  ├─ acquireRequestCompletion()             pooled chan, avoids per-request alloc
+  ├─ make(chan requestResult, 1)             one alloc per request (Task 1.5, Finding B4: pool deleted)
   ├─ pending.insert(seq, req)               retry on ErrSequenceInUse
   ├─ codec.EncodePDU(nil, header, body, reg)
   ├─ txQueue <- txItem

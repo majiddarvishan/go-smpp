@@ -122,11 +122,10 @@ type Session struct {
 	done   chan struct{}
 	tx     chan txItem
 
-	pending     *pendingTable
-	window      *requestWindow
-	completions chan chan requestResult
-	deadlines   *deadlineManager
-	seq         sequenceGenerator
+	pending   *pendingTable
+	window    *requestWindow
+	deadlines *deadlineManager
+	seq       sequenceGenerator
 
 	createdAt    time.Time
 	lastActivity atomic.Int64
@@ -212,10 +211,9 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		conn: conn, registry: config.Registry, framer: framer, machine: machine,
 		config: config, logger: logger, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
-		pending:     newPendingTable(config.MaxPending),
-		window:      newRequestWindow(config.WindowSize, config.WindowObserver),
-		completions: make(chan chan requestResult, config.WindowSize),
-		createdAt:   now,
+		pending:   newPendingTable(config.MaxPending),
+		window:    newRequestWindow(config.WindowSize, config.WindowObserver),
+		createdAt: now,
 	}
 	s.lastActivity.Store(now.UnixNano())
 	s.window.onUnderflow = s.reportWindowUnderflow
@@ -327,8 +325,15 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 		}
 	}()
 
-	done := s.acquireRequestCompletion()
-	defer s.releaseRequestCompletion(done)
+	// The completion channel is allocated fresh per request rather than
+	// pooled. Session.completions used to hold recycled channels, but pooling
+	// them was only safe if nothing could still be mid-send on a channel at
+	// the moment it went back in the pool — an invariant spread across this
+	// function, pendingTable, handleResponse, and the deadline manager,
+	// enforced by nothing mechanical here. Against the other allocation work
+	// in this codebase, one 1-element channel per request is a rounding
+	// error, so the correctness risk was not worth carrying (Finding B4).
+	done := make(chan requestResult, 1)
 	request := &pendingRequest{requestID: command, expectedID: command.ResponseID(), done: done, releaseWindow: func() { _ = s.window.release() }}
 	if isBindRequest(command) {
 		switch typed := body.(type) {
@@ -442,34 +447,6 @@ func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, bo
 		return err
 	case <-s.done:
 		return s.requestCloseError()
-	}
-}
-
-func (s *Session) acquireRequestCompletion() chan requestResult {
-	select {
-	case done := <-s.completions:
-		return done
-	default:
-		return make(chan requestResult, 1)
-	}
-}
-
-func (s *Session) releaseRequestCompletion(done chan requestResult) {
-	if done == nil {
-		return
-	}
-	// Some immediate error paths complete the pending request synchronously and
-	// return the same error directly instead of receiving the buffered result.
-	// Drain that already-terminal value before reusing the completion channel.
-	select {
-	case <-done:
-	default:
-	}
-	select {
-	case s.completions <- done:
-	default:
-		// The pool is bounded by WindowSize. If it is already full, let the
-		// channel become garbage rather than growing retained session memory.
 	}
 }
 
