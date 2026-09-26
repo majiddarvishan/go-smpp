@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -132,6 +133,45 @@ func TestSessionInitTimeout(t *testing.T) {
 	}
 	if got := sess.Metrics().SessionInitTimeouts; got != 1 {
 		t.Fatalf("session init timeout metric=%d want 1", got)
+	}
+}
+
+// TestWriteTimeoutClosesSessionOnStalledPeer reproduces finding B2: with no
+// write deadline anywhere in the library, a peer that accepts the connection
+// and then never reads leaves txLoop's conn.Write blocked forever, hanging
+// the session (and every caller waiting on a request) indefinitely. net.Pipe
+// is synchronous, so simply never reading on the peer side reproduces this
+// directly, without needing to actually fill a real kernel socket buffer.
+func TestWriteTimeoutClosesSessionOnStalledPeer(t *testing.T) {
+	sessionConn, peerConn := net.Pipe()
+	defer peerConn.Close()
+	sess, err := New(sessionConn, Config{
+		Role:                RoleESME,
+		WriteTimeout:        30 * time.Millisecond,
+		EnquireLinkInterval: -1,
+		InactivityTimeout:   -1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	// The peer never reads, so this bind request's write can never complete
+	// on its own. Run it in the background: without the write deadline this
+	// would block forever.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_, _ = sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34})
+	}()
+
+	select {
+	case <-sess.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session did not terminate when the write deadline expired against a stalled peer")
+	}
+	if !errors.Is(sess.Err(), os.ErrDeadlineExceeded) {
+		t.Fatalf("terminal error = %v (%T), want it to wrap os.ErrDeadlineExceeded", sess.Err(), sess.Err())
 	}
 }
 

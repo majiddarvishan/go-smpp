@@ -27,6 +27,7 @@ const (
 	DefaultEnquireLinkInterval = 30 * time.Second
 	DefaultEnquireLinkTimeout  = 10 * time.Second
 	DefaultInactivityTimeout   = 2 * time.Minute
+	DefaultWriteTimeout        = 30 * time.Second
 )
 
 // Response is returned by an inbound request Handler. The response command ID
@@ -77,6 +78,7 @@ type Config struct {
 	EnquireLinkInterval time.Duration
 	EnquireLinkTimeout  time.Duration
 	InactivityTimeout   time.Duration
+	WriteTimeout        time.Duration
 	TXQueueSize         int
 	TXBatchItems        int
 	TXBatchBytes        int
@@ -176,6 +178,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	config.EnquireLinkInterval = defaultDuration(config.EnquireLinkInterval, DefaultEnquireLinkInterval)
 	config.EnquireLinkTimeout = defaultDuration(config.EnquireLinkTimeout, DefaultEnquireLinkTimeout)
 	config.InactivityTimeout = defaultDuration(config.InactivityTimeout, DefaultInactivityTimeout)
+	config.WriteTimeout = defaultDuration(config.WriteTimeout, DefaultWriteTimeout)
 	if config.TXQueueSize <= 0 {
 		config.TXQueueSize = DefaultTXQueueSize
 	}
@@ -881,6 +884,9 @@ func (s *Session) txLoop() {
 		}
 
 		var err error
+		if s.config.WriteTimeout > 0 {
+			_ = s.conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+		}
 		if len(batch) == 1 {
 			err = transport.WriteFull(s.conn, batch[0].frame)
 		} else if batchTCP != nil {
@@ -895,6 +901,13 @@ func (s *Session) txLoop() {
 				writeBuffer = append(writeBuffer, batch[i].frame...)
 			}
 			err = transport.WriteFull(s.conn, writeBuffer)
+		}
+		if s.config.WriteTimeout > 0 {
+			// Clear rather than leave an armed deadline sitting on the conn
+			// between batches: the next batch may not arrive for a long time
+			// (or ever), and an expired deadline from an old batch must never
+			// be mistaken for one tripping on a new, unrelated write.
+			_ = s.conn.SetWriteDeadline(time.Time{})
 		}
 		if err != nil {
 			for i := range batch {

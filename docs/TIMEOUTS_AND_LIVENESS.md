@@ -36,6 +36,14 @@ Default: 2 minutes.
 
 Choose EnquireLinkInterval lower than InactivityTimeout when keepalive traffic should preserve a healthy otherwise-idle session.
 
+## Write timeout
+
+WriteTimeout bounds how long txLoop's underlying conn.Write may take for one batch. It is armed with conn.SetWriteDeadline immediately before the write and cleared immediately after, win or lose, so an idle period between batches never carries a stale deadline into an unrelated later write.
+
+Unlike the other timers in this document, WriteTimeout does not produce a *session.TimeoutError: a write deadline tripping mid-stream leaves the connection in an indeterminate position (a caller cannot tell how many of the batch's bytes actually reached the peer), so the only correct response is the same fail-closed path any other transport error takes — the session terminates with the raw os.ErrDeadlineExceeded-wrapping error from the conn, and every pending request completes as session/transport loss.
+
+Default: 30 seconds.
+
 ## Reconnect interaction
 
 For a dialed client.Client with reconnect enabled, a timeout that terminates the current session may lead to reconnect/rebind according to client.ReconnectPolicy. Requests that belonged to the lost session are not replayed automatically.

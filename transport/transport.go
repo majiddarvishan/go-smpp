@@ -73,6 +73,11 @@ func ListenTLS(ctx context.Context, network, address string, listenConfig *net.L
 // writes. Returning from this function with nil means every octet was handed to
 // the transport. Request response-timeout accounting may therefore start only
 // after this function succeeds.
+//
+// WriteFull never sets a deadline itself and blocks until every byte is
+// written or the connection reports an error. A caller that needs a bounded
+// worst-case latency against a stalled peer must arrange that with
+// conn.SetWriteDeadline before calling.
 func WriteFull(conn net.Conn, p []byte) error {
 	for len(p) > 0 {
 		n, err := conn.Write(p)
@@ -95,6 +100,9 @@ func WriteFull(conn net.Conn, p []byte) error {
 // into a temporary coalescing buffer. A nil return means every octet from every
 // buffer was handed to the transport; batch members therefore share the same
 // full-dispatch boundary.
+//
+// Like WriteFull, this never sets a deadline itself; callers needing a
+// bounded worst-case latency must call conn.SetWriteDeadline first.
 func WriteBuffers(conn *net.TCPConn, buffers net.Buffers) error {
 	if len(buffers) == 0 {
 		return nil
