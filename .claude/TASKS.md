@@ -169,10 +169,38 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
     test asserted it anyway and flaked under `-race -count=10`, and the actual correctness property
     (no cross-request content corruption) is what the content tests prove instead, independent of
     whether reuse happens on a given run.
-- [ ] **2.3** Clone decoded responses into one arena (P4) — reuses 2.2's pool
+- [x] **2.3** Clone decoded responses into one arena (P4) — reuses 2.2's pool
   - Files: `session/session.go` (`ownDecodedPDU`)
   - Acceptance: one allocation per response instead of one per byte-slice field; no borrowed
     slice outlives dispatch (assert with a framer-buffer-reuse test).
+  - Done. Not literally pooled from 2.2's `session.frames`: that pool's safety depends entirely on
+    its write-completion boundary (txLoop returns a buffer once nothing will read it again), and a
+    decoded response arena has the opposite lifetime — it's handed to the *caller* via
+    `request.done`, who may hold onto its byte slices indefinitely, so there is no point at which
+    this session could ever safely reclaim it. Implemented as a plain per-response allocation
+    instead (`responseArena` in `session.go`): one `[]byte` sized by a first pass over the same
+    decoded body, then every byte-slice field re-sliced out of it in a second pass, replacing
+    `cloneBytes`/`cloneOptional` (now dead, removed). `[]protocol.OptionalParameter` /
+    `[]protocol.UnsuccessfulSME` struct slices still allocate separately — not bytes, can't share
+    the byte arena — matching the acceptance wording precisely ("one per byte-slice field", not
+    "one, period").
+    `take()` panics if the arena runs short — unreachable via `ownDecodedPDU` itself (its size pass
+    and take pass read the same immutable local value, so peer-controlled content can't make them
+    disagree), kept anyway to turn a hypothetical future size/take mismatch into an immediate test
+    failure instead of a silently truncated clone; not the peer-influenced-input class of panic
+    Task 1.1 removed from the window path. `session/arena_test.go`'s
+    `TestResponseArenaTakePanicsWhenUndersized` proves it fires.
+    "No borrowed slice outlives dispatch": `TestOwnDecodedPDUDoesNotAliasSourceBuffer` and the
+    `SubmitMultiResp` variant build a body whose fields borrow from one scratch buffer, call
+    `ownDecodedPDU`, overwrite every byte of the scratch buffer, and assert the returned copy is
+    unaffected — a direct, deterministic proof, more so than trying to time a real framer-buffer
+    reuse race. Exact-content and nil-preservation cases covered too.
+    `BenchmarkOwnDecodedPDUWithOptionalTLVs` (5 TLVs + MessageID — the existing end-to-end
+    benchmarks respond with a bare MessageID and no TLVs, so they wouldn't have shown this): 8→3
+    allocs/op, 352→336 B/op. The remaining 3 (arena, the `[]OptionalParameter` slice, and boxing
+    `body` back into `pdu.Body any`) match exactly what the design predicts; that last one is the
+    same `any`-boxing cost Task 2.1 found on the encode side, unaddressed here too — same reason,
+    would need a `DecodedPDU.Body` representation change out of this task's scope.
 - [ ] **2.4** Fold liveness into the shared deadline heap (P5)
   - Removes the 10 ms ticker floor and the fourth per-session goroutine.
   - Acceptance: goroutine count per session drops by one (assert via `runtime.NumGoroutine` in a
