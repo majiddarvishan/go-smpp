@@ -382,6 +382,14 @@ per-PDU critical path for most commands.
 Quantify with the existing `codec` benchmarks first; if it is under a few percent it is not
 worth the extra structure.
 
+**Measured (Task 2.5):** it is under a few percent. `BenchmarkRegistryCommandLookup` (the isolated
+map lookup `ResolveCommand` wraps) runs a stable ~3.6 ns/op; `BenchmarkEncodeSubmitSM` and
+`BenchmarkDecodeSubmitSM` run a stable ~230 ns/op and ~210 ns/op respectively, each calling
+`ResolveCommand` exactly once. That is roughly 1.6% and 1.7% of total time — below this finding's
+own threshold. Closed as won't-fix rather than built; a flat fast-path table would add its own
+correctness surface (keeping it in sync with the map, handling out-of-range vendor IDs) for a
+saving this small.
+
 ### P4 — `ownDecodedPDU` clones every response body · S3 (perf)
 
 `ownDecodedPDU` (a ~50-line type switch in `session/session.go`) deep-copies every byte slice of

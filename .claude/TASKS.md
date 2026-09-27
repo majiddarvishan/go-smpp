@@ -207,13 +207,31 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
     session-count test); all timer tests still pass. **Note:** this changes the documented
     "exactly four goroutines" invariant — update `AGENTS.md`, `docs/CONCURRENCY.md`, and
     `ARCHITECTURE_OVERVIEW.md` in the same commit.
-- [ ] **2.5** Flat command-ID fast-path table in `Registry` (P3)
+- [x] **2.5** Flat command-ID fast-path table in `Registry` (P3)
   - Only if measured above a few percent; otherwise close as won't-fix with the profile evidence.
   - Acceptance: benchmark delta recorded either way, including the negative result.
-- [ ] **2.6** Extend size hints beyond submit/deliver (P6)
+  - Closed as won't-fix. Measured `BenchmarkRegistryCommandLookup` (the isolated
+    `map[protocol.CommandID]CommandDefinition` lookup `ResolveCommand` wraps) against the full-pipeline
+    `BenchmarkEncodeSubmitSM`/`BenchmarkDecodeSubmitSM` (`-count=3` each, this host): the lookup is a
+    stable ~3.6 ns/op against a stable ~230 ns/op encode and ~210 ns/op decode — roughly 1.6% and 1.7%
+    of total time respectively, both `EncodePDU`/decode call it exactly once. Below the task's own "a
+    few percent" bar; not worth the extra fast-path-table structure and its own correctness surface
+    (keeping it in sync with the map, handling out-of-band vendor IDs) for that.
+- [x] **2.6** Extend size hints beyond submit/deliver (P6)
   - `bind`, `data_sm`, broadcast family.
   - Acceptance: hints covered by a table-driven test asserting the hint is ≥ actual encoded
     length for every registered command.
+  - Done. Added hints for `bind_receiver`/`bind_transmitter`/`bind_transceiver` (+ their `_resp`s),
+    `data_sm`/`data_sm_resp`, and the SMPP 5.0 broadcast family (`broadcast_sm`/`_resp`,
+    `query_broadcast_sm`/`_resp`, `cancel_broadcast_sm`; `cancel_broadcast_sm_resp` is always empty —
+    `encodeResponseEmpty` — so needs no hint). Every byte count was read off the actual `encode*`
+    function for that command (not guessed from the struct's field list) — noted in each new size-hint
+    function's doc comment so the two don't silently drift apart later.
+    `codec/size_hint_test.go`'s `TestEncodedPDUSizeHintCoversRealEncodings` is the acceptance test: 22
+    cases (every new command, several with realistic non-empty fields and TLVs, plus the `EmptyBody` and
+    `OptionalResponse` response shapes) each actually call `EncodePDU` and assert the hint is `>=` the
+    real encoded length. All pass on the first attempt — the manual wire-layout arithmetic matched
+    every encoder exactly.
 
 **Exit criteria:** send path allocation near zero at steady state; Phase 17 reference-machine
 throughput measured and evidence published.

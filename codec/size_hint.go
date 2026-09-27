@@ -89,6 +89,119 @@ func encodedBodySizeHint(command protocol.CommandID, body any) (int, bool) {
 				return optionalParametersSize(v.Optional), true
 			}
 		}
+	case protocol.CommandBindReceiver, protocol.CommandBindTransmitter, protocol.CommandBindTransceiver:
+		switch v := body.(type) {
+		case protocol.BindRequest:
+			return bindRequestBodySize(v.SystemID, v.Password, v.SystemType, v.AddressRange), true
+		case *protocol.BindRequest:
+			if v != nil {
+				return bindRequestBodySize(v.SystemID, v.Password, v.SystemType, v.AddressRange), true
+			}
+		}
+	case protocol.CommandBindReceiverResp, protocol.CommandBindTransmitterResp, protocol.CommandBindTransceiverResp:
+		switch v := body.(type) {
+		case nil, protocol.EmptyBody, *protocol.EmptyBody:
+			return 0, true
+		case protocol.BindResponse:
+			return len(v.SystemID) + 1 + optionalParametersSize(v.Optional), true
+		case *protocol.BindResponse:
+			if v != nil {
+				return len(v.SystemID) + 1 + optionalParametersSize(v.Optional), true
+			}
+		case protocol.OptionalResponse:
+			return optionalParametersSize(v.Optional), true
+		case *protocol.OptionalResponse:
+			if v != nil {
+				return optionalParametersSize(v.Optional), true
+			}
+		}
+	case protocol.CommandDataSM:
+		switch v := body.(type) {
+		case protocol.DataSM:
+			return dataSMBodySize(v.ServiceType, v.SourceAddr, v.DestinationAddr, v.Optional), true
+		case *protocol.DataSM:
+			if v != nil {
+				return dataSMBodySize(v.ServiceType, v.SourceAddr, v.DestinationAddr, v.Optional), true
+			}
+		}
+	case protocol.CommandDataSMResp:
+		switch v := body.(type) {
+		case nil, protocol.EmptyBody, *protocol.EmptyBody:
+			return 0, true
+		case protocol.DataSMResp:
+			return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+		case *protocol.DataSMResp:
+			if v != nil {
+				return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+			}
+		case protocol.OptionalResponse:
+			return optionalParametersSize(v.Optional), true
+		case *protocol.OptionalResponse:
+			if v != nil {
+				return optionalParametersSize(v.Optional), true
+			}
+		}
+	case protocol.CommandBroadcastSM:
+		switch v := body.(type) {
+		case protocol.BroadcastSM:
+			return broadcastSMBodySize(v.ServiceType, v.SourceAddr, v.MessageID, v.ScheduleDeliveryTime, v.ValidityPeriod, v.Optional), true
+		case *protocol.BroadcastSM:
+			if v != nil {
+				return broadcastSMBodySize(v.ServiceType, v.SourceAddr, v.MessageID, v.ScheduleDeliveryTime, v.ValidityPeriod, v.Optional), true
+			}
+		}
+	case protocol.CommandBroadcastSMResp:
+		switch v := body.(type) {
+		case nil, protocol.EmptyBody, *protocol.EmptyBody:
+			return 0, true
+		case protocol.BroadcastSMResp:
+			return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+		case *protocol.BroadcastSMResp:
+			if v != nil {
+				return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+			}
+		case protocol.OptionalResponse:
+			return optionalParametersSize(v.Optional), true
+		case *protocol.OptionalResponse:
+			if v != nil {
+				return optionalParametersSize(v.Optional), true
+			}
+		}
+	case protocol.CommandQueryBroadcastSM:
+		switch v := body.(type) {
+		case protocol.QueryBroadcastSM:
+			return queryBroadcastSMBodySize(v.MessageID, v.SourceAddr, v.Optional), true
+		case *protocol.QueryBroadcastSM:
+			if v != nil {
+				return queryBroadcastSMBodySize(v.MessageID, v.SourceAddr, v.Optional), true
+			}
+		}
+	case protocol.CommandQueryBroadcastSMResp:
+		switch v := body.(type) {
+		case nil, protocol.EmptyBody, *protocol.EmptyBody:
+			return 0, true
+		case protocol.QueryBroadcastSMResp:
+			return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+		case *protocol.QueryBroadcastSMResp:
+			if v != nil {
+				return len(v.MessageID) + 1 + optionalParametersSize(v.Optional), true
+			}
+		case protocol.OptionalResponse:
+			return optionalParametersSize(v.Optional), true
+		case *protocol.OptionalResponse:
+			if v != nil {
+				return optionalParametersSize(v.Optional), true
+			}
+		}
+	case protocol.CommandCancelBroadcastSM:
+		switch v := body.(type) {
+		case protocol.CancelBroadcastSM:
+			return cancelBroadcastSMBodySize(v.ServiceType, v.MessageID, v.SourceAddr, v.Optional), true
+		case *protocol.CancelBroadcastSM:
+			if v != nil {
+				return cancelBroadcastSMBodySize(v.ServiceType, v.MessageID, v.SourceAddr, v.Optional), true
+			}
+		}
 	}
 	return 0, false
 }
@@ -111,4 +224,51 @@ func optionalParametersSize(optional []protocol.OptionalParameter) int {
 		n += TLVHeaderSize + len(parameter.Value)
 	}
 	return n
+}
+
+// bindRequestBodySize covers bind_receiver/bind_transmitter/bind_transceiver,
+// which all share protocol.BindRequest's wire layout: SystemID, Password,
+// SystemType, and AddressRange are each a C-Octet String (four terminators);
+// InterfaceVersion, AddressTON, and AddressNPI are three fixed one-octet
+// fields. See encodeBindRequest.
+func bindRequestBodySize(systemID, password, systemType, addressRange []byte) int {
+	return 7 + len(systemID) + len(password) + len(systemType) + len(addressRange)
+}
+
+// dataSMBodySize covers data_sm: ServiceType, SourceAddr, and DestinationAddr
+// are each a C-Octet String (three terminators); SourceAddrTON, SourceAddrNPI,
+// DestAddrTON, DestAddrNPI, ESMClass, RegisteredDelivery, and DataCoding are
+// seven fixed one-octet fields. See encodeDataSM.
+func dataSMBodySize(serviceType, sourceAddr, destinationAddr []byte, optional []protocol.OptionalParameter) int {
+	return 10 + len(serviceType) + len(sourceAddr) + len(destinationAddr) + optionalParametersSize(optional)
+}
+
+// broadcastSMBodySize covers broadcast_sm: ServiceType, SourceAddr, MessageID,
+// ScheduleDeliveryTime, and ValidityPeriod are each a C-Octet String (five
+// terminators); SourceAddrTON, SourceAddrNPI, PriorityFlag,
+// ReplaceIfPresentFlag, DataCoding, and SMDefaultMsgID are six fixed
+// one-octet fields. See encodeBroadcastSM.
+func broadcastSMBodySize(serviceType, sourceAddr, messageID, scheduleDeliveryTime, validityPeriod []byte, optional []protocol.OptionalParameter) int {
+	return 11 +
+		len(serviceType) +
+		len(sourceAddr) +
+		len(messageID) +
+		len(scheduleDeliveryTime) +
+		len(validityPeriod) +
+		optionalParametersSize(optional)
+}
+
+// queryBroadcastSMBodySize covers query_broadcast_sm: MessageID and
+// SourceAddr are each a C-Octet String (two terminators); SourceAddrTON and
+// SourceAddrNPI are two fixed one-octet fields. See encodeQueryBroadcastSM.
+func queryBroadcastSMBodySize(messageID, sourceAddr []byte, optional []protocol.OptionalParameter) int {
+	return 4 + len(messageID) + len(sourceAddr) + optionalParametersSize(optional)
+}
+
+// cancelBroadcastSMBodySize covers cancel_broadcast_sm: ServiceType,
+// MessageID, and SourceAddr are each a C-Octet String (three terminators);
+// SourceAddrTON and SourceAddrNPI are two fixed one-octet fields. See
+// encodeCancelBroadcastSM.
+func cancelBroadcastSMBodySize(serviceType, messageID, sourceAddr []byte, optional []protocol.OptionalParameter) int {
+	return 5 + len(serviceType) + len(messageID) + len(sourceAddr) + optionalParametersSize(optional)
 }
