@@ -108,7 +108,10 @@ Adding an import outside this table fails the test. Keep it that way.
 
 ## Session invariants worth re-reading before touching `session/`
 
-- Exactly **four** goroutines per session: `rxLoop`, `txLoop`, `deadlines.run`, `livenessLoop`.
+- Exactly **three** long-lived goroutines per session: `rxLoop`, `txLoop`, `deadlines.run`.
+  Liveness supervision (session-init, inactivity, enquire_link) is three fixed slots in
+  `deadlines`' shared heap, not a goroutine (Task 2.4). The one exception: an idle enquire_link
+  probe runs in a short-lived goroutine of its own — see `docs/CONCURRENCY.md`.
 - Exactly **one** terminal completion per request, across all of: response, timeout,
   context cancellation, fatal error, session loss.
 - `request()` ordering is load-bearing: window acquire → `machine.BeginOutbound` → completion
@@ -120,7 +123,7 @@ Adding an import outside this table fails the test. Keep it that way.
 
 ## Known local gaps
 
-- No `LICENSE`, no `.gitignore`, no `.golangci.yml`, no git tags.
+- No git tags yet. (`LICENSE`, `.gitignore`, and `.golangci.yml` landed in Phase 0.)
 - README claims phases 0–18 complete, Phase 19 in progress; the outstanding blockers are the
   Phase 17 reference-machine throughput result, publishing that evidence, and the first tag.
 

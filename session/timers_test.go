@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -372,5 +373,53 @@ func TestResponseAndTimeoutBoundaryHasOneWinner(t *testing.T) {
 		if table.len() != 0 {
 			t.Fatalf("iteration %d pending leaked", i)
 		}
+	}
+}
+
+// TestSessionStartsExactlyThreeGoroutines pins Task 2.4's acceptance
+// criterion (Finding P5): liveness supervision no longer has its own ticker
+// goroutine, so session.New starts exactly rxLoop, txLoop, and
+// deadlines.run() — three, down from four. It also checks that every one of
+// them actually exits on Close, since the point of a fixed goroutine count
+// is defeated if any of them lingers past the session's own lifetime.
+func TestSessionStartsExactlyThreeGoroutines(t *testing.T) {
+	runtime.GC()
+	time.Sleep(20 * time.Millisecond) // let any goroutine from an earlier test finish unwinding
+	baseline := runtime.NumGoroutine()
+
+	sessionConn, peerConn := net.Pipe()
+	defer peerConn.Close()
+	sess, err := New(sessionConn, Config{Role: RoleESME})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The three goroutines are started by `go` statements at the end of New;
+	// give the scheduler a moment to actually begin running them before
+	// counting.
+	var withSession int
+	deadline := time.Now().Add(time.Second)
+	for {
+		withSession = runtime.NumGoroutine()
+		if withSession-baseline >= 3 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if got := withSession - baseline; got != 3 {
+		t.Fatalf("goroutines added by New() = %d, want exactly 3 (rxLoop, txLoop, deadlines.run(); Task 2.4 removed livenessLoop, the fourth)", got)
+	}
+
+	sess.Close()
+
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if runtime.NumGoroutine() <= baseline {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goroutine count did not return to baseline after Close: now=%d baseline=%d", runtime.NumGoroutine(), baseline)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

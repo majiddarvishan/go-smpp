@@ -68,18 +68,33 @@ architectural hygiene in the repo — it makes the layering non-negotiable rathe
 
 ## Session model
 
-`session.New` starts **exactly four goroutines**, regardless of traffic volume:
+`session.New` starts **exactly three goroutines**, regardless of traffic volume (down from four
+before Task 2.4 / Finding P5 folded liveness supervision into the shared deadline heap):
 
 ```
-wg.Add(4)
+wg.Add(3)
 go s.rxLoop()          // read → frame → decode → dispatch
 go s.txLoop()          // drain tx queue → batch → write
-go s.deadlines.run()   // one shared min-heap timer for the whole session
-go s.livenessLoop()    // enquire_link / inactivity supervision
+go s.deadlines.run()   // one shared min-heap timer for the whole session — request
+                       // response timeouts AND the three liveness checks (below)
 ```
 
-There is deliberately **no goroutine per message and no goroutine per timer**. This is the
-central design decision that makes the throughput target reachable: at 100k PDUs/s a
+The three liveness checks — session-init timeout, inactivity timeout, and the enquire_link
+keepalive interval — are three fixed, caller-owned `deadlineItem` slots on `Session`
+(`sessionInitDeadline`, `inactivityDeadline`, `enquireLinkDeadline`), rescheduled in place via
+`deadlines.scheduleItemAt` and routed in `expireDeadline` by pointer identity. Inactivity and
+enquire_link don't reschedule on every packet: when a slot fires it re-derives idle time from
+the live `lastActivityTime()` and either acts or reschedules for the moment idle would now
+actually reach its threshold, so `noteActivityAt` stays a single atomic store. There is no
+periodic tick and therefore no resolution floor.
+
+There is deliberately **no goroutine per message and no goroutine per timer** on the request
+path. One narrow, documented exception exists: when the enquire_link slot fires and the session
+is genuinely idle, the probe runs in its own short-lived goroutine (`fireEnquireLinkDeadline`),
+because `tryEnquireLink` blocks waiting for a response whose timeout lives on the same heap the
+calling goroutine (`deadlines.run`) must stay free to service. Its rate follows idle time, not
+message volume — under real traffic it essentially never fires. See `docs/CONCURRENCY.md`. This
+is the central design decision that makes the throughput target reachable: at 100k PDUs/s a
 goroutine-per-message design would be dominated by scheduler and stack churn.
 
 ### Request lifecycle (outbound)
@@ -91,7 +106,7 @@ Request(ctx, cmd, body)
   ├─ machine.BeginOutbound(cmd)             SMPP operation/state matrix check
   ├─ make(chan requestResult, 1)             one alloc per request (Task 1.5, Finding B4: pool deleted)
   ├─ pending.insert(seq, req)               retry on ErrSequenceInUse
-  ├─ codec.EncodePDU(nil, header, body, reg)
+  ├─ frames.get(hint) → codec.EncodePDU(*buf, header, body, reg)   pooled frame (Task 2.2)
   ├─ txQueue <- txItem
   │
   └─ select {

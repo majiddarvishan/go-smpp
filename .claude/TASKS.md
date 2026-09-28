@@ -201,12 +201,47 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
     `body` back into `pdu.Body any`) match exactly what the design predicts; that last one is the
     same `any`-boxing cost Task 2.1 found on the encode side, unaddressed here too — same reason,
     would need a `DecodedPDU.Body` representation change out of this task's scope.
-- [ ] **2.4** Fold liveness into the shared deadline heap (P5)
+- [x] **2.4** Fold liveness into the shared deadline heap (P5)
   - Removes the 10 ms ticker floor and the fourth per-session goroutine.
   - Acceptance: goroutine count per session drops by one (assert via `runtime.NumGoroutine` in a
     session-count test); all timer tests still pass. **Note:** this changes the documented
     "exactly four goroutines" invariant — update `AGENTS.md`, `docs/CONCURRENCY.md`, and
     `ARCHITECTURE_OVERVIEW.md` in the same commit.
+  - Done. `livenessLoop` and `livenessResolution` are deleted; `New` starts three goroutines.
+    Session-init, inactivity, and enquire_link are three caller-owned `deadlineItem` slots on
+    `Session`, scheduled in `New`, rescheduled in place via `scheduleItemAt` (zero allocation),
+    routed in `expireDeadline` by pointer identity. Inactivity/enquire_link fire, re-derive idle from
+    the live `lastActivityTime()`, and either act or reschedule for when idle would actually hit the
+    threshold — so `noteActivityAt` stays one atomic store, never touching the heap.
+    **A first implementation deadlocked**, caught by the existing
+    `TestAutomaticEnquireLinkTimeoutClosesSession` (session never closed): calling `tryEnquireLink`
+    synchronously from the enquire_link handler runs it on `deadlines.run`'s only goroutine, and it
+    blocks on a response-timeout deadline that only `deadlines.run` can fire. A self-deadlock, not a
+    slow tick. Fixed by running the probe in its own short-lived goroutine while the handler
+    reschedules and returns immediately.
+    **Decision for you:** that probe goroutine is a deviation from `AGENTS.md`'s literal rule "Do not
+    create a goroutine … per timeout". I kept it narrow (rate follows idle time, not message volume;
+    it essentially never fires under traffic) and documented it in `docs/CONCURRENCY.md`,
+    `ARCHITECTURE_OVERVIEW.md`, and `CLAUDE.md`, but I did not edit `AGENTS.md`'s rule to bless my own
+    deviation — that is your call. A goroutine-free alternative exists: dispatch the probe without
+    waiting, flag its `pendingRequest`, and have `expireDeadline` terminate the session when a flagged
+    entry times out. It needs a dispatch-only variant of `request()`, the most depended-on function
+    in the package, so I didn't attempt it unasked. Also: `AGENTS.md` contains no "four goroutines"
+    statement to update (only the general rule above); the literal claim lived in `CLAUDE.md` and
+    `ARCHITECTURE_OVERVIEW.md`, both fixed, along with `CLAUDE.md`'s stale "no LICENSE / .gitignore /
+    .golangci.yml" line and `ARCHITECTURE_OVERVIEW.md`'s stale `EncodePDU(nil, ...)` (stale since 2.2).
+    Tests: `TestSessionStartsExactlyThreeGoroutines` (acceptance — verified to fail with "= 4" against
+    the old `session.go`, and checks all three exit on Close);
+    `TestInactivityDeadlineReschedulesInsteadOfTerminatingWhileActive`,
+    `TestInactivityDeadlineFiringBeforeBindReschedulesAndAppliesAfterBind`, and
+    `TestLivenessRescheduleKeepsHeapAndGoroutinesBounded` (heap ≤ 4 and goroutines bounded over 20+
+    probe cycles). The first two were mutation-checked: disabling either reschedule branch makes them
+    fail. All pre-existing timer tests pass unmodified; new + old timer tests stable at
+    `-race -count=15` and `-cpu 1,2`.
+    Measured, 300 idle unbound sessions over 3 s, CPU time, 3 runs each: with a 40 ms
+    `EnquireLinkInterval` (hits the old 10 ms floor) ~165 ms → ~111 ms (about a third less); with
+    default timers ~5.8–8.8 ms → ~0.1–0.18 ms (roughly 50×, since the old 2 Hz ticker per session is
+    gone entirely).
 - [x] **2.5** Flat command-ID fast-path table in `Registry` (P3)
   - Only if measured above a few percent; otherwise close as won't-fix with the profile evidence.
   - Acceptance: benchmark delta recorded either way, including the negative result.
