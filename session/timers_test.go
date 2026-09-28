@@ -423,3 +423,146 @@ func TestSessionStartsExactlyThreeGoroutines(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+// deadlineCountingConn counts SetWriteDeadline calls so a test can assert how
+// often txLoop actually touches the conn's deadline.
+type deadlineCountingConn struct {
+	net.Conn
+	writeDeadlines atomic.Int64
+}
+
+func (c *deadlineCountingConn) SetWriteDeadline(t time.Time) error {
+	c.writeDeadlines.Add(1)
+	return c.Conn.SetWriteDeadline(t)
+}
+
+// TestWriteDeadlineIsNotRearmedOnEveryBatch pins the amortized re-arming that
+// replaced Task 1.4's set-and-clear around every batch (which measurably cost
+// localhost TCP throughput — see the comment in txLoop). With a WriteTimeout
+// far longer than the test, more than half of it always remains after the
+// first write arms the deadline, so exactly one SetWriteDeadline call should
+// happen no matter how many more batches follow.
+func TestWriteDeadlineIsNotRearmedOnEveryBatch(t *testing.T) {
+	rawConn, peerConn := net.Pipe()
+	counting := &deadlineCountingConn{Conn: rawConn}
+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats livenessPeerStats
+	go runLivenessPeer(peerConn, registry, &stats)
+
+	sess, err := New(counting, Config{
+		Role:                RoleESME,
+		WriteTimeout:        10 * time.Second,
+		EnquireLinkInterval: -1,
+		InactivityTimeout:   -1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		if _, err := sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2")}); err != nil {
+			t.Fatalf("submit %d: %v", i, err)
+		}
+	}
+	if got := counting.writeDeadlines.Load(); got != 1 {
+		t.Fatalf("SetWriteDeadline called %d times across 51 batches, want exactly 1", got)
+	}
+}
+
+// TestWriteTimeoutStillBoundsAStallAfterSuccessfulWrites proves amortizing did
+// not weaken what the deadline is for. The deadline is armed by the first
+// write, several more succeed, and then the peer stops reading. The stalled
+// write must still fail with os.ErrDeadlineExceeded, no later than
+// WriteTimeout after it began (the upper bound) and no earlier than about half
+// of it (the lower bound this design trades for not re-arming every batch: a
+// write never starts with less than WriteTimeout/2 remaining).
+func TestWriteTimeoutStillBoundsAStallAfterSuccessfulWrites(t *testing.T) {
+	clientConn, peerConn := net.Pipe()
+	defer peerConn.Close()
+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		writeTimeout = 200 * time.Millisecond
+		okRequests   = 5
+	)
+	stall := make(chan struct{})
+	go func() {
+		serve := func() error {
+			pdu, err := readOnePDU(peerConn, registry)
+			if err != nil {
+				return err
+			}
+			respID, body := protocol.CommandBindTransceiverResp, any(protocol.BindResponse{SystemID: []byte("smsc")})
+			if pdu.Header.CommandID == protocol.CommandSubmitSM {
+				respID, body = protocol.CommandSubmitSMResp, protocol.SubmitSMResp{MessageID: []byte("m")}
+			}
+			frame, err := codec.EncodePDU(nil, codec.ResponseHeader(pdu.Header, respID, protocol.StatusOK), body, registry)
+			if err != nil {
+				return err
+			}
+			return transport.WriteFull(peerConn, frame)
+		}
+		for i := 0; i < 1+okRequests; i++ { // the bind, then okRequests submits
+			if serve() != nil {
+				return
+			}
+		}
+		<-stall // stop reading: the next write can never complete
+	}()
+	defer close(stall)
+
+	sess, err := New(clientConn, Config{
+		Role:                RoleESME,
+		WriteTimeout:        writeTimeout,
+		ResponseTimeout:     10 * time.Second,
+		EnquireLinkInterval: -1,
+		InactivityTimeout:   -1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < okRequests; i++ {
+		if _, err := sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2")}); err != nil {
+			t.Fatalf("submit %d: %v", i, err)
+		}
+	}
+
+	stallStart := time.Now()
+	go func() {
+		_, _ = sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2")})
+	}()
+	select {
+	case <-sess.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("stalled write was never cut off")
+	}
+	if !errors.Is(sess.Err(), os.ErrDeadlineExceeded) {
+		t.Fatalf("terminal error = %v, want it to wrap os.ErrDeadlineExceeded", sess.Err())
+	}
+	elapsed := time.Since(stallStart)
+	if elapsed > writeTimeout+250*time.Millisecond {
+		t.Fatalf("stalled write took %v to fail, want at most about %v", elapsed, writeTimeout)
+	}
+	if elapsed < writeTimeout/2-40*time.Millisecond {
+		t.Fatalf("stalled write failed after only %v, want at least about %v (a write should never start with less than WriteTimeout/2 left)", elapsed, writeTimeout/2)
+	}
+}

@@ -99,6 +99,16 @@ Estimate: small–medium. Highest priority after Phase 0.
     `if err != nil { s.terminate(err) }` already treats every write error as fatal, so
     `os.ErrDeadlineExceeded` flows through the same path unchanged. Documented in
     `docs/TIMEOUTS_AND_LIVENESS.md`.
+  - **Follow-up fix (found while assessing Phase 2's exit criteria):** that first version set the
+    deadline before, and cleared it after, *every batch*, and I never benchmarked it. A Phase 2
+    allocation profile showed `net.(*pipeDeadline).set` / `time.AfterFunc` on the hot path; an
+    interleaved A/B/C on real localhost TCP (6 rounds, medians) then showed it cost about 7.5%:
+    ~6371 ns/op vs ~5923 with deadlines disabled. Fixed by re-arming only when less than half of
+    `WriteTimeout` remains and dropping the clear (every write re-arms itself, so it was never
+    needed): ~5969 ns/op, indistinguishable from disabled. Trade-off: a slow-but-progressing write can
+    be cut off as early as `WriteTimeout`/2 after it began (upper bound unchanged). Pinned by
+    `TestWriteDeadlineIsNotRearmedOnEveryBatch` (exactly 1 arm across 51 batches — mutation-checked)
+    and `TestWriteTimeoutStillBoundsAStallAfterSuccessfulWrites` (both bounds).
 - [x] **1.5** Re-decide completion-channel pooling (B4)
   - Under `-race` (CI or a Linux box), stress the pool. Either delete the pool (allocate the
     channel per request) or add an atomic generation check so a stale send cannot be delivered to
@@ -270,6 +280,26 @@ land each behind the `[profile]` CI gate with before/after numbers in the commit
 
 **Exit criteria:** send path allocation near zero at steady state; Phase 17 reference-machine
 throughput measured and evidence published.
+
+**Status: all six tasks done (2.5 as a measured won't-fix), exit criteria NOT met — stated plainly
+so nobody reads the ticked boxes above as "Phase 2 is finished".**
+
+- *Send-path allocation near zero at steady state — not met.* End-to-end round trip is at ~10-11
+  allocs/op, ~885-930 B/op (down from 12 / 1009 at the end of Phase 1). An `-memprofilerate=1`
+  `alloc_objects` profile of `BenchmarkInMemorySessionBidirectional` shows what is left:
+  `Session.request` itself is ~40% (~4 per request: the `pendingRequest` struct, the completion
+  channel, the `releaseWindow` closure, …); interface boxing is most of the rest — the `body any`
+  argument at each `SubmitSM`/`DeliverSM` call (~1 per request, the finding Task 2.1 turned up),
+  each decoded body boxed into `DecodedPDU.Body` (1 per decoded PDU, 2 per round trip), and
+  `ownDecodedPDU` re-boxing the body after cloning (1). Not library cost: the benchmark's own
+  handlers, and `net.Pipe`'s deadline timers (an in-memory-only artifact; real TCP does not
+  allocate there). The two concrete next steps are folding `request()`'s per-call objects into
+  fewer allocations (embedding the completion channel and `releaseWindow` state in
+  `pendingRequest`), and the `any`-boxing family, which needs a body-representation or
+  call-signature change and so is a public-API decision, not a drive-by.
+- *Phase 17 reference-machine throughput measured and published — not done, and cannot be from
+  the sandbox this was developed in.* It needs the documented Linux/amd64 8-core / 10 GB machine and
+  a published result. The heap-effect half of 2.2's acceptance criterion is waiting on the same run.
 
 ---
 

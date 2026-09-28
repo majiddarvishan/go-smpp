@@ -911,6 +911,10 @@ func (s *Session) txLoop() {
 	var writeBuffer []byte
 	var writeBuffers net.Buffers
 	var batchTCP *net.TCPConn
+	// writeArmedUntil is when the write deadline currently set on s.conn
+	// expires (zero until the first write arms one). Local to this goroutine:
+	// txLoop is the only writer, so it needs no synchronization.
+	var writeArmedUntil time.Time
 	if s.config.TXBatchItems > 1 {
 		batchTCP, _ = s.conn.(*net.TCPConn)
 		if batchTCP != nil {
@@ -969,7 +973,26 @@ func (s *Session) txLoop() {
 
 		var err error
 		if s.config.WriteTimeout > 0 {
-			_ = s.conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+			// Re-arm only when less than half the window remains, not on every
+			// batch. On real TCP each SetWriteDeadline is a runtime poller
+			// timer update, and doing it (plus a clear) around every write cost
+			// about 9% of localhost throughput (Task 1.4's first version, measured
+			// afterward: ~147k vs ~162k request PDU/s with it disabled). What the
+			// deadline exists to bound is a write that stops making progress,
+			// and that is still bounded: a write never starts with less than
+			// WriteTimeout/2 left on the clock, and never runs past
+			// WriteTimeout from when the deadline was last armed. The one
+			// semantic difference from arming per batch is the lower bound — a
+			// slow but progressing write can be cut off as early as
+			// WriteTimeout/2 after it began rather than only after a full
+			// WriteTimeout. There is deliberately no clear afterward: every
+			// write re-arms itself first if needed, so an expired deadline left
+			// on an idle conn can only ever affect a write that would have
+			// re-armed it anyway.
+			if now := time.Now(); writeArmedUntil.Sub(now) < s.config.WriteTimeout/2 {
+				writeArmedUntil = now.Add(s.config.WriteTimeout)
+				_ = s.conn.SetWriteDeadline(writeArmedUntil)
+			}
 		}
 		if len(batch) == 1 {
 			err = transport.WriteFull(s.conn, batch[0].frame)
@@ -985,13 +1008,6 @@ func (s *Session) txLoop() {
 				writeBuffer = append(writeBuffer, batch[i].frame...)
 			}
 			err = transport.WriteFull(s.conn, writeBuffer)
-		}
-		if s.config.WriteTimeout > 0 {
-			// Clear rather than leave an armed deadline sitting on the conn
-			// between batches: the next batch may not arrive for a long time
-			// (or ever), and an expired deadline from an old batch must never
-			// be mistaken for one tripping on a new, unrelated write.
-			_ = s.conn.SetWriteDeadline(time.Time{})
 		}
 		if err != nil {
 			for i := range batch {
