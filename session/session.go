@@ -1102,8 +1102,19 @@ func (s *Session) processFrame(frame []byte) error {
 			return headerErr
 		}
 		// Framing is still trustworthy. Reject the semantic/body error without
-		// poisoning or resynchronizing the TCP stream.
-		_ = s.queueGenericNACK(header, protocol.StatusInvalidMessageLength)
+		// poisoning or resynchronizing the TCP stream, with the specific status
+		// the decoder attached when it recognized the error's shape (Finding B6)
+		// — a wrong-length TLV and a body that's simply too long are different
+		// failures and peers can reasonably expect different codes back.
+		// StatusInvalidMessageLength is the fallback for a decode error the
+		// decoder didn't classify, not a claim that every semantic error is
+		// actually a message-length problem.
+		status := protocol.StatusInvalidMessageLength
+		var semantic *protocol.SemanticError
+		if errors.As(err, &semantic) && semantic.Status != 0 {
+			status = semantic.Status
+		}
+		_ = s.queueGenericNACK(header, status)
 		return nil
 	}
 	now := time.Now()
@@ -1162,7 +1173,11 @@ func (s *Session) observeRTT(request *pendingRequest, sequence protocol.Sequence
 
 func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	if !pdu.Header.SequenceNumber.ValidInbound() {
-		return s.queueGenericNACK(pdu.Header, protocol.StatusInvalidMessageLength)
+		// Not a length problem (Finding B6) — SMPP has no status code for "the
+		// header's sequence_number is outside the valid inbound range" at all.
+		// StatusSystemError is the closest available signal that this is some
+		// other kind of processing failure, not a claim that it fits precisely.
+		return s.queueGenericNACK(pdu.Header, protocol.StatusSystemError)
 	}
 	_, registered := s.registry.Command(pdu.Header.CommandID)
 	if !registered {

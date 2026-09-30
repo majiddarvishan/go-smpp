@@ -198,6 +198,27 @@ sequence number, which is not a length problem either.
 **Fix:** have `SemanticError` carry a `Status protocol.CommandStatus`, set it at each decode
 site, and map it through in `processFrame`. Fall back to 0x01 only when unset.
 
+**Implemented (Task 3.1).** `protocol.SemanticError` already had the `Status` field (unused
+before this); every decode-site error that could actually reach the semantic path now
+constructs one with a status instead of a plain wrapped sentinel, and `processFrame` extracts
+it via `errors.As`, falling back to 0x01 only when a decode error wasn't classified. One
+correction to this finding's own examples: `StatusInvalidOptionalParameterStream` (0xC0) is not
+actually reachable here — every TLV-length violation (`ScanTLVs`, truncated header or an
+over-length value) is already a `*protocol.FatalError`, not semantic, because a mis-parsed TLV
+boundary means the rest of the body can't be trusted either; that classification predates this
+task and wasn't reopened. `StatusOptionalParameterNotAllowed` (0xC1) has no decode-time check
+behind it at all (no code currently rejects a TLV as "present but not allowed for this
+command") — adding one would be new validation, not a status-mapping fix, so it wasn't added.
+The out-of-range-sequence-number case this finding also names got `StatusSystemError`, the
+closest available "not a length problem" signal — SMPP has no status specific to a malformed
+sequence_number either. Where a decode error's condition and the 0x01 fallback's numeric value
+coincide (sm_length 255; a request's nonzero command_status; both have no better SMPP status to
+map to, so 0x01 stays, now explicit rather than accidental) that overlap is real, not a bug —
+`codec/semantic_status_test.go`'s table asserts each one is a typed `*protocol.SemanticError`
+regardless, and a mutation test on the session-level integration test confirmed the numeric
+coincidence made that specific test unable to tell "mapped" from "fell back" — fixed by picking
+a differently-valued case for that test, not by discarding the mapping.
+
 ### B7 — `Framer` permanently retains up to `maxPDUSize` per session · S3
 
 `codec/framer.go`. When a fragmented PDU arrives, `Feed` grows `f.pending` to the declared

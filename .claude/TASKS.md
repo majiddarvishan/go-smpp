@@ -307,12 +307,37 @@ so nobody reads the ticked boxes above as "Phase 2 is finished".**
 Goal: make error reporting and state enforcement match the SMPP spec and the project's own
 stricter rules.
 
-- [ ] **3.1** Map semantic decode errors to proper `command_status` (B6)
+- [x] **3.1** Map semantic decode errors to proper `command_status` (B6)
   - Add a `Status` field to `protocol.SemanticError`, set it at each decode site, map it in
     `processFrame`; fall back to `ESME_RINVMSGLEN` only when unset.
   - Files: `protocol/errors.go`, `codec/*.go`, `session/session.go:964,1023`
   - Acceptance: table-driven test per error class asserting the exact status code (0xC0 for a bad
     TLV stream, 0xC1 for a disallowed TLV, etc.); framer still not poisoned on semantic errors.
+  - Done. `SemanticError.Status` already existed (unused); every decode-site error reachable via
+    the semantic (non-fatal) path now sets it — `requireDone` (trailing body octets),
+    `requestStatusMustBeZero`, `decodeBindResponse` (sc_interface_version wrong length),
+    `decodeEmpty` (header-only command with a body), `decodeShortMessageBody`/`decodeReplaceSM`/
+    `decodeSubmitMulti` (sm_length 255, short_message+message_payload conflict), `decodeSubmitMulti`
+    (number_of_dests out of range), and `DecodePDU` itself (frame longer than its own
+    command_length). `processFrame` extracts it via `errors.As`, falling back to
+    `StatusInvalidMessageLength` only when unset. `session.go:1023`'s out-of-range
+    sequence_number got `StatusSystemError` instead (no SMPP status fits "bad sequence_number"
+    either).
+    **Correction to this finding's own examples**, written up in `.claude/CODE_REVIEW.md`'s B6
+    entry: 0xC0 (bad TLV stream) is not reachable here — every TLV-length violation is already a
+    `*protocol.FatalError`, correctly, since a mis-parsed TLV boundary means the rest of the body
+    can't be trusted; and 0xC1 (disallowed TLV) has no decode-time check behind it at all today —
+    adding one would be new validation, not a status-mapping fix, so neither was touched.
+    Acceptance test: `codec/semantic_status_test.go`, a table of 8 hand-built malformed frames (raw
+    bytes an encoder would never produce), each asserting the exact `*protocol.SemanticError.Status`
+    *and* that `errors.Is` against the original sentinel still succeeds. `session/semantic_status_test.go`
+    covers the session-level half: a real generic_nack on the wire carrying the mapped status, and a
+    valid submit_sm processed normally right after (framer not poisoned). Caught two real mistakes via
+    mutation testing before landing: an early version of the session-level test picked a case
+    (sm_length 255 → 0x01) that numerically coincides with the old fallback, so it passed even with the
+    status-extraction code deleted entirely — fixed by switching to a case with a different mapped
+    value; separately, the session test's own handler returned `StatusOK` for binds with a nil body,
+    which produced a real but confusing fatal decode error unrelated to the code under test.
 - [ ] **3.2** Route vendor commands through the state machine (B10)
   - Record a direction + permitted-state mask per registered command (including vendor ones) in
     `RegistryBuilder`; delete the hand-maintained `isStandardSessionCommand` list.

@@ -43,7 +43,11 @@ func DecodePDU(frame []byte, registry *Registry) (DecodedPDU, error) {
 		}
 	}
 	if len(frame) != declared {
-		return DecodedPDU{}, fmt.Errorf("%w: declared=%d actual=%d", ErrPDUFrameLengthMismatch, declared, len(frame))
+		return DecodedPDU{}, &protocol.SemanticError{
+			Status: protocol.StatusInvalidCommandLength,
+			Reason: fmt.Sprintf("declared=%d actual=%d", declared, len(frame)),
+			Cause:  ErrPDUFrameLengthMismatch,
+		}
 	}
 
 	bodyBytes := frame[HeaderSize:declared]

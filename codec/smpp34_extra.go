@@ -384,7 +384,11 @@ func decodeReplaceSM(header Header, body []byte) (any, error) {
 		return nil, err
 	}
 	if smLength == 255 {
-		return nil, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
+		return nil, &protocol.SemanticError{
+			Status: protocol.StatusInvalidMessageLength,
+			Reason: "sm_length 255 is not allowed in SMPP 3.4",
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
 		return nil, err
@@ -560,7 +564,11 @@ func decodeSubmitMulti(header Header, body []byte) (any, error) {
 		return nil, err
 	}
 	if count == 0 || count == 255 {
-		return nil, fmt.Errorf("%w: number_of_dests must be 1..254", ErrInvalidPDUValue)
+		return nil, &protocol.SemanticError{
+			Status: protocol.StatusInvalidNumberOfDestinations,
+			Reason: "number_of_dests must be 1..254",
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	out.Destinations = make([]protocol.SubmitMultiDestination, 0, int(count))
 	for i := 0; i < int(count); i++ {
@@ -633,7 +641,11 @@ func decodeSubmitMulti(header Header, body []byte) (any, error) {
 		return nil, err
 	}
 	if smLength == 255 {
-		return nil, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
+		return nil, &protocol.SemanticError{
+			Status: protocol.StatusInvalidMessageLength,
+			Reason: "sm_length 255 is not allowed in SMPP 3.4",
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
 		return nil, err
@@ -642,7 +654,11 @@ func decodeSubmitMulti(header Header, body []byte) (any, error) {
 		return nil, err
 	}
 	if hasNonEmptyMessagePayload(out.Optional) && len(out.ShortMessage) != 0 {
-		return nil, ErrConflictingMessageData
+		return nil, &protocol.SemanticError{
+			Status: protocol.StatusInvalidOptionalParameterValue,
+			Reason: "message_payload conflicts with a non-empty short_message",
+			Cause:  ErrConflictingMessageData,
+		}
 	}
 	return out, nil
 }

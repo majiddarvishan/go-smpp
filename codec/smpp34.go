@@ -190,14 +190,29 @@ func (r *bodyReader) optional() ([]protocol.OptionalParameter, error) {
 
 func (r *bodyReader) requireDone() error {
 	if r.off != len(r.src) {
-		return fmt.Errorf("%w: %d trailing body octets", ErrInvalidPDUValue, len(r.src)-r.off)
+		return &protocol.SemanticError{
+			Status: protocol.StatusInvalidCommandLength,
+			Reason: fmt.Sprintf("%d trailing body octets", len(r.src)-r.off),
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	return nil
 }
 
+// requestStatusMustBeZero has no exact SMPP status of its own — the spec has
+// no code specifically for "the header's command_status field is nonzero on
+// a request" — so this keeps the project's generic decode-error default
+// (StatusInvalidMessageLength) explicit here rather than leaving it to
+// processFrame's fallback, so this condition still surfaces its own
+// SemanticError for callers/tests that inspect the error rather than only
+// the eventual generic_nack status.
 func requestStatusMustBeZero(header Header) error {
 	if !header.CommandStatus.OK() {
-		return fmt.Errorf("%w: request command_status must be zero", ErrInvalidPDUValue)
+		return &protocol.SemanticError{
+			Status: protocol.StatusInvalidMessageLength,
+			Reason: "request command_status must be zero",
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	return nil
 }
@@ -296,7 +311,11 @@ func decodeBindResponse(header Header, body []byte) (any, error) {
 	}
 	for _, parameter := range optional {
 		if parameter.Tag == protocol.TLVTagSCInterfaceVersion && len(parameter.Value) != 1 {
-			return nil, fmt.Errorf("%w: sc_interface_version length must be 1", ErrInvalidPDUValue)
+			return nil, &protocol.SemanticError{
+				Status: protocol.StatusInvalidParameterLength,
+				Reason: "sc_interface_version length must be 1",
+				Cause:  ErrInvalidPDUValue,
+			}
 		}
 	}
 	return protocol.BindResponse{SystemID: systemID, Optional: optional}, nil
@@ -370,7 +389,11 @@ func decodeResponseEmpty(_ Header, body []byte) (any, error) {
 
 func decodeEmpty(body []byte) (any, error) {
 	if len(body) != 0 {
-		return nil, fmt.Errorf("%w: header-only PDU has %d body octets", ErrInvalidPDUValue, len(body))
+		return nil, &protocol.SemanticError{
+			Status: protocol.StatusInvalidCommandLength,
+			Reason: fmt.Sprintf("header-only PDU has %d body octets", len(body)),
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	return protocol.EmptyBody{}, nil
 }
@@ -491,7 +514,11 @@ func decodeShortMessageBody(header Header, body []byte) (shortMessageBody, error
 		return out, err
 	}
 	if smLength == 255 {
-		return out, fmt.Errorf("%w: sm_length 255 is not allowed in SMPP 3.4", ErrInvalidPDUValue)
+		return out, &protocol.SemanticError{
+			Status: protocol.StatusInvalidMessageLength,
+			Reason: "sm_length 255 is not allowed in SMPP 3.4",
+			Cause:  ErrInvalidPDUValue,
+		}
 	}
 	if out.ShortMessage, err = r.octets(int(smLength)); err != nil {
 		return out, err
@@ -500,7 +527,11 @@ func decodeShortMessageBody(header Header, body []byte) (shortMessageBody, error
 		return out, err
 	}
 	if hasNonEmptyMessagePayload(out.Optional) && len(out.ShortMessage) != 0 {
-		return out, ErrConflictingMessageData
+		return out, &protocol.SemanticError{
+			Status: protocol.StatusInvalidOptionalParameterValue,
+			Reason: "message_payload conflicts with a non-empty short_message",
+			Cause:  ErrConflictingMessageData,
+		}
 	}
 	return out, nil
 }
