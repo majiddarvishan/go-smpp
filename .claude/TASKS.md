@@ -338,12 +338,30 @@ stricter rules.
     status-extraction code deleted entirely — fixed by switching to a case with a different mapped
     value; separately, the session test's own handler returned `StatusOK` for binds with a nil body,
     which produced a real but confusing fatal decode error unrelated to the code under test.
-- [ ] **3.2** Route vendor commands through the state machine (B10)
+- [x] **3.2** Route vendor commands through the state machine (B10)
   - Record a direction + permitted-state mask per registered command (including vendor ones) in
     `RegistryBuilder`; delete the hand-maintained `isStandardSessionCommand` list.
   - Files: `codec/registry.go`, `session/state.go`, `session/session.go:1089`
   - Acceptance: a vendor command is refused in a state where the equivalent standard command is
     refused; a wrong-direction vendor request is refused; `architecture_test.go` still passes.
+  - Done. `codec.CommandDefinition` gained `Actor`/`AllowedStates`; a new `codec.CommandActor` enum
+    avoids referencing `session.Role` directly (would be an import cycle). `isStandardSessionCommand`
+    deleted; `CanIssue`'s switch became a `standardRules` map, `IsStandardCommand` is map membership
+    off the same data. `beginInbound` checks a vendor command's declared policy when set, else keeps
+    the old permissive default (opt-in per command — not a breaking change).
+    Translation correctness: `TestCanIssueMatchesOldSwitchExhaustively` (old switch copied verbatim
+    as an independent oracle vs. the new map, 462 combinations, zero mismatches) — written because
+    this is core, well-trusted logic and "I read the diff carefully" isn't the same evidence as an
+    independent check catching a transcription slip on its own.
+    Acceptance tests: `session/vendor_state_test.go` — `TestVendorCommandRefusedInWrongState`
+    (BoundRX session, a vendor command sharing submit_sm's ESME/BoundTX-or-TRX policy, refused the
+    same way submit_sm would be), `TestVendorCommandWrongDirectionRefused` (ActorSMSC vendor
+    command from an ESME peer, refused regardless of state), and
+    `TestVendorCommandAcceptedInCorrectStateAndDirection` (positive control — same command, right
+    role and state, reaches the Handler). All three mutation-checked: dropping the registry-policy
+    check entirely breaks the first two but not the control; dropping only the actor check breaks
+    just the direction test. `architecture_test.go` (`TestPackageDependencyDirection`) passes.
+    Docs: `docs/VENDOR_EXTENSIONS.md` gained a section on the new opt-in fields.
 - [ ] **3.3** Harden `message.Reassemble` (B9)
   - Switch to `slices.SortFunc`, error on duplicate `Sequence`, require an explicit non-zero
     `total`.

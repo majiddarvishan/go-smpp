@@ -1243,44 +1243,45 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	return nil
 }
 
+// actorMatchesRole reports whether a vendor command's declared policy
+// (codec.CommandActor) permits role to issue it. ActorAny permits either
+// role — see codec.CommandDefinition's doc comment.
+func actorMatchesRole(actor codec.CommandActor, role Role) bool {
+	switch actor {
+	case codec.ActorESME:
+		return role == RoleESME
+	case codec.ActorSMSC:
+		return role == RoleSMSC
+	default:
+		return true
+	}
+}
+
+// beginInbound validates a peer-originated request's direction and state.
+// A standard command is checked by the state machine's own operation matrix
+// (CanIssue/IsStandardCommand, session/state.go). A vendor command has no
+// entry there; one that declared its own Actor/AllowedStates when registered
+// (Finding B10) is checked against that uniformly, the same shape a standard
+// command's rule has internally — a wrong-direction or wrong-state vendor
+// request is refused exactly as its standard counterpart would be. A vendor
+// command that declared neither keeps this library's previous, conservative
+// default: permitted in any bound state, from either role.
 func (s *Session) beginInbound(command protocol.CommandID) error {
 	peerRole := s.Role().peer()
 	state := s.State()
-	if isStandardSessionCommand(command) {
+	if IsStandardCommand(command) {
 		return s.machine.BeginInbound(command)
 	}
-	// Vendor-specific request commands do not have a standard operation-matrix
-	// entry. Keep their default policy conservative: they may run only after a
-	// session is bound, with application semantics delegated to Handler.
-	if !command.IsResponse() && (state == protocol.StateBoundTX || state == protocol.StateBoundRX || state == protocol.StateBoundTRX) {
+	if def, ok := s.registry.Command(command); ok && len(def.AllowedStates) > 0 {
+		if actorMatchesRole(def.Actor, peerRole) && def.AllowsState(state) {
+			return nil
+		}
+		return &StateError{State: state, Command: command, Role: peerRole}
+	}
+	if isBoundState(state) {
 		return nil
 	}
 	return &StateError{State: state, Command: command, Role: peerRole}
-}
-
-func isStandardSessionCommand(command protocol.CommandID) bool {
-	switch command {
-	case protocol.CommandBindReceiver,
-		protocol.CommandBindTransmitter,
-		protocol.CommandQuerySM,
-		protocol.CommandSubmitSM,
-		protocol.CommandDeliverSM,
-		protocol.CommandUnbind,
-		protocol.CommandReplaceSM,
-		protocol.CommandCancelSM,
-		protocol.CommandBindTransceiver,
-		protocol.CommandOutbind,
-		protocol.CommandEnquireLink,
-		protocol.CommandSubmitMulti,
-		protocol.CommandAlertNotification,
-		protocol.CommandDataSM,
-		protocol.CommandBroadcastSM,
-		protocol.CommandQueryBroadcastSM,
-		protocol.CommandCancelBroadcastSM:
-		return true
-	default:
-		return false
-	}
 }
 
 func isOneWayCommand(command protocol.CommandID) bool {

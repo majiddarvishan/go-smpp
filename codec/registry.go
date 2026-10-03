@@ -45,12 +45,49 @@ type TLVDecoder func(value []byte) (any, error)
 // TLVEncoder appends an encoded TLV value for value to dst.
 type TLVEncoder func(dst []byte, value any) ([]byte, error)
 
+// CommandActor restricts which SMPP peer role may issue a command as a
+// request (or, for a response, which role sends it). It mirrors session.Role's
+// ESME/SMSC distinction without this package depending on session — session
+// already depends on codec, so the reverse would be an import cycle; see
+// architecture_test.go. ActorAny means no role restriction.
+type CommandActor uint8
+
+const (
+	ActorAny CommandActor = iota
+	ActorESME
+	ActorSMSC
+)
+
+func (a CommandActor) String() string {
+	switch a {
+	case ActorESME:
+		return "ESME"
+	case ActorSMSC:
+		return "SMSC"
+	default:
+		return "Any"
+	}
+}
+
 // CommandDefinition describes one standard or vendor-specific command.
+//
+// Actor and AllowedStates are consulted only for a vendor request command —
+// one session package's operation/state matrix (session.CanIssue) does not
+// already recognize (Finding B10). A standard command's direction and
+// state rules live in session.CanIssue, the same as before this field
+// existed; setting these on a standard command's definition has no effect.
+// Leaving AllowedStates nil on a vendor command keeps this library's
+// previous, conservative default for all vendor requests: permitted in any
+// bound state, from either role. Setting it opts that specific vendor
+// command into the same kind of precise, uniformly enforced rule a standard
+// command gets — see docs/VENDOR_EXTENSIONS.md.
 type CommandDefinition struct {
-	ID     protocol.CommandID
-	Name   string
-	Decode CommandDecoder
-	Encode CommandEncoder
+	ID            protocol.CommandID
+	Name          string
+	Decode        CommandDecoder
+	Encode        CommandEncoder
+	Actor         CommandActor
+	AllowedStates []protocol.SessionState
 }
 
 // TLVDefinition describes one standard or vendor-specific TLV tag.
@@ -179,6 +216,19 @@ func (r *Registry) TLVCount() int {
 		return 0
 	}
 	return len(r.tlvs)
+}
+
+// AllowsState reports whether state is in def.AllowedStates. An empty
+// AllowedStates is never satisfied by this method — callers needing the
+// conservative "no policy declared" fallback check len(def.AllowedStates)==0
+// themselves; see CommandDefinition's doc comment.
+func (def CommandDefinition) AllowsState(state protocol.SessionState) bool {
+	for _, s := range def.AllowedStates {
+		if s == state {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Registry) Command(id protocol.CommandID) (CommandDefinition, bool) {

@@ -62,6 +62,82 @@ func (m BindMode) String() string {
 	}
 }
 
+// operationRule is the direction + permitted-state policy for one standard
+// command: which role (0 means either) may issue it, and in which states.
+// This is the same shape codec.CommandDefinition's Actor/AllowedStates
+// fields use for a vendor command's own policy (Finding B10) — standardRules
+// below is this package's hand-maintained source of truth for the standard
+// command set specifically, exactly as it was before this type existed; only
+// its representation changed, from a switch's control flow to this map's
+// data, so that membership in it (IsStandardCommand) can be derived instead
+// of needing its own separately hand-maintained list.
+type operationRule struct {
+	actor  Role
+	states []protocol.SessionState
+}
+
+func (r operationRule) allows(state protocol.SessionState, role Role) bool {
+	if r.actor != 0 && role != r.actor {
+		return false
+	}
+	for _, s := range r.states {
+		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	openOnly       = []protocol.SessionState{protocol.StateOpen}
+	openOrOutbound = []protocol.SessionState{protocol.StateOpen, protocol.StateOutbound}
+	boundStates    = []protocol.SessionState{protocol.StateBoundTX, protocol.StateBoundRX, protocol.StateBoundTRX}
+	boundOrUnbound = []protocol.SessionState{protocol.StateBoundTX, protocol.StateBoundRX, protocol.StateBoundTRX, protocol.StateUnbound}
+	boundTXOrTRX   = []protocol.SessionState{protocol.StateBoundTX, protocol.StateBoundTRX}
+	boundRXOrTRX   = []protocol.SessionState{protocol.StateBoundRX, protocol.StateBoundTRX}
+	boundTXOnly    = []protocol.SessionState{protocol.StateBoundTX}
+)
+
+// standardRules is the SMPP 3.4 operation/state direction matrix for the
+// command set known by the protocol package. generic_nack is deliberately
+// not in this map — it is allowed in any connected state so a structurally
+// valid unknown command can be rejected, which CanIssue still special-cases
+// directly, the same as before this table existed.
+var standardRules = map[protocol.CommandID]operationRule{
+	protocol.CommandBindTransmitter:       {actor: RoleESME, states: openOnly},
+	protocol.CommandBindTransceiver:       {actor: RoleESME, states: openOnly},
+	protocol.CommandBindReceiver:          {actor: RoleESME, states: openOrOutbound},
+	protocol.CommandBindTransmitterResp:   {actor: RoleSMSC, states: openOnly},
+	protocol.CommandBindTransceiverResp:   {actor: RoleSMSC, states: openOnly},
+	protocol.CommandBindReceiverResp:      {actor: RoleSMSC, states: openOrOutbound},
+	protocol.CommandOutbind:               {actor: RoleSMSC, states: openOnly},
+	protocol.CommandUnbind:                {states: boundStates},
+	protocol.CommandUnbindResp:            {states: boundOrUnbound},
+	protocol.CommandEnquireLink:           {states: boundStates},
+	protocol.CommandEnquireLinkResp:       {states: boundStates},
+	protocol.CommandSubmitSM:              {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandSubmitMulti:           {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandQuerySM:               {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandCancelSM:              {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandBroadcastSM:           {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandQueryBroadcastSM:      {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandCancelBroadcastSM:     {actor: RoleESME, states: boundTXOrTRX},
+	protocol.CommandReplaceSM:             {actor: RoleESME, states: boundTXOnly},
+	protocol.CommandSubmitSMResp:          {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandSubmitMultiResp:       {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandQuerySMResp:           {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandCancelSMResp:          {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandBroadcastSMResp:       {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandQueryBroadcastSMResp:  {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandCancelBroadcastSMResp: {actor: RoleSMSC, states: boundTXOrTRX},
+	protocol.CommandReplaceSMResp:         {actor: RoleSMSC, states: boundTXOnly},
+	protocol.CommandDeliverSM:             {actor: RoleSMSC, states: boundRXOrTRX},
+	protocol.CommandDeliverSMResp:         {actor: RoleESME, states: boundRXOrTRX},
+	protocol.CommandDataSM:                {states: boundStates},
+	protocol.CommandDataSMResp:            {states: boundStates},
+	protocol.CommandAlertNotification:     {actor: RoleSMSC, states: boundRXOrTRX},
+}
+
 // CanIssue implements the SMPP 3.4 operation/state direction rules for the
 // command set known by the protocol package. generic_nack is allowed in any
 // connected state so a structurally valid unknown command can be rejected.
@@ -69,50 +145,27 @@ func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID
 	if !role.valid() || state == protocol.StateClosed {
 		return false
 	}
-
-	bound := state == protocol.StateBoundTX || state == protocol.StateBoundRX || state == protocol.StateBoundTRX
 	if command == protocol.CommandGenericNACK {
 		return true
 	}
-
-	switch command {
-	case protocol.CommandBindTransmitter, protocol.CommandBindTransceiver:
-		return state == protocol.StateOpen && role == RoleESME
-	case protocol.CommandBindReceiver:
-		return role == RoleESME && (state == protocol.StateOpen || state == protocol.StateOutbound)
-	case protocol.CommandBindTransmitterResp, protocol.CommandBindTransceiverResp:
-		return state == protocol.StateOpen && role == RoleSMSC
-	case protocol.CommandBindReceiverResp:
-		return role == RoleSMSC && (state == protocol.StateOpen || state == protocol.StateOutbound)
-	case protocol.CommandOutbind:
-		return state == protocol.StateOpen && role == RoleSMSC
-	case protocol.CommandUnbind:
-		return bound
-	case protocol.CommandUnbindResp:
-		return bound || state == protocol.StateUnbound
-	case protocol.CommandEnquireLink, protocol.CommandEnquireLinkResp:
-		return bound
-	case protocol.CommandSubmitSM, protocol.CommandSubmitMulti, protocol.CommandQuerySM, protocol.CommandCancelSM,
-		protocol.CommandBroadcastSM, protocol.CommandQueryBroadcastSM, protocol.CommandCancelBroadcastSM:
-		return role == RoleESME && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
-	case protocol.CommandReplaceSM:
-		return role == RoleESME && state == protocol.StateBoundTX
-	case protocol.CommandSubmitSMResp, protocol.CommandSubmitMultiResp, protocol.CommandQuerySMResp, protocol.CommandCancelSMResp,
-		protocol.CommandBroadcastSMResp, protocol.CommandQueryBroadcastSMResp, protocol.CommandCancelBroadcastSMResp:
-		return role == RoleSMSC && (state == protocol.StateBoundTX || state == protocol.StateBoundTRX)
-	case protocol.CommandReplaceSMResp:
-		return role == RoleSMSC && state == protocol.StateBoundTX
-	case protocol.CommandDeliverSM:
-		return role == RoleSMSC && (state == protocol.StateBoundRX || state == protocol.StateBoundTRX)
-	case protocol.CommandDeliverSMResp:
-		return role == RoleESME && (state == protocol.StateBoundRX || state == protocol.StateBoundTRX)
-	case protocol.CommandDataSM, protocol.CommandDataSMResp:
-		return bound
-	case protocol.CommandAlertNotification:
-		return role == RoleSMSC && (state == protocol.StateBoundRX || state == protocol.StateBoundTRX)
-	default:
+	rule, ok := standardRules[command]
+	if !ok {
 		return false
 	}
+	return rule.allows(state, role)
+}
+
+// IsStandardCommand reports whether command is part of the operation/state
+// matrix CanIssue enforces directly — the set that replaced the old,
+// separately hand-maintained isStandardSessionCommand list (Finding B10):
+// membership here is derived from standardRules, the same data CanIssue
+// itself consults, so the two can no longer drift apart.
+func IsStandardCommand(command protocol.CommandID) bool {
+	if command == protocol.CommandGenericNACK {
+		return true
+	}
+	_, ok := standardRules[command]
+	return ok
 }
 
 // StateMachine is shared by ESME and SMSC sessions. Normal state reads are

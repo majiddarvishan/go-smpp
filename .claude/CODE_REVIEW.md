@@ -314,6 +314,23 @@ where the equivalent standard command would be refused, and the direction (`Role
 command, including vendor ones, and have `beginInbound` consult it uniformly. That also removes
 the `isStandardSessionCommand` list, which must currently be kept in sync by hand.
 
+**Implemented (Task 3.2).** `codec.CommandDefinition` gained `Actor CommandActor` and
+`AllowedStates []protocol.SessionState` (a new `CommandActor` enum — `ActorAny`/`ActorESME`/
+`ActorSMSC` — lives in `codec`, not `session.Role`, since `session` already imports `codec` and
+the reverse would be a cycle; `architecture_test.go` still passes). `isStandardSessionCommand`
+is gone; `session/state.go`'s `CanIssue` switch became a `map[protocol.CommandID]operationRule`
+(`standardRules`), and `IsStandardCommand` is just map membership — derived from the same data
+`CanIssue` itself consults, so the two can't drift apart again. The switch→map translation was
+checked mechanically, not just read over: `TestCanIssueMatchesOldSwitchExhaustively` copies the
+old switch verbatim as an independent oracle and compares it against the new map for every
+command this package names, across all 7 `SessionState` values and both roles (462 combinations,
+zero mismatches). `beginInbound` now checks a vendor request's own declared `Actor`/
+`AllowedStates` when present, falling back to the old permissive "any bound state, either role"
+rule when a vendor command declares neither — opt-in per command, not a breaking change for
+existing vendor registrations. Setting `AllowedStates` is required to get the stricter check;
+`Actor` alone (states left nil) still falls back to permissive, since the fallback is keyed off
+`len(AllowedStates) == 0`, documented on `CommandDefinition` and in `docs/VENDOR_EXTENSIONS.md`.
+
 ---
 
 ## 2. Performance
