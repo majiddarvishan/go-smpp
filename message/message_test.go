@@ -84,6 +84,67 @@ func TestBinaryUDHAndReassembly(t *testing.T) {
 	}
 }
 
+// TestReassembleRejectsDuplicateSequence is the acceptance test for Task 3.3
+// (Finding B9): a duplicate Sequence value must return an error, and now a
+// specific one naming the duplicate, not just the generic inconsistency
+// error a later position check would have produced anyway.
+func TestReassembleRejectsDuplicateSequence(t *testing.T) {
+	payload := bytes.Repeat([]byte{0xaa}, 300)
+	parts, err := SegmentBinaryUDH(payload, 0x42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 3 {
+		t.Fatalf("parts=%d, want 3", len(parts))
+	}
+	dup := append([]Segment(nil), parts...)
+	dup[2] = dup[1] // sequence 2 appears twice; sequence 3 is now missing entirely
+	_, err = Reassemble(dup)
+	if err == nil {
+		t.Fatal("Reassemble succeeded on a duplicate-sequence set, want an error")
+	}
+	if !strings.Contains(err.Error(), "duplicate sequence") {
+		t.Fatalf("error = %q, want it to name the duplicate sequence", err.Error())
+	}
+}
+
+// TestReassembleRejectsZeroTotal is Task 3.3's other acceptance case: a
+// segment set with no explicit total must error rather than silently
+// treating len(segments) as a confident total — a caller that doesn't know
+// how many segments the message has cannot claim it has the complete set.
+func TestReassembleRejectsZeroTotal(t *testing.T) {
+	segs := []Segment{
+		{Reference: 7, Total: 0, Sequence: 1, Data: []byte("A")},
+		{Reference: 7, Total: 0, Sequence: 2, Data: []byte("B")},
+	}
+	_, err := Reassemble(segs)
+	if err == nil {
+		t.Fatal("Reassemble succeeded with total=0 on every segment, want an error")
+	}
+	if !strings.Contains(err.Error(), "total must be specified") {
+		t.Fatalf("error = %q, want it to say total must be specified", err.Error())
+	}
+}
+
+// TestReassembleRejectsIncompleteSet pins the acceptance criterion's other
+// named case directly: a correctly-declared total with fewer parts than
+// that total must not truncate silently.
+func TestReassembleRejectsIncompleteSet(t *testing.T) {
+	payload := bytes.Repeat([]byte{0xaa}, 300)
+	parts, err := SegmentBinaryUDH(payload, 0x42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 3 {
+		t.Fatalf("parts=%d, want 3", len(parts))
+	}
+	incomplete := parts[:2] // segments 1 and 2 of a declared 3-part message
+	_, err = Reassemble(incomplete)
+	if err == nil {
+		t.Fatal("Reassemble succeeded on an incomplete set, want an error")
+	}
+}
+
 func TestSARHelpersAndSegmentation(t *testing.T) {
 	tlvs := SARTLVs(0x1234, 3, 2)
 	ref, total, seq, err := ParseSAR(tlvs)

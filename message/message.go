@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 
 	smppenc "github.com/majiddarvishan/go-smpp/encoding"
 	"github.com/majiddarvishan/go-smpp/protocol"
@@ -199,15 +199,38 @@ func ParseConcatUDH(userData []byte) (reference uint16, total, sequence uint8, h
 
 // Reassemble validates reference/ordering metadata and concatenates the logical
 // Data fields, not padded GSM wire octets.
+//
+// total must be explicit and nonzero on every segment (Finding B9): a caller
+// that doesn't yet know how many segments a message has cannot safely claim
+// it has the complete set, so Reassemble will not guess total from
+// len(segments) on its behalf — that would turn "I have an unknown number of
+// an unknown total" into a confident total, which is the one thing this
+// function cannot verify. Duplicate Sequence values are also rejected
+// explicitly, with their own error, rather than left to surface only
+// incidentally through the position check below. They always would have:
+// with total forced to equal len(parts), a repeated Sequence value
+// necessarily leaves some other value in 1..total missing, and sorted
+// ascending that always shows up as some part.Sequence != i+1 somewhere in
+// the scan. But "an unrelated check happens to also catch this" is exactly
+// the kind of guarantee that can silently stop holding the next time this
+// function's position check changes, and the explicit check gives a
+// clearer, dedicated error besides.
 func Reassemble(segments []Segment) ([]byte, error) {
 	if len(segments) == 0 {
 		return nil, ErrInvalidSegments
 	}
 	parts := append([]Segment(nil), segments...)
-	sort.Slice(parts, func(i, j int) bool { return parts[i].Sequence < parts[j].Sequence })
+	slices.SortFunc(parts, func(a, b Segment) int { return int(a.Sequence) - int(b.Sequence) })
+	seen := make(map[uint8]bool, len(parts))
+	for _, part := range parts {
+		if seen[part.Sequence] {
+			return nil, fmt.Errorf("%w: duplicate sequence %d", ErrInvalidSegments, part.Sequence)
+		}
+		seen[part.Sequence] = true
+	}
 	ref, total, kind, coding := parts[0].Reference, parts[0].Total, parts[0].Kind, parts[0].DataCoding
 	if total == 0 {
-		total = uint8(len(parts))
+		return nil, fmt.Errorf("%w: total must be specified (nonzero) on every segment", ErrInvalidSegments)
 	}
 	if int(total) != len(parts) {
 		return nil, fmt.Errorf("%w: have %d parts want %d", ErrInvalidSegments, len(parts), total)

@@ -289,6 +289,30 @@ Go 1.26.
 **Fix:** use `slices.SortFunc`, return an error on duplicate `Sequence`, and require an explicit
 non-zero `total`.
 
+**Correction after implementation (Task 3.3):** neither claimed failure mode is actually
+reachable in this code, and both were checked, not just reasoned about: `sort.Slice`'s
+instability can only reorder *equal-Sequence* elements relative to each other, and since the
+loop right after sorting requires `part.Sequence == i+1` at every position, any duplicate
+necessarily leaves some other value in `1..total` missing — which always produces a
+`part.Sequence != i+1` mismatch *somewhere* in the scan, regardless of which equal-Sequence
+element the unstable sort placed first. Mutation-removing the new explicit duplicate check and
+re-running `TestReassembleRejectsDuplicateSequence` confirmed this directly: it still errored
+(`inconsistent part 3`), just with a less specific message. The `total == 0` fallback has the
+same property for a different reason — the segment that triggered the fallback (`parts[0]`,
+`Total == 0`) is the very same segment the next line checks against the now-nonzero recomputed
+`total`, so it always fails its own check immediately; mutation-restoring the old fallback and
+re-running `TestReassembleRejectsZeroTotal` confirmed the same way (`inconsistent part 1`).
+Landed the fix anyway — a dedicated error naming the actual problem ("duplicate sequence N" /
+"total must be specified") is real diagnosability value even where the generic check already
+happened to catch it, and no longer leaving that correctness property to an unrelated check's
+side effect is worth doing on its own. `slices.SortFunc`'s own claim held up: measured on
+`BenchmarkReassemble` (3-part reassembly, interleaved rounds so machine drift cancels),
+`sort.Slice` → `slices.SortFunc` alone is ~525ns → ~410ns and 7 → 4 allocs/op. Adding the
+explicit duplicate-check loop back (the full change, as shipped) keeps the 4-alloc figure — the
+small map apparently doesn't escape — but its own CPU cost brings latency back to roughly the
+original ~520-550ns, a wash rather than a net win on that axis; allocations are still the real,
+measured improvement.
+
 ### B10 — vendor commands bypass the operation matrix · S3
 
 `session/session.go:1089`

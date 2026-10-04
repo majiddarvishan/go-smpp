@@ -362,12 +362,29 @@ stricter rules.
     check entirely breaks the first two but not the control; dropping only the actor check breaks
     just the direction test. `architecture_test.go` (`TestPackageDependencyDirection`) passes.
     Docs: `docs/VENDOR_EXTENSIONS.md` gained a section on the new opt-in fields.
-- [ ] **3.3** Harden `message.Reassemble` (B9)
+- [x] **3.3** Harden `message.Reassemble` (B9)
   - Switch to `slices.SortFunc`, error on duplicate `Sequence`, require an explicit non-zero
     `total`.
   - Files: `message/message.go:207,209`
   - Acceptance: duplicate-segment and incomplete-set tests return errors rather than silently
     succeeding or truncating.
+  - Done — with a correction. Neither failure mode this finding describes was actually reachable:
+    the existing post-sort position check (`part.Sequence != i+1`) already rejects every duplicate
+    regardless of sort stability, and the `total == 0` fallback's own triggering segment always
+    fails that same check against the newly-computed total. Verified by mutation-removing each new
+    explicit check and re-running its test — both times the function still errored, just with a
+    less specific message. Full reasoning and the mutation results are in `.claude/CODE_REVIEW.md`'s
+    B9 entry. Landed the fix anyway: switched to `slices.SortFunc`, and added dedicated "duplicate
+    sequence N" / "total must be specified" errors rather than leaving that correctness property to
+    an unrelated check's side effect, which is real diagnosability value on its own. No existing
+    caller depends on the old `total == 0` fallback — `Reassemble` has none in this repo yet outside
+    its own tests. `slices.SortFunc` alone measured ~525ns → ~410ns and 7 → 4 allocs/op
+    (`BenchmarkReassemble`, interleaved rounds); the full change keeps 4 allocs/op but the explicit
+    duplicate-check loop's own CPU cost brings latency back to roughly the original figure — a wash
+    on that axis, allocations are the real win.
+    Tests: `TestReassembleRejectsDuplicateSequence`, `TestReassembleRejectsZeroTotal`,
+    `TestReassembleRejectsIncompleteSet` (the acceptance criterion's named case, confirmed already
+    covered). All three mutation-checked.
 - [ ] **3.4** Shrink the framer buffer after a large fragmented PDU (B7)
   - Acceptance: a test that feeds one 1 MiB fragmented PDU then asserts retained capacity drops
     below the read-buffer threshold.
