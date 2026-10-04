@@ -291,6 +291,30 @@ An empty message yields one zero-length segment rather than zero segments, so ca
 differs from the natural reading of "split into parts". If intentional, say so in the doc
 comment; if not, return `nil`.
 
+**Checked and decided (Task 3.5):** the finding's premise — "callers emit a `submit_sm` with an
+empty `short_message`" *because of* `splitBytes` — does not hold. No caller reaches
+`splitBytes` with empty input in a way that matters: `SegmentTextUDH`/`SegmentBinaryUDH` only
+split when the data is already larger than one part, and `SegmentTextSAR`/`SegmentBinarySAR`
+treat `len(chunks) <= 1` as "single part" and delegate to the UDH functions, which build the
+one-part segment themselves. Probed on the pre-change code: `SegmentTextUDH("")`,
+`SegmentTextSAR("")`, `SegmentBinaryUDH(nil|[]byte{})`, `SegmentBinarySAR(nil|[]byte{})` all return
+exactly one segment (Total 1, Sequence 1, Units 0, empty Data/UserData/UDH, no TLVs), and that
+segment comes from the "fits in one part" branches, not from the split helpers. The new public-API
+test passed on the old code and passes unchanged on the new, i.e. the change is behaviour-preserving
+at the public surface.
+
+Decision: `splitBytes` now returns `nil` for empty input (the finding's first option), and
+`splitUTF16` — which had the same shape of answer for empty input, `[][]byte{nil}`, and which the
+finding did not mention — does the same so the helpers agree. A caller that forgets its own empty
+guard now fails in `makeUDHSegments` (`ErrInvalidSegments`, zero parts) instead of emitting an empty
+multipart segment. The public behaviour for an empty message (one empty single-part segment, not an
+error) is unchanged and is now documented on all four `Segment*` functions and pinned by a test.
+
+Open for the maintainer, deliberately not changed: whether an empty message should instead be an
+*error* at the public API. A zero-length `short_message` (`sm_length` 0) is valid SMPP, nothing in
+this repo submits one, and changing it would alter exported behaviour, so it was left as a decision
+rather than made here.
+
 ### B9 — `Reassemble` uses a non-stable sort and rewrites `total` · S3
 
 `message/message.go:207` and `:209`

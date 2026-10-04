@@ -410,12 +410,38 @@ stricter rules.
     Not changed, documented in CODE_REVIEW.md's B7 entry: the buffer is still sized from the
     declared `command_length` up front (in-flight, deadline-bounded), and a non-fatal `emit` error
     leaves the frame buffered so it is re-emitted on the next `Feed` (unreachable via `Session`).
-- [ ] **3.5** Decide `splitBytes` empty-input behaviour (B8)
+- [x] **3.5** Decide `splitBytes` empty-input behaviour (B8)
   - Either return `nil` or document the single-empty-segment choice explicitly.
   - Acceptance: the doc comment and the tests agree; no silent `short_message` of length zero.
+  - Done — with a correction. The finding's premise (callers emit an empty `short_message` because
+    of `splitBytes`) does not hold: the empty single-part segment comes from the "fits in one part"
+    branches of the UDH functions (the SAR functions delegate to them), never from the split helpers.
+    Probed on the old code, then pinned: `SegmentTextUDH("")`, `SegmentTextSAR("")`,
+    `SegmentBinaryUDH(nil|empty)`, `SegmentBinarySAR(nil|empty)` all return exactly one segment (Total 1,
+    Sequence 1, Units 0, empty body, no UDH/TLVs); that test passed on the old code and passes
+    unchanged now, so the change is behaviour-preserving at the public surface.
+    Chose the finding's first option: `splitBytes` returns `nil` for empty input. `splitUTF16` had the
+    same shape (`[][]byte{nil}`) and is not named in the finding; changed too so the helpers agree
+    (deviation from the finding's literal text). A caller missing its own empty guard now fails in
+    `makeUDHSegments` (`ErrInvalidSegments`, zero parts) rather than emitting an empty multipart segment.
+    The public empty-message behaviour is documented in doc comments on all four `Segment*` functions.
+    Tests (`message/split_empty_test.go`): `TestEmptyMessageIsOneEmptySinglePartSegment` (6 entry
+    points), `TestSplitHelpersReturnNoPartsForEmptyInput`, `TestSplitBytesNonEmptyUnchanged`,
+    `TestMakeUDHSegmentsRejectsZeroChunks`. Mutation-checked, 5 mutants all killed: `splitBytes` back to
+    one empty chunk; `splitUTF16` guard removed; `len(chunks) <= 1` -> `== 1` in `SegmentTextSAR` and in
+    `SegmentBinarySAR`; `makeUDHSegments` zero-chunk check dropped.
+    **Decision for you, not made here:** whether an empty message should be an *error* at the public API.
+    `sm_length` 0 is valid SMPP and nothing in this repo submits one, but it is exported behaviour, so it
+    stays as documented.
 
 **Exit criteria:** peer-visible error codes match the spec; the operation matrix governs all
 inbound commands; the retained-memory metric is bounded by traffic, not by history.
+
+**Status: all five tasks done.** The first two exit criteria are covered by tests (3.1's status table,
+3.2's vendor-state tests). The third is covered at unit level for the framer (3.4: capacity released
+after a large fragmented PDU) but was **not** measured with the Phase 17 harness's `maxRetainedMB`, which
+needs the reference machine; the in-flight allocation sized from the declared `command_length` is also
+still open (see B7 in `CODE_REVIEW.md`). Not claiming more than that.
 
 ---
 

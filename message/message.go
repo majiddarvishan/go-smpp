@@ -69,6 +69,12 @@ type Segment struct {
 	Optional   []protocol.OptionalParameter
 }
 
+// SegmentTextUDH segments text for delivery with concatenation carried in a UDH.
+//
+// An empty text is not an error: it yields exactly one single-part Segment
+// (Total 1, Sequence 1, Units 0) whose Data and UserData are empty, with no UDH
+// and no SAR TLVs. Submitting it sends sm_length 0, which SMPP permits. A caller
+// that considers an empty message invalid must reject it before segmenting.
 func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segment, error) {
 	encoded, err := EncodeText(text, allowSurrogates)
 	if err != nil {
@@ -105,6 +111,12 @@ func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segmen
 	}
 }
 
+// SegmentBinaryUDH segments a binary payload with concatenation carried in a UDH.
+//
+// An empty payload is not an error: it yields exactly one single-part Segment
+// (Total 1, Sequence 1, Units 0) whose Data and UserData are empty, with no UDH
+// and no SAR TLVs. Submitting it sends sm_length 0, which SMPP permits. A caller
+// that considers an empty message invalid must reject it before segmenting.
 func SegmentBinaryUDH(data []byte, reference byte) ([]Segment, error) {
 	if len(data) <= BinarySingleOctets {
 		return []Segment{{Kind: smppenc.KindBinary, DataCoding: protocol.DataCodingOctetBinary2, Units: len(data), Data: clone(data), UserData: clone(data), Total: 1, Sequence: 1}}, nil
@@ -306,6 +318,12 @@ func ParseSAR(optional []protocol.OptionalParameter) (reference uint16, total, s
 	return reference, total, sequence, nil
 }
 
+// SegmentTextSAR segments text for delivery with concatenation carried in SAR TLVs.
+//
+// An empty text is not an error: it yields exactly one single-part Segment
+// (Total 1, Sequence 1, Units 0) whose Data and UserData are empty, with no UDH
+// and no SAR TLVs. Submitting it sends sm_length 0, which SMPP permits. A caller
+// that considers an empty message invalid must reject it before segmenting.
 func SegmentTextSAR(text string, allowSurrogates bool, reference uint16) ([]Segment, error) {
 	encoded, err := EncodeText(text, allowSurrogates)
 	if err != nil {
@@ -348,6 +366,12 @@ func SegmentTextSAR(text string, allowSurrogates bool, reference uint16) ([]Segm
 	return result, nil
 }
 
+// SegmentBinarySAR segments a binary payload with concatenation carried in SAR TLVs.
+//
+// An empty payload is not an error: it yields exactly one single-part Segment
+// (Total 1, Sequence 1, Units 0) whose Data and UserData are empty, with no UDH
+// and no SAR TLVs. Submitting it sends sm_length 0, which SMPP permits. A caller
+// that considers an empty message invalid must reject it before segmenting.
 func SegmentBinarySAR(data []byte, reference uint16) ([]Segment, error) {
 	chunks := splitBytes(data, BinarySingleOctets)
 	if len(chunks) <= 1 {
@@ -365,9 +389,16 @@ func SegmentBinarySAR(data []byte, reference uint16) ([]Segment, error) {
 	return out, nil
 }
 
+// splitBytes splits data into consecutive chunks of at most max bytes, each an
+// independent copy. Empty input yields no chunks (nil), not one empty chunk:
+// there is nothing to split, and a caller that has not decided what an empty
+// message means should fail in makeUDHSegments (which rejects zero chunks)
+// rather than emit an empty multipart segment. The public Segment* functions
+// decide what an empty message is and handle it before they ever split. max
+// must be positive; every caller passes a package constant.
 func splitBytes(data []byte, max int) [][]byte {
 	if len(data) == 0 {
-		return [][]byte{{}}
+		return nil
 	}
 	parts := make([][]byte, 0, (len(data)+max-1)/max)
 	for len(data) > 0 {
@@ -385,7 +416,13 @@ func splitFixedUnits(data []byte, unitSize, maxUnits int) [][]byte {
 	return splitBytes(data, unitSize*maxUnits)
 }
 
+// splitUTF16 splits UTF-16BE data into chunks of at most maxUnits code units
+// without separating a surrogate pair. Like splitBytes, empty input yields no
+// chunks.
 func splitUTF16(data []byte, maxUnits int) ([][]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
 	if len(data)%2 != 0 {
 		return nil, ErrInvalidSegments
 	}
