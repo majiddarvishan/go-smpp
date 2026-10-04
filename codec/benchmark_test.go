@@ -1,6 +1,7 @@
 package codec
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/majiddarvishan/go-smpp/protocol"
@@ -147,5 +148,38 @@ func BenchmarkDecodeDeliverSM(b *testing.B) {
 		if _, err := DecodePDU(frame, registry); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// BenchmarkFramerFragmentedPDU measures the steady-state cost of a stream of
+// fragmented PDUs. The 32 KiB case is below the shrink threshold, so its
+// buffer is reused (0 allocs). The 100 KiB and 1 MiB cases are above it (B7):
+// the buffer is released after every PDU and reallocated for the next, which is
+// the price paid for not pinning up to maxPDUSize per idle session. Reads are
+// 64 KiB (the session default), except the 32 KiB case, which uses 4 KiB reads
+// so that it is actually fragmented.
+func BenchmarkFramerFragmentedPDU(b *testing.B) {
+	for _, c := range []struct{ size, read int }{{32 << 10, 4 << 10}, {100 << 10, 64 << 10}, {1 << 20, 64 << 10}} {
+		size, read := c.size, c.read
+		pdu := makePDU(protocol.CommandSubmitSM, 1, make([]byte, size-HeaderSize))
+		b.Run(strconv.Itoa(size>>10)+"KiB", func(b *testing.B) {
+			framer, _ := NewFramer(DefaultMaxPDUSize)
+			emit := func([]byte) error { return nil }
+			b.ReportAllocs()
+			b.SetBytes(int64(len(pdu)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				for rest := pdu; len(rest) > 0; {
+					n := read
+					if n > len(rest) {
+						n = len(rest)
+					}
+					if err := framer.Feed(rest[:n], emit); err != nil {
+						b.Fatal(err)
+					}
+					rest = rest[n:]
+				}
+			}
+		})
 	}
 }

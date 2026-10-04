@@ -12,6 +12,15 @@ import (
 // framer/session.
 const DefaultMaxPDUSize uint32 = 1 << 20 // 1 MiB
 
+// framerShrinkThreshold is the largest reassembly buffer a Framer keeps
+// between PDUs. A fragmented PDU that needed more than this has its buffer
+// released once it has been emitted, so a peer that sends one large fragmented
+// PDU and then idles cannot pin up to maxPDUSize per session indefinitely.
+// It matches session.DefaultReadBufferSize and the outbound frame pool's cap:
+// a PDU that fits in one default read is never fragmented by the read size
+// alone, so the threshold only affects PDUs the session already treats as large.
+const framerShrinkThreshold = 64 << 10
+
 // Framer extracts complete SMPP PDUs from a TCP byte stream. Complete PDUs
 // already present in an input slice are emitted without copying. Fragmented
 // PDUs are buffered. Emitted slices are borrowed and must not be retained after
@@ -89,6 +98,9 @@ func (f *Framer) Feed(data []byte, emit func([]byte) error) error {
 				return err
 			}
 			f.pending = f.pending[:0]
+			if cap(f.pending) > framerShrinkThreshold {
+				f.pending = nil
+			}
 			f.expected = 0
 			continue
 		}

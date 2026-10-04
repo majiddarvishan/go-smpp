@@ -246,6 +246,35 @@ if cap(f.pending) > shrinkThreshold {
 }
 ```
 
+**Confirmed after implementation (Task 3.4):** the claim holds exactly as written. Before the
+fix, feeding one 1 MiB PDU in 2-byte chunks (and 3-byte, 4 KiB, 64 KiB chunks — both entry paths
+into `pending`) leaves `cap(f.pending) == 1048576` after the frame has been emitted
+(`TestFramerReleasesLargeBufferAfterFragmentedPDU` failed on that number before the change).
+Fix as proposed, with `framerShrinkThreshold = 64 << 10` in `codec/framer.go` (the same figure as
+`session.DefaultReadBufferSize` and `maxPooledFrameCapacity`; `codec` cannot import `session`, so
+it is a documented constant, not a reference).
+
+Trade-off measured, not assumed (`BenchmarkFramerFragmentedPDU`, interleaved before/after
+rounds, 64 KiB reads): PDUs that are *fragmented and larger than 64 KiB* now allocate once per
+PDU instead of zero times — 100 KiB: ~3.1 µs/0 allocs → ~13-16 µs/1 alloc (106 496 B);
+1 MiB: ~47-59 µs/0 allocs → ~150-163 µs/1 alloc (1 MiB). Fragmented PDUs at or below the
+threshold are unaffected (0 allocs, buffer reused). Complete PDUs inside one read never touch
+`pending` and are unaffected. SMPP PDUs above 64 KiB are exotic (typical ones are well under
+1 KiB), so this is a deliberate bet that idle-session memory matters more than the throughput of a
+sustained stream of >64 KiB fragmented PDUs.
+
+Not addressed by this fix, and worth knowing: the buffer is still sized from the *declared*
+`command_length` as soon as the 4-byte length word arrives, so a peer can make the framer
+allocate up to `maxPDUSize` for a PDU it never finishes. That memory is held only while the PDU is
+in flight and is bounded by the session's liveness/inactivity deadlines, so SEC1's "closed by
+B2 + B7" stands for the *idle-retention* part; growing `pending` incrementally instead of up front
+would close the in-flight part, but was not part of this finding.
+
+Separate observation (not fixed, outside B7): if the `emit` callback returns a *non-fatal*
+error, `Feed` returns it without resetting `pending`/`expected`, so the same frame stays buffered
+and is emitted again on the next `Feed`. Unreachable through `Session` today (`rxLoop` terminates
+the session on any `Feed` error), but it makes the `Framer` API misleading for other callers.
+
 ### B8 — `splitBytes` returns one empty segment for empty input · S3
 
 `message/message.go:345`

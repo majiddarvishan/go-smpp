@@ -385,9 +385,31 @@ stricter rules.
     Tests: `TestReassembleRejectsDuplicateSequence`, `TestReassembleRejectsZeroTotal`,
     `TestReassembleRejectsIncompleteSet` (the acceptance criterion's named case, confirmed already
     covered). All three mutation-checked.
-- [ ] **3.4** Shrink the framer buffer after a large fragmented PDU (B7)
+- [x] **3.4** Shrink the framer buffer after a large fragmented PDU (B7)
   - Acceptance: a test that feeds one 1 MiB fragmented PDU then asserts retained capacity drops
     below the read-buffer threshold.
+  - Done. The finding's claim was verified first: before the change, one fragmented 1 MiB PDU
+    left `cap(f.pending) == 1048576` after emit. Fix as the finding proposed — after the emit
+    reset, `if cap(f.pending) > framerShrinkThreshold { f.pending = nil }` — with
+    `framerShrinkThreshold = 64 << 10` (matches `session.DefaultReadBufferSize` / the outbound
+    pool cap; a constant in `codec/framer.go` since `codec` can't import `session`).
+    Tests (`codec/framer_retention_test.go`): `TestFramerReleasesLargeBufferAfterFragmentedPDU`
+    (the acceptance test: 1 MiB PDU, chunk sizes 2/3/4096/65536 to cover both entry paths into
+    `pending`; asserts one correct frame and `cap <= 64 KiB`), `TestFramerKeepsSmallBufferAfterFragmentedPDU`
+    (positive control: small buffers are still reused), `TestFramerDecodesCorrectlyAfterShrink`,
+    `TestFramerStartsCleanAfterShrinkWithShortFirstChunk`. Mutation-checked, 4 mutants all killed:
+    remove the shrink; shrink always (`> 0`); threshold raised to 2 MiB; shrink without resetting
+    `expected`. Two of those only died after I fixed my own first draft: the bound in the test
+    was the production constant (so a raised threshold passed — tautological), now a literal
+    `retentionBound`; and nothing exercised a short first chunk after a shrink, so the
+    stale-`expected` mutant survived until `...ShortFirstChunk` was added.
+    Cost, measured (`BenchmarkFramerFragmentedPDU`, interleaved rounds): fragmented PDUs *larger
+    than 64 KiB* now allocate once per PDU — 100 KiB ~3.1 µs/0 allocs -> ~13-16 µs/1 alloc;
+    1 MiB ~47-59 µs/0 -> ~150-163 µs/1; at or below the threshold, no change (0 allocs). A
+    deliberate trade of sustained >64 KiB fragmented throughput for bounded idle memory.
+    Not changed, documented in CODE_REVIEW.md's B7 entry: the buffer is still sized from the
+    declared `command_length` up front (in-flight, deadline-bounded), and a non-fatal `emit` error
+    leaves the frame buffered so it is re-emitted on the next `Feed` (unreachable via `Session`).
 - [ ] **3.5** Decide `splitBytes` empty-input behaviour (B8)
   - Either return `nil` or document the single-empty-segment choice explicitly.
   - Acceptance: the doc comment and the tests agree; no silent `short_message` of length zero.
