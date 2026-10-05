@@ -4,6 +4,25 @@ High-performance SMPP stack for Go, designed for both ESME/client and SMSC/serve
 
 The project targets SMPP 3.4 first while keeping the core architecture ready for SMPP 5.0 extensions. The network transport is TCP; optional TLS is layered over TCP.
 
+## Supply-chain posture
+
+- **Zero third-party dependencies.** `go.mod` has no `require` lines and there is no `go.sum`. The
+  module depends on the Go standard library only, TLS included, so there is no dependency tree to
+  audit, pin, vendor or track advisories for beyond the Go toolchain you build with.
+- **No `unsafe`.** None of this module's code imports it.
+- **No cgo.** Pure Go: it builds with `CGO_ENABLED=0` and cross-compiles (checked for
+  `linux/amd64`, `linux/arm64`, `windows/amd64` and `darwin/arm64`).
+
+This is enforced, not just stated: `TestSupplyChainPosture` runs under a plain `go test ./...` and
+checks every Go file in the module (tests, examples and commands included) plus `go.mod` and
+`go.sum`, and CI separately bans direct `unsafe` imports. Adding a dependency or `unsafe` requires a
+recorded decision first (see `AGENTS.md`).
+
+What this does and does not cover: it is about this module's own sources. The Go standard library
+and runtime use `unsafe` and cgo internally, so trusting this library still means trusting the Go
+toolchain version you build it with (`go.mod` requires Go 1.26.0). Lint tooling used in CI is
+development tooling and is not linked into the library.
+
 ## Current status
 
 Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The remaining production-release blockers are the Phase 17 reference-machine throughput/minimum-session result, publication of that reference evidence, and the first production-ready tag.

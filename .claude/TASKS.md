@@ -652,11 +652,37 @@ Goal: close unauthenticated resource exposure and make operator foot-guns visibl
     `TestListenTLSHonoursCallerMaxVersion`). Race-clean.
     Not done, by design: no helper that builds a "secure default" `tls.Config`. That would be policy
     inside the library, which SEC4 itself calls the wrong design.
-- [ ] **5.4** Publish the zero-dependency / no-`unsafe` posture in the README
+- [x] **5.4** Publish the zero-dependency / no-`unsafe` posture in the README
   - It is a real differentiator for telecom deployments and currently under-communicated.
+  - Done. README gets a "Supply-chain posture" section above "Current status". Every claim was
+    verified before being written: `go list -deps -test` shows no non-standard package other than the
+    module itself; no file imports `unsafe` or `"C"`; `go.mod` has no `require` and there is no `go.sum`;
+    `CGO_ENABLED=0 go build ./... && go vet ./...` passes; `cmd/smpp-sim` cross-compiles for
+    linux/amd64, linux/arm64, windows/amd64 and darwin/arm64. I did **not** claim "static binary" (only
+    that it builds and cross-compiles), and the section says what it does not cover: the standard
+    library and runtime use `unsafe`/cgo internally, so the Go toolchain is still part of the trust base.
+    Already present before this task and left alone: the CI step that bans direct `unsafe` imports
+    (`.github/workflows/ci.yml`, not touched per the working rules) and `AGENTS.md`'s policy. What was
+    missing was a check that runs under `go test`, so the posture now has one: `TestSupplyChainPosture`
+    (`posture_test.go`) walks every Go file including tests, examples, `cmd` and `internal`, and checks
+    imports for `unsafe`, `"C"` and any non-standard, non-module package, plus `go.mod` directives and
+    `go.sum`. It refuses to pass vacuously (>= 50 files scanned, eleven named directories visited,
+    `crypto/tls` seen). Mutation-checked, 7 mutants all killed: an `unsafe` import; a third-party import in
+    a *test* file; `import "C"`; a third-party import under `examples/`; a `require` line; a `go.sum`; and
+    the walker skipping `session/`.
+    Limit: it reads import declarations, so it cannot see code generated or fetched at build time
+    (`go:generate`, `-toolexec`), which this repo does not use.
 
 **Exit criteria:** unauthenticated peers cannot exhaust `MaxSessions`; credential-exposure paths
 are documented and tested; supply-chain posture is stated up front.
+
+**Status: 5.1-5.4 done; the first exit criterion is NOT met.** Credential-exposure paths are documented
+and tested (5.2, 5.3) and the supply-chain posture is stated up front and now enforced (5.4). But "unauthenticated
+peers cannot exhaust `MaxSessions`" is not true: 5.1 rate-limits *binds*, and a flood of connections that never
+bind is untouched by it (measured: 268 of 268 legitimate connection attempts refused in 1.5 s against
+`MaxSessions: 3`, `SessionInitTimeout: 300 ms`). Closing it needs a cap on concurrent unbound
+connections per remote address or an accept-time admission hook: new public API and a policy decision
+(NAT, trusted peers). **Open item for the maintainer; not added unasked.**
 
 ---
 
