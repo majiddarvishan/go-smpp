@@ -448,11 +448,33 @@ still open (see B7 in `CODE_REVIEW.md`). Not claiming more than that.
 ## Phase 4 — Structural cleanup
 Goal: make each concern independently reviewable. Behaviour-preserving only.
 
-- [ ] **4.1** Split `session/session.go` (A5)
+- [x] **4.1** Split `session/session.go` (A5)
   - `tx.go` / `rx.go` / `liveness.go` / `negotiate.go` / `own.go`, with `session.go` keeping the
     type, config, `New`, the public request API, and `terminate`.
   - Acceptance: pure file movement — zero diff in behaviour; all tests green; no new package;
     `architecture_test.go` unchanged.
+  - Done. `session.go` 1643 -> 544 lines, split into `tx.go` (240), `rx.go` (269), `liveness.go` (170),
+    `negotiate.go` (81), `own.go` (177), `operations.go` (211). Largest non-test file in `session/` is now
+    `session.go`; the ~700 LOC exit criterion holds with room to spare.
+    Deviations from the finding's table, because the code had moved on since it was written (it
+    predates Phase 2): `livenessLoop`/`livenessResolution` no longer exist (Task 2.4 folded liveness into
+    the shared deadline heap), so `liveness.go` holds `expireDeadline`, `scheduleLivenessDeadlines`, the
+    three `fire*Deadline` handlers and the activity tracking; `own.go` also holds `responseArena`
+    (Task 2.3); `observeCongestion` went to `rx.go`; and the typed operation wrappers (`BindTransmitter`,
+    `SubmitSM`, ... `Unbind`, `responseError`) went to a seventh file, `operations.go`, which the finding
+    did not name — keeping them in `session.go` would have left it at ~750 lines. `Request`,
+    `TryRequest`, `request`, `SendOneWay`, `waitCompleted`, accessors, `New` and `terminate` stay in `session.go`.
+    How "pure movement" was verified rather than assumed: the move was done by a small go/ast program
+    that copies each declaration's exact source text (doc comments included) and refuses to run if any
+    planned name is missing or any comment would be dropped; an independent checker then compared the
+    multiset of declaration texts before and after: 91 declarations, 0 mismatches. `go doc -all
+    ./session` is byte-identical before and after (exported API unchanged), the list of tests is
+    identical (86), and `gofmt`, `go vet`, `go test ./...` and `go test -race` on `session`, `client`,
+    `server` are clean. No test file, `architecture_test.go`, or `go.mod` was touched. (The checker caught
+    one thing in my first run: gofmt column alignment of adjacent one-line accessors had changed when
+    they were emitted separated by blank lines; the splitter now preserves original adjacency, so the
+    declaration texts match exactly.) Line numbers quoted in `FINDINGS.md`/`CODE_REVIEW.md` for
+    `session/session.go` are historical and no longer point at the same lines.
 - [ ] **4.2** Collapse the duplicated type switches (C4)
   - `ownable` / `optionalCarrier` interfaces replacing `ownDecodedPDU` and
     `responseOptionalParameters` parallel switches.
