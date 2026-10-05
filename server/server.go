@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/majiddarvishan/go-smpp/protocol"
 	"github.com/majiddarvishan/go-smpp/session"
@@ -77,6 +78,25 @@ type Config struct {
 	// means unlimited. Connections accepted while the limit is full are closed
 	// immediately without affecting the listener or existing sessions.
 	MaxSessions int
+
+	// BindRateLimiter, if set, is consulted before every bind reaches the
+	// Authenticator and told the outcome afterwards; see BindRateLimiter and
+	// NewBindThrottle. Nil (the default) means no rate limiting. It applies
+	// only when an Authenticator is configured: without one, binds go to the
+	// Fallback handler, which this package does not wrap.
+	//
+	// Report a bad credential through BindResult.Status, not by returning an
+	// error from the Authenticator: an error is treated as an infrastructure
+	// fault and deliberately does not count toward a lockout.
+	BindRateLimiter BindRateLimiter
+
+	// BindFailureDelay, if positive, holds the response to a rejected or
+	// throttled bind for this long (or until the session closes), slowing
+	// credential guessing on a single connection. Zero (the default) means no
+	// delay. It occupies only the offending session's receive loop. A delay
+	// longer than SessionConfig.SessionInitTimeout simply lets that timeout
+	// close the session first.
+	BindFailureDelay time.Duration
 }
 
 // Server accepts TCP/TLS connections and attaches the shared SMSC session core
@@ -84,6 +104,8 @@ type Config struct {
 type Server struct {
 	listener net.Listener
 	config   Config
+
+	bind *bindGuard
 
 	mu        sync.Mutex
 	sessions  map[*session.Session]struct{}
@@ -107,14 +129,26 @@ func NewWithConfig(listener net.Listener, config Config) *Server {
 	if fallback == nil {
 		fallback = config.SessionConfig.Handler
 	}
+	guard := &bindGuard{limiter: config.BindRateLimiter, delay: config.BindFailureDelay}
 	if config.Authenticator != nil || config.SubmitHandler != nil || fallback != nil {
 		config.SessionConfig.Handler = &dispatchHandler{
 			authenticator: config.Authenticator,
 			submit:        config.SubmitHandler,
 			fallback:      fallback,
+			bind:          guard,
 		}
 	}
-	return &Server{listener: listener, config: config, sessions: make(map[*session.Session]struct{})}
+	return &Server{listener: listener, config: config, bind: guard, sessions: make(map[*session.Session]struct{})}
+}
+
+// BindStats returns counters of bind attempts, rejected binds and throttled
+// binds since the server was created, for alarming on credential guessing. It
+// is safe to call concurrently and never blocks.
+func (s *Server) BindStats() BindStats {
+	if s == nil {
+		return BindStats{}
+	}
+	return s.bind.stats()
 }
 
 // Listen creates a plain TCP or TLS-over-TCP listener from Config.
@@ -333,6 +367,7 @@ type dispatchHandler struct {
 	authenticator Authenticator
 	submit        SubmitHandler
 	fallback      session.Handler
+	bind          *bindGuard
 }
 
 func (h *dispatchHandler) Handle(ctx context.Context, sess *session.Session, pdu session.InboundPDU) (session.Response, error) {
@@ -348,13 +383,28 @@ func (h *dispatchHandler) Handle(ctx context.Context, sess *session.Session, pdu
 			}
 			return session.Response{Status: protocol.StatusBindFailed, Body: protocol.EmptyBody{}}, nil
 		}
-		result, err := h.authenticator.Authenticate(ctx, sess, bindMode(pdu.Header.CommandID), request)
+		mode := bindMode(pdu.Header.CommandID)
+		attempt := attemptFor(sess, mode, request)
+		h.bind.attempts.Add(1)
+		if h.bind.limiter != nil && !h.bind.limiter.AllowBind(ctx, attempt) {
+			h.bind.throttled.Add(1)
+			h.bind.wait(ctx)
+			return session.Response{Status: protocol.StatusThrottled, Body: protocol.EmptyBody{}}, nil
+		}
+		result, err := h.authenticator.Authenticate(ctx, sess, mode, request)
 		if err != nil {
 			if result.Status.OK() {
 				result.Status = protocol.StatusSystemError
 			}
 		}
+		if err == nil && h.bind.limiter != nil {
+			h.bind.limiter.RecordBind(attempt, result.Status.OK())
+		}
 		if !result.Status.OK() {
+			if err == nil {
+				h.bind.failures.Add(1)
+			}
+			h.bind.wait(ctx)
 			return session.Response{Status: result.Status, Body: protocol.EmptyBody{}}, nil
 		}
 		return session.Response{Status: protocol.StatusOK, Body: protocol.BindResponse{SystemID: result.SystemID, Optional: result.Optional}}, nil

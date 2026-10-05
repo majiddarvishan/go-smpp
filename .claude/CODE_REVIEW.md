@@ -739,6 +739,22 @@ attacker gets unlimited online guesses at line rate.
 authentication failure plus a counter the operator can alarm on. Keep the policy pluggable
 rather than baked in; deployments differ.
 
+**Implemented, and one claim here corrected (Task 5.1):** `Config.BindRateLimiter` (an interface),
+`NewBindThrottle` (a default per-IP policy), `Config.BindFailureDelay`, and `Server.BindStats()`
+(attempts / failures / throttled counters to alarm on) are in `server/`. The limiter is handed a
+`BindAttempt` (remote address, system_id, mode) and never the password. See `TASKS.md` 5.1 for the
+policy choices.
+
+**SEC1's "fixing B2 plus B7 closes this" is only half true, and 5.1 does not close the rest.**
+B2/B7 bound *bound* sessions that stall. A peer that connects and never binds is closed by
+`SessionInitTimeout` (30 s by default), but it can reconnect as fast as it is closed. Measured with a
+probe (not committed): `MaxSessions: 3`, `SessionInitTimeout: 300 ms`, an attacker keeping the server
+topped up with silent connections — a legitimate peer's connection was refused at once on 268 of 268
+attempts over 1.5 s. Bind rate limiting cannot help, because these connections never send a bind. What
+would is a limit on concurrent *unbound* connections per remote address (or an admission hook at accept
+time). That is new public API and a policy decision (NAT, trusted peers), so it was not added here; see
+the open item in `TASKS.md` under Phase 5.
+
 **SEC3 · S3 — credential exposure through `PacketTracer`.** `PacketTracer` receives the raw
 frame, which on a bind PDU contains the password. The tracer is off by default, which is the
 right default, but its doc comment should carry an explicit warning that enabling it exposes

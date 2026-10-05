@@ -553,12 +553,48 @@ test instead of interfaces, which cannot live in `session`) and 4.5 (decision re
 ## Phase 5 — Security & operational hardening
 Goal: close unauthenticated resource exposure and make operator foot-guns visible.
 
-- [ ] **5.1** Bind-attempt rate limiting (SEC2)
+- [x] **5.1** Bind-attempt rate limiting (SEC2)
   - Optional `Config.BindRateLimiter` hook, fixed delay on authentication failure, and an alarm
     counter. Keep policy pluggable rather than baked in.
   - Files: `server/server.go`, new `server/ratelimit.go`
   - Acceptance: a test driving repeated failed binds shows the throttle engaging; legitimate bind
     throughput unaffected below the threshold.
+  - Done. Added to `server`: the `BindRateLimiter` interface (`AllowBind` before the Authenticator,
+    `RecordBind` after), `Config.BindRateLimiter`, `Config.BindFailureDelay`, `Server.BindStats()`
+    (`Attempts`, `Failures`, `Throttled`) and a default policy `NewBindThrottle(BindThrottleConfig)`.
+    A refused bind gets `ESME_RTHROTTLED` and the Authenticator is **not** invoked, so a lockout costs
+    the operator's credential store nothing. All nil/zero by default: no behaviour change unless opted in.
+    `BindAttempt` carries remote address, system_id and mode and **no password**; a test pins that no
+    slice-typed field can be added unnoticed.
+    Default throttle, each a choice you may replace: keyed by remote IP (port ignored; NAT'd peers share a
+    budget); 5 failures per 1-minute window lock the IP out for 1 minute; a *successful* bind does not
+    reset the count (otherwise anyone holding one valid credential gets fresh guesses); at most 10 000
+    IPs tracked, oldest evicted first, so the table cannot be used to exhaust memory.
+    Two more decisions to be aware of: (1) an Authenticator that returns an **error** is treated as an
+    infrastructure fault and never counts toward a lockout — so an Authenticator that signals a bad
+    password by returning an error would never be throttled; `Config.BindRateLimiter`'s doc says to use
+    `BindResult.Status`, and a test pins the behaviour. (2) `BindFailureDelay` holds only the offending
+    session's receive loop, applies to rejected *and* throttled binds, and ends when the session closes.
+    It slows one connection only; the per-IP limiter is what stops a multi-connection guesser.
+    Tests (`server/ratelimit_test.go`, 15): the throttle on a fake clock (engages at the threshold, only
+    for that IP, success never resets, lockout and window expiry, bounded memory with oldest-first
+    eviction, concurrent use), and through a real server and client (engages after repeated failed binds
+    and refuses even the correct password while locked out without calling the Authenticator; 60
+    legitimate binds from the same address unaffected below the threshold; no limiter means never
+    throttled; delay on failures only, not on success; delay on throttled binds; a session in its delay
+    does not block a bystander and is released when it closes; exact `BindStats`). Mutation-checked, 12
+    mutants, all killed (never refusing; counting successes; calling the Authenticator when throttled;
+    lockout never expiring; window never resetting; delay ignoring session close; unbounded table; delay
+    on success; failure counter not incremented; counting Authenticator errors; evicting newest instead of
+    oldest — which survived my first version of the eviction test and drove its fix; keying by port).
+    `go test -race -count=3 ./server/` clean.
+    **Open, not fixed here — this is why the Phase 5 exit criterion "unauthenticated peers cannot
+    exhaust `MaxSessions`" is NOT yet met:** a flood of connections that never bind is untouched by bind
+    rate limiting. Measured with a throwaway probe: `MaxSessions: 3`, `SessionInitTimeout: 300 ms`, an
+    attacker keeping the server topped up with silent connections; a legitimate peer was refused on 268 of
+    268 attempts in 1.5 s. `SessionInitTimeout` frees each slot eventually but the attacker reconnects.
+    The remedy is a cap on concurrent unbound connections per remote address (or an accept-time hook):
+    new public API and a policy call (NAT, trusted peers), so I have not added it. Decision for you.
 - [ ] **5.2** `PacketTracer` credential warning (SEC3)
   - Doc comment stating that tracing raw frames exposes bind credentials; verify no log path
     prints `BindRequest.Password`.
