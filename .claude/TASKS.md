@@ -525,11 +525,28 @@ Goal: make each concern independently reviewable. Behaviour-preserving only.
     `type DeliverSM = SubmitSM` — which **compiles cleanly**, so only the test, not the build, catches an
     accidental merge. The one comment in the old `DeliverSM` doc about differing field semantics is kept.
     No production logic changed.
-- [ ] **4.5** Record the C5 decision
+- [x] **4.5** Record the C5 decision
   - Typed operation wrappers stay explicit. Add the rationale to `docs/DECISIONS.md` so the
     choice is documented rather than implicit.
+  - Done. `docs/DECISIONS.md` created (it did not exist) with record D1. Written from the code as it
+    now is, not from the finding: of `Session`'s 17 operation methods only 7 (`SubmitSM`, `DeliverSM`,
+    `DataSM`, `SubmitMulti`, `QuerySM`, `BroadcastSM`, `QueryBroadcastSM`) share the typed-response shape
+    a generic helper could cover (the 3 `Bind*` already share one unexported `bind`; 3 return status only;
+    2 are one-way), saving roughly 60-80 lines. Reasons recorded: the exported surface and godoc would not
+    shrink; each method keeps its contract in one place; the shape is not guaranteed uniform (codec can
+    already return `OptionalResponse` in place of a primary response type); and the duplicated code is
+    mechanical, with no locking or state. One correction to the finding's rationale: "stdlib-only"
+    is **not** a reason — it concerns runtime dependencies and generics add none — so D1 says so rather
+    than repeating it. Revisit conditions and the safe way to revisit (unexported helper, with a test over
+    all wrappers first) are written down. Documentation only; no code touched.
 
 **Exit criteria:** no file above ~700 LOC in `session/`; behaviour and API byte-identical.
+
+**Status: all five tasks done.** `session/session.go` 1643 -> 544 lines (largest non-test file in
+`session/`); exported API of `session` byte-identical by `go doc -all` (4.1); no production logic changed
+by 4.2-4.5 apart from moving two test-only wrappers out of `deadline.go` (4.3). Two tasks met their
+acceptance by a different route than the finding proposed, and say so in their notes: 4.2 (a registry-driven
+test instead of interfaces, which cannot live in `session`) and 4.5 (decision recorded, no code).
 
 ---
 
