@@ -654,6 +654,22 @@ type optionalCarrier interface{ optional() []protocol.OptionalParameter }
 Both functions then collapse to a single type assertion with a default. A new body type that
 forgets to implement `ownable` fails loudly in one place instead of silently in two.
 
+**Checked and decided (Task 4.2):** the proposed fix cannot be done as written. `ownable` /
+`optionalCarrier` would have to be implemented *by the body types*, and those live in package
+`protocol`: an interface declared in `session` with unexported methods can only be satisfied by types
+in `session`, and exported methods would add public API to `protocol` (and make it aware of session's
+response arena). That is not behaviour-preserving, so it was not done.
+
+What the finding was actually after is that forgetting one of the two switches for a new body type
+fails *loudly* instead of silently. That is now a single test, `TestEveryResponseBodyTypeIs…` in
+`session/body_coverage_test.go`. It keeps no list of body types of its own (a third place to forget):
+it asks the SMPP 5.0 codec registry, decoding every registered response command from synthetic bodies
+with and without a trailing TLV, and checks each distinct Go type that comes back (11 today, including
+`OptionalResponse`, which only appears when a TLV is present, and `codec.RawBody`). Per type, by
+reflection over every field: `ownDecodedPDU` must leave no borrowed byte (or struct-slice element)
+shared with the source, and `responseOptionalParameters` must return exactly the body's `Optional`
+field, or nil if it has none. The two switches themselves are unchanged.
+
 ### C5 — ~15 near-identical typed operation wrappers · S4
 
 `SubmitSM`, `DeliverSM`, `QuerySM`, `CancelSM`, `ReplaceSM`, `BroadcastSM`, … all follow the same

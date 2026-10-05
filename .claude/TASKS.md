@@ -475,11 +475,26 @@ Goal: make each concern independently reviewable. Behaviour-preserving only.
     they were emitted separated by blank lines; the splitter now preserves original adjacency, so the
     declaration texts match exactly.) Line numbers quoted in `FINDINGS.md`/`CODE_REVIEW.md` for
     `session/session.go` are historical and no longer point at the same lines.
-- [ ] **4.2** Collapse the duplicated type switches (C4)
+- [x] **4.2** Collapse the duplicated type switches (C4)
   - `ownable` / `optionalCarrier` interfaces replacing `ownDecodedPDU` and
     `responseOptionalParameters` parallel switches.
   - Acceptance: a new body type that fails to implement the interface is caught by a compile
     error or a single loud test, not silently.
+  - Done — by the acceptance's second branch, not by the proposed interfaces, and the switches were
+    **not** collapsed. The interfaces cannot live in `session`: the body types are in `protocol`, so a
+    session-side interface with unexported methods can't be satisfied by them, and exported methods would
+    add public API to `protocol` (not behaviour-preserving). Instead one test closes the silent-failure
+    hole: `TestEveryResponseBodyTypeIsOwnedAndExposesItsOptionals` (`session/body_coverage_test.go`). It
+    discovers body types from the SMPP 5.0 registry (every registered response command, decoded from
+    synthetic bodies with and without a trailing TLV; 11 types today including `OptionalResponse` and
+    `codec.RawBody`), so a newly registered body type is covered with no edit to the test, and asserts
+    for each: `ownDecodedPDU` leaves nothing aliased to the source after it is overwritten, and
+    `responseOptionalParameters` returns exactly the `Optional` field (or nil). It refuses to pass
+    vacuously (fewer than 10 types discovered, or a struct whose fields it could not fill, is a failure).
+    Mutation-checked, 6 mutants all killed: dropping the `QueryBroadcastSMResp` or `OptionalResponse`
+    case from `ownDecodedPDU`; dropping `DataSMResp` or `QueryBroadcastSMResp` from
+    `responseOptionalParameters`; not copying `SubmitMultiResp.Unsuccessful`; not cloning `RawBody`.
+    Production code untouched.
 - [ ] **4.3** Remove dead code (C3) — *partially done*
   - `Session.noteActivity` (`session.go:698`); move `deadlineManager.schedule` into a `_test.go`
     helper or document it as test-only.
