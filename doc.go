@@ -6,7 +6,8 @@
 // text/binary encodings in package encoding, SMS segmentation/reassembly in
 // package message, and TCP/TLS adapters in package transport.
 //
-// The supported transport model is TCP, optionally wrapped in TLS. See the
+// The supported transport model is TCP, optionally wrapped in TLS; package
+// transport documents the recommended TLS baseline. See the
 // repository docs directory for API compatibility, concurrency, timeout,
 // interoperability, and release policies.
 package smpp

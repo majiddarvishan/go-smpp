@@ -626,9 +626,32 @@ Goal: close unauthenticated resource exposure and make operator foot-guns visibl
     tracer always populating `RawPDU`; and never populating it.
     Limit worth knowing: this proves the library does not leak, not that an `Authenticator`,
     `SubmitHandler` or `PacketTracer` you write does not.
-- [ ] **5.3** Document the recommended TLS baseline (SEC4)
+- [x] **5.3** Document the recommended TLS baseline (SEC4)
   - Package doc: `MinVersion: tls.VersionTLS12`, verified peer certificates. Keep configuration
     caller-supplied.
+  - Done. `transport/doc.go` gains a `# TLS` section: why TLS (SMPP is clear text), that policy is
+    caller-supplied and the package never alters it, a copy-pasteable server and client baseline
+    (`MinVersion: tls.VersionTLS12`, `RootCAs`, `ServerName`, verified peers), and the traps. Short
+    pointers added to `server/doc.go`, `client/doc.go` and the root `doc.go`. Configuration stays
+    caller-supplied; no code changed.
+    Two things the finding did not say, found by reading and then testing the code: (1) **a nil
+    `TLSConfig` means plain TCP, not default TLS** (`server.Listen` and `client` take the TLS path only if
+    it is non-nil), which is the real way to end up weaker than intended, so it is the first trap listed;
+    (2) `DialTLS` does **not** infer `ServerName` from the address as `crypto/tls.Dial` does, so a bare
+    config fails the handshake, which is documented rather than changed. I deliberately did not state any
+    default `MinVersion` for either side: it varies by Go release and GODEBUG, so the doc says to set it.
+    A doc that asserts behaviour nothing checks rots, so every statement is pinned in
+    `transport/tls_baseline_test.go` (7 tests): the baseline connects and
+    negotiates >= 1.2; a TLS 1.1 client is refused by a 1.2-floor server; verification is on (an
+    unknown-authority error); `ServerName` is not inferred; mutual TLS works and refuses a client with no
+    certificate; and the config is passed through untouched in both directions (a caller `MinVersion` of
+    1.3 is honoured, a caller cap at 1.2 is honoured, neither is replaced). Mutation-checked, 5 mutants
+    all killed: `DialTLS` skipping verification; `DialTLS` inferring `ServerName`; `ListenTLS` keeping only
+    `Certificates`; `ListenTLS` dropping `ClientAuth`; and `ListenTLS` forcing `MinVersion` 1.3 (the last
+    **survived** my first set because every client there also speaks 1.3, which drove
+    `TestListenTLSHonoursCallerMaxVersion`). Race-clean.
+    Not done, by design: no helper that builds a "secure default" `tls.Config`. That would be policy
+    inside the library, which SEC4 itself calls the wrong design.
 - [ ] **5.4** Publish the zero-dependency / no-`unsafe` posture in the README
   - It is a real differentiator for telecom deployments and currently under-communicated.
 

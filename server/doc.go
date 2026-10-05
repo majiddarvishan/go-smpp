@@ -6,4 +6,8 @@
 // alert_notification, and outbind operations. Server methods are safe for
 // concurrent use, although only one Serve call may be active. A malformed
 // client session is isolated from the listener and unrelated sessions.
+//
+// TLS is enabled by setting Config.TLSConfig; a nil TLSConfig means plain TCP.
+// The recommended tls.Config baseline, and what is easy to get wrong, is
+// documented in package transport.
 package server

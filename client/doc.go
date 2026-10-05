@@ -8,4 +8,9 @@
 //
 // Client.Session returns a session snapshot for inspection; applications should
 // not cache it across reconnects.
+//
+// TLS is enabled by setting Config.TLSConfig; a nil TLSConfig means plain TCP.
+// Set ServerName and keep certificate verification on. The recommended
+// tls.Config baseline, and what is easy to get wrong, is documented in package
+// transport.
 package client

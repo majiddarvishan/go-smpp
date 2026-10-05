@@ -767,6 +767,12 @@ not override deployment crypto policy — but a nil or default config silently p
 posture than an operator may expect. Document a recommended baseline
 (`MinVersion: tls.VersionTLS12`, verified peer certificates) in the transport package doc.
 
+**Done (Task 5.3), with one addition:** the baseline is in the transport package doc. The sharper
+foot-gun is not a weak default `tls.Config` but `TLSConfig == nil`, which means *plain TCP* in
+`server.Config` and `client.Config`; that is now the first trap the doc lists. `DialTLS` also does not
+infer `ServerName` (unlike `crypto/tls.Dial`); documented, not changed. Every statement in the doc is
+pinned by `transport/tls_baseline_test.go`.
+
 ---
 
 ## 7. Release readiness
