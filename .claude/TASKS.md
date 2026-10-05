@@ -595,11 +595,37 @@ Goal: close unauthenticated resource exposure and make operator foot-guns visibl
     268 attempts in 1.5 s. `SessionInitTimeout` frees each slot eventually but the attacker reconnects.
     The remedy is a cap on concurrent unbound connections per remote address (or an accept-time hook):
     new public API and a policy call (NAT, trusted peers), so I have not added it. Decision for you.
-- [ ] **5.2** `PacketTracer` credential warning (SEC3)
+- [x] **5.2** `PacketTracer` credential warning (SEC3)
   - Doc comment stating that tracing raw frames exposes bind credentials; verify no log path
     prints `BindRequest.Password`.
   - Acceptance: warning present; a test asserting the password never appears in emitted log
     output.
+  - Done. The finding's premise was audited, not assumed. There are only two `slog` call sites in the
+    library (`logFatal` in `session.go`, the one-way handler error in `rx.go`); neither formats a body or
+    a frame. `FatalError.Reason` strings are fixed literals (the one dynamic `Reason` is `err.Error()` of a
+    semantic decode error, also literal), and `Event` carries no payload field. Result: no library log,
+    event or error path prints a password. The only way a password leaves the library is
+    `PacketTrace.RawPDU`, which is opt-in (`Config.TraceRawPDU`), and the old doc comment already said "may
+    contain credentials" but never said what that means. Warning added: a SECURITY paragraph on
+    `PacketTracer` (bind/outbind carry the password in clear text, up to 8 octets; submit/deliver/data_sm
+    carry content; what to do), a stronger `PacketTrace` comment, and a pointer in the `Config` doc comment for `TraceRawPDU` (on the
+    type, not on the field: a comment inside the struct makes gofmt realign ten unrelated fields).
+    Tests (`server/credential_exposure_test.go`): `TestPasswordNeverReachesLogsEventsOrErrors` drives an
+    accepted bind, a rejected bind, two client-side encode errors (embedded NUL, over-long) and a hostile raw
+    bind with an over-long unterminated password (this last one is the path that reaches the fatal-error
+    log, and the test fails if it does not), with a Debug-level `slog` handler on both sides, an Observer,
+    and `slog.Default()` captured too; it checks logs, every event rendered `%v`/`%+v`/`%#v`, and every
+    returned error, for the password, any 5-octet run of it (a decoder echoing a field is bounded by the
+    field length, so it would show a prefix) and its decimal byte list. Positive control
+    `TestRawPacketTraceDoesExposeThePasswordWhenEnabled` proves the test harness can see a leak and keeps
+    the warning honest; `TestPacketTraceCarriesNoPayloadByDefault` pins "no payload unless asked".
+    Mutation-checked, 6 mutants all killed: debug-logging every decoded PDU with `%+v`; the unterminated
+    C-string fatal reason echoing the bytes (**survived** my first version, which only searched for the
+    whole password while the leak shows 9 octets; drove the 5-octet-run check); the server logging the
+    request through the default logger on failed auth; `AppendCString`'s error embedding the value; the
+    tracer always populating `RawPDU`; and never populating it.
+    Limit worth knowing: this proves the library does not leak, not that an `Authenticator`,
+    `SubmitHandler` or `PacketTracer` you write does not.
 - [ ] **5.3** Document the recommended TLS baseline (SEC4)
   - Package doc: `MinVersion: tls.VersionTLS12`, verified peer certificates. Keep configuration
     caller-supplied.

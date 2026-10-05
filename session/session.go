@@ -59,6 +59,10 @@ func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu InboundPDU) (Re
 // session is active. WindowSize is the protocol outstanding-request admission
 // bound; MaxPending is a defensive correlation-table ceiling and is raised to
 // WindowSize automatically when necessary.
+//
+// TraceRawPDU makes PacketTracer receive every complete wire PDU, including
+// bind passwords in clear text; read the SECURITY note on PacketTracer before
+// enabling it.
 type Config struct {
 	Role                Role
 	Profile             protocol.Profile

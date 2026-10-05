@@ -114,8 +114,9 @@ const (
 
 // PacketTrace is emitted only when Config.PacketTracer is non-nil. RawPDU is
 // nil by default. If Config.TraceRawPDU is explicitly enabled, RawPDU is an
-// owned copy of the complete wire PDU and may contain credentials or message
-// content; callers are responsible for protecting it appropriately.
+// owned copy of the complete wire PDU and contains credentials (bind and
+// outbind passwords, in clear text) and message content; callers are
+// responsible for protecting it appropriately. See PacketTracer.
 type PacketTrace struct {
 	Direction PacketDirection
 	At        time.Time
@@ -126,6 +127,23 @@ type PacketTrace struct {
 
 // PacketTracer receives optional packet traces. Packet tracing is disabled by
 // default and is intentionally outside the base performance target.
+//
+// SECURITY: with Config.TraceRawPDU enabled, every trace carries the complete
+// wire PDU, and SMPP sends credentials in clear text. bind_transmitter,
+// bind_receiver, bind_transceiver and outbind PDUs contain the password (up to
+// 8 octets, unencrypted at the SMPP layer), and submit_sm, deliver_sm and
+// data_sm carry message content. Anything that stores or forwards RawPDU
+// (logs, files, a tracing backend, a support bundle) therefore stores the
+// credentials and the traffic. Treat the destination as secret material:
+// restrict access, do not ship it to third parties, and redact or drop bind and
+// outbind PDUs (check PacketTrace.Header.CommandID) before persisting. Leave
+// TraceRawPDU off in production unless you are actively debugging.
+//
+// With TraceRawPDU off (the default) a trace carries only the header and
+// length, never a payload. This package's own logs, observer events and errors
+// never contain a password; that is pinned by
+// server.TestPasswordNeverReachesLogsEventsOrErrors, and raw tracing is the one
+// deliberate exception.
 type PacketTracer interface {
 	TracePacket(PacketTrace)
 }
