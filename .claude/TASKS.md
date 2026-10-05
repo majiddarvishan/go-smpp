@@ -511,9 +511,20 @@ Goal: make each concern independently reviewable. Behaviour-preserving only.
     `scheduleItemAt`, the single production entry point. Zero behaviour change by construction (no logic
     moved, only two one-line wrappers). `unused` does not flag identifiers used from `_test.go`, which is
     why this survived the lint gate; it is not run here (no golangci-lint download, per the working rules).
-- [ ] **4.4** Annotate deliberate duplication (A6)
+- [x] **4.4** Annotate deliberate duplication (A6)
   - Doc comments on `protocol.SubmitSM` and `protocol.DeliverSM` stating the identical layout is
     intentional per SMPP 3.4 and must not be merged.
+  - Done. The finding's claim was checked first, by reflection: both structs have 18 fields, identical
+    names, types and order, and are mutually convertible. Doc comments on both types now say the identical
+    layout is intentional (SMPP 3.4 gives the two PDUs the same mandatory-parameter layout), that the
+    types must not be merged or aliased, and why: the Go type carries the direction, so `Session` cannot be
+    handed one for the other at compile time and the codec refuses a body of one type under the other's
+    command ID. I did not want a comment to assert something nothing checks, so that last claim is pinned:
+    `codec/submit_deliver_distinct_test.go` (`TestEncodeRejectsSubmitSMAndDeliverSMBodiesUnderTheWrongCommand`).
+    Mutation-checked, 2 mutants killed: `encodeSubmitSM` also accepting a `DeliverSM`; and
+    `type DeliverSM = SubmitSM` — which **compiles cleanly**, so only the test, not the build, catches an
+    accidental merge. The one comment in the old `DeliverSM` doc about differing field semantics is kept.
+    No production logic changed.
 - [ ] **4.5** Record the C5 decision
   - Typed operation wrappers stay explicit. Add the rationale to `docs/DECISIONS.md` so the
     choice is documented rather than implicit.

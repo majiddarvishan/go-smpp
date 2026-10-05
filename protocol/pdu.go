@@ -107,6 +107,17 @@ type BindResponse struct {
 type EmptyBody struct{}
 
 // SubmitSM is the SMPP 3.4 submit_sm mandatory body plus ordered optional TLVs.
+//
+// SubmitSM and DeliverSM have the same fields, in the same order, on purpose:
+// SMPP 3.4 gives the two PDUs the same mandatory-parameter layout. They are
+// still two distinct types and must not be merged or aliased. The Go type is
+// what carries the direction (ESME to SMSC versus SMSC to ESME), so Session
+// cannot be handed one in place of the other at compile time, and the codec
+// rejects a body of one type passed under the other's command ID instead of
+// silently encoding it under the wrong one (see
+// codec.TestEncodeRejectsSubmitSMAndDeliverSMBodiesUnderTheWrongCommand).
+// Because the wire layout is shared, a field that really belongs to the PDU
+// layout belongs on both; check before letting them diverge.
 type SubmitSM struct {
 	ServiceType          []byte
 	SourceAddrTON        TON
@@ -138,6 +149,9 @@ type SubmitSMResp struct {
 // DeliverSM is the SMPP 3.4 deliver_sm mandatory body plus ordered optional
 // TLVs. The wire layout intentionally mirrors submit_sm while preserving a
 // distinct public type because several fields have different semantics.
+//
+// The duplication with SubmitSM is deliberate and must not be merged or
+// aliased; see the comment on SubmitSM for why.
 type DeliverSM struct {
 	ServiceType          []byte
 	SourceAddrTON        TON
