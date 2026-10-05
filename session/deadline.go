@@ -53,17 +53,6 @@ func newDeadlineManager(done <-chan struct{}, expire func(*deadlineItem)) *deadl
 	return &deadlineManager{wake: make(chan struct{}, 1), done: done, expire: expire}
 }
 
-func (m *deadlineManager) schedule(after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
-	return m.scheduleItem(&deadlineItem{}, after, kind, command, sequence)
-}
-
-// scheduleItem inserts a caller-owned deadline record. The session hot path
-// embeds this record in pendingRequest so ordinary request scheduling does not
-// require a separate heap allocation per outstanding deadline.
-func (m *deadlineManager) scheduleItem(item *deadlineItem, after time.Duration, kind TimeoutKind, command protocol.CommandID, sequence protocol.SequenceNumber) *deadlineItem {
-	return m.scheduleItemAt(item, time.Now(), after, kind, command, sequence)
-}
-
 // scheduleItemAt is the session hot-path form. dispatchedAt must be captured
 // immediately after WriteFull succeeds so the response timeout starts at the
 // documented full-dispatch boundary without another clock read.

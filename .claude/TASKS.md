@@ -495,14 +495,22 @@ Goal: make each concern independently reviewable. Behaviour-preserving only.
     case from `ownDecodedPDU`; dropping `DataSMResp` or `QueryBroadcastSMResp` from
     `responseOptionalParameters`; not copying `SubmitMultiResp.Unsuccessful`; not cloning `RawBody`.
     Production code untouched.
-- [ ] **4.3** Remove dead code (C3) — *partially done*
+- [x] **4.3** Remove dead code (C3)
   - `Session.noteActivity` (`session.go:698`); move `deadlineManager.schedule` into a `_test.go`
     helper or document it as test-only.
   - Acceptance: `unused`/lint reports zero dead symbols.
-  - `Session.noteActivity` removed in `104403d` (forced by 0.5's new lint gate). Still open:
-    `deadlineManager.schedule` is real dead-code-in-production-file — it's called only from
-    `_test.go` files, which `unused` correctly doesn't flag, but it still belongs in a test helper
-    per the acceptance note; left for this phase's file-split work.
+  - Done. `Session.noteActivity` was already removed in `104403d` (forced by 0.5's new lint gate).
+    `deadlineManager.schedule` moved out of `session/deadline.go` into `session/deadline_helpers_test.go`.
+    One addition beyond the finding: `deadlineManager.scheduleItem` was test-only too (its only callers
+    were `schedule` and one line of `deadline_test.go`; production uses `scheduleItemAt` directly from
+    `tx.go` and `liveness.go`), so it moved with it; leaving it would have kept a dead production wrapper.
+    Its old doc comment claimed the "session hot path" uses it, which was false for that wrapper, so the
+    helper's comment now says what it is. Verified rather than assumed: `go build ./...` (non-test code
+    only) passes with both functions gone from `deadline.go`, which proves no production caller; `go vet`
+    and `go test` (which do compile the tests) pass with them in the helper; `deadline.go` retains
+    `scheduleItemAt`, the single production entry point. Zero behaviour change by construction (no logic
+    moved, only two one-line wrappers). `unused` does not flag identifiers used from `_test.go`, which is
+    why this survived the lint gate; it is not run here (no golangci-lint download, per the working rules).
 - [ ] **4.4** Annotate deliberate duplication (A6)
   - Doc comments on `protocol.SubmitSM` and `protocol.DeliverSM` stating the identical layout is
     intentional per SMPP 3.4 and must not be merged.
