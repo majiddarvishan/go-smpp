@@ -682,7 +682,7 @@ peers cannot exhaust `MaxSessions`" is not true: 5.1 rate-limits *binds*, and a 
 bind is untouched by it (measured: 268 of 268 legitimate connection attempts refused in 1.5 s against
 `MaxSessions: 3`, `SessionInitTimeout: 300 ms`). Closing it needs a cap on concurrent unbound
 connections per remote address or an accept-time admission hook: new public API and a policy decision
-(NAT, trusted peers). **Open item for the maintainer; not added unasked.**
+(NAT, trusted peers). **Backlogged by maintainer decision on 2026-10-05; see "Explicitly deferred".**
 
 ---
 
@@ -716,6 +716,7 @@ Goal: measurable quality floor, then `v1.0.0`.
 | Item | Reason |
 | --- | --- |
 | C5 generic operation wrappers | Reduces line count but hurts greppability and godoc; current explicit style matches the repo's stdlib-only philosophy. Decision recorded by 4.5. |
+| Cap on concurrent unbound connections per remote address, or an accept-time admission hook (SEC1 remainder) | Maintainer decision 2026-10-05: not now, backlogged. Until then the Phase 5 exit criterion "unauthenticated peers cannot exhaust `MaxSessions`" is knowingly unmet. Measured: with `MaxSessions: 3` and `SessionInitTimeout: 300 ms`, a flood of silent connections refused 268 of 268 legitimate attempts in 1.5 s. Interim mitigation is outside the library: allow only known peer IPs at the firewall, and keep `SessionInitTimeout` short. Design questions to settle when picked up: NAT-shared addresses, trusted-peer exemptions, new public API (`server.Config`) and its compatibility cost. |
 | `gocognit` / `funlen` lint rules | Would only generate noise before 4.1's file split; revisit after Phase 4. |
 
 ---
