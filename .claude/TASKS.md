@@ -774,24 +774,22 @@ Goal: measurable quality floor, then `v1.0.0`.
     `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one.
     `docs/TIMEOUTS_AND_LIVENESS.md` gains a "Peers that stall while sending" section with the table.
     Coverage floors unchanged (the new tests exercise existing paths).
-- [ ] **6.4** Publish Phase 17 reference-machine evidence — **BLOCKED: needs the reference machine**
+- [x] **6.4** Publish Phase 17 reference-machine evidence — *result recorded; environment details pending*
   - Acceptance: throughput result and resource bounds recorded in `docs/PERFORMANCE.md`.
-  - Not done, and it cannot be done from here. The contract is a Linux/amd64 host with at least 8 logical
-    CPUs, 10 GiB RAM and Go 1.26.x; `scripts/acceptance.sh` checks all three and exits 2 otherwise, by
-    design. This sandbox has 1 CPU and Go 1.22. I did not run the harness here and quote a number: a figure
-    from the wrong hardware is exactly what the script exists to prevent, and the acceptance result is
-    reserved for the reference host.
-    What I did: wrote `docs/PERFORMANCE.md` (linked from the README) with the status stated up front as
-    "not recorded", the acceptance contract restated from the script and `acceptance_test.go` (machine
-    requirements; pass criteria: >= 100 000 request PDU/s, requests == responses, goroutine bound, peak heap
-    <= 1024 MiB, retained growth <= 64 MiB, pending/window within bound; session counts 1, 2, 4 tried in
-    order), exact commands, the list of artifacts the run writes, and a table of every field to copy from the
-    `PHASE17_RESULT` line, every cell `_not recorded_`. Nothing in it is a measurement.
-    To finish it (about 5 minutes of your time once you are on the host): `scripts/acceptance.sh`, fill the table
-    from `acceptance-sessions-N.txt` and `environment.txt`, keep the raw artifacts, then update the README
-    blocker sentence and `docs/RELEASE_CHECKLIST.md`.
-    Related: this is also the last thing standing between the project and the `v1.0.0` tag (6.7), because
-    `docs/RELEASE_CHECKLIST.md` forbids tagging from an unverified reference-performance state.
+  - Done on 2026-10-06 from the maintainer's run of `scripts/acceptance.sh` on the reference host (the script
+    exits 2 unless the machine meets the contract, so a completed run is itself evidence of that). **PASS, minimum
+    passing session count 1:** 713,932 request PDUs/s sustained for 60 s (about 7.1x the 100,000 requirement),
+    42,836,172 requests = 42,836,172 responses, 128 callers, goroutines 8 baseline / 136 max, peak heap 3 MiB (limit
+    1024), retained growth 0 MiB (limit 64), pending max 64 = window 64; the race run was ok (reported cached, i.e. an
+    identical earlier pass); diagnostic benchmark 765,084 request PDUs/s, 897 B/op, 9 allocs/op; CPU i5-12400,
+    `GOMAXPROCS` 8. `docs/PERFORMANCE.md` records all of it, says what it does and does not measure (one session,
+    loopback, trivial handler), and README text that called the reference result pending is updated.
+    Values come from the console output the maintainer pasted; nothing was run here (this environment cannot).
+    **Still open, and needed before the tag (6.7):** the commit, Go version, kernel, memory and date from the run's
+    `environment.txt`, which I have not seen; those cells say "not recorded". Also keep the raw artifacts.
+    One loose end: `scripts/acceptance.sh` requires a `go1.26*` toolchain, while the maintainer's `golangci-lint`
+    reports being built with go1.27.0. The two are reconcilable (different shells, or a toolchain switch) but
+    `environment.txt` will say which Go the run used.
 - [x] **6.5** Document the compatibility promise
   - `COMPATIBILITY.md` (or README section): SemVer covers exported identifiers in `protocol`,
     `codec`, `message`, `session`, `client`, `server`; `internal/` explicitly excluded.
@@ -816,7 +814,7 @@ Goal: measurable quality floor, then `v1.0.0`.
     needs a recorded update. That would make the promise checkable, and is best done before the first tag.
     The interface rule (adding a method to an exported interface is breaking) is standard Go practice but is
     policy text I wrote on your behalf: please read that bullet.
-- [ ] **6.6** Reconsider the declared minimum Go version — **evidence done; decision and change pending (yours)**
+- [ ] **6.6** Reconsider the declared minimum Go version — **decided (floor Go 1.25, support through 1.27); `go.mod` edit not yet applied**
   - `go 1.26.0` requires the newest toolchain, which narrows adoption among conservative telecom
     operators. Lower it if no 1.26-only feature is load-bearing.
   - Evidence gathered; **`go.mod` deliberately not changed** (working rule 3: the real `go.mod` is never
@@ -828,7 +826,12 @@ Goal: measurable quality floor, then `v1.0.0`.
     because `log/slog` (used by `session` and `cmd/smpp-sim`) first shipped there; Go 1.20 not tested and cannot
     work as written. I installed 1.21/1.22/1.23/1.24 from the distro to do this rather than reasoning about
     it; 1.25 and 1.26 were not available, and you ran 1.26.
-    Recorded as `docs/DECISIONS.md` **D2** with status "proposed, not applied": the table, three options,
+    **Maintainer decision 2026-10-06: floor Go 1.25, and 1.27 must be supported.** Recorded in D2, with the honest
+    gaps: 1.25 is bracketed by passing 1.24 and 1.26 but not itself tested, 1.27 rests on his runs, and supporting 1.27
+    means a CI matrix (`1.25.x`, `1.27.x`) once the CI stage opens. Not applied to `go.mod`: working rule 3 says the real
+    `go.mod` is never edited without an explicit instruction. To apply: `sed -i 's/^go 1.26.0$/go 1.25/' go.mod`, plus the
+    README sentence that quotes 1.26.0, and `scripts/acceptance.sh` if the reference host moves to 1.27.
+    Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
     a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
     on the floor plus one on the newest release** (CI today installs only 1.26.x, so a declared floor would be
     untested); otherwise keep 1.26.0, which is a legitimate answer. Cost to state plainly: it invites builds on
@@ -838,13 +841,13 @@ Goal: measurable quality floor, then `v1.0.0`.
     1.26.x toolchain independently of the `go` line, which stays correct. If you apply it, also update the
     README sentence that quotes `go 1.26.0` and the release checklist. To apply:
     `sed -i 's/^go 1.26.0$/go 1.21/' go.mod`.
-- [ ] **6.7** Tag `v1.0.0` — **NOT DONE ON PURPOSE; blocked on 6.4 and on your go-ahead**
+- [ ] **6.7** Tag `v1.0.0` — **NOT DONE ON PURPOSE; needs the environment details, the `main` merge and your go-ahead**
   - Acceptance: all Phase 0–3 items closed; first git tag pushed.
   - The literal acceptance clause is met: every item in Phases 0-3 is closed (the only unchecked boxes in this
     file are 6.4, 6.6 and this one). I still did not tag, for reasons that are not formalities:
-    1. `docs/RELEASE_CHECKLIST.md` says "Do not create that tag from an unverified reference-performance
-       state", and lists the published reference environment, minimum passing session count, sustained
-       request-PDU/s and memory bounds as preconditions. 6.4 is the missing evidence and needs the reference host.
+    1. `docs/RELEASE_CHECKLIST.md` requires the exact reference environment and commit to be published before the
+       tag. The result now exists (6.4), but the environment, commit, Go version, kernel and memory are not yet
+       recorded in `docs/PERFORMANCE.md`; they are in the run's `environment.txt`.
     2. A tag is not undoable in practice. The Go module proxy caches a published version permanently; deleting or
        moving the git tag afterwards does not retract it for anyone who has already fetched it. `v1.0.0` also
        starts the SemVer promise in `docs/API_COMPATIBILITY.md`.
@@ -859,12 +862,12 @@ Goal: measurable quality floor, then `v1.0.0`.
     `git checkout main && git pull && git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
     I will do it on request, but I would want an explicit instruction naming the commit.
 
-**Phase 6 status: 6.1, 6.2, 6.3 and 6.5 done; 6.4 blocked on hardware; 6.6 evidence done, decision yours; 6.7 not done on purpose.**
-Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held
-for the final stage. Open items that need a person, not more work from me: run `scripts/acceptance.sh` on the
-8-core / 10-GiB reference host and fill `docs/PERFORMANCE.md` (6.4); decide D2 (6.6); decide the enquire_link-disabled
-policy (6.3) and the unbound-connection cap (backlog); review the interface-compatibility wording added in 6.5;
-merge to `main`; then tag (6.7).
+**Phase 6 status: 6.1, 6.2, 6.3, 6.4 and 6.5 done; 6.6 decided (Go 1.25), `go.mod` edit pending; 6.7 not done on purpose.**
+Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
+final stage, and the lint gate has never passed on this branch (see the CI checklist). Open items that need a person:
+send `environment.txt` from the acceptance run so `docs/PERFORMANCE.md` can be completed; say whether to apply the
+`go.mod` change; decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
+interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
 
 ---
 
@@ -889,6 +892,9 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    also carries the former `stylecheck` checks, so a first v2 run may report findings v1 never did. I have not
    hand-written a v2 config or run v2 (downloads are barred by the working rules and I could not verify it), so
    `.golangci.yml` is unchanged; the migrate output and the first run's findings are the thing to review.
+   Follow-up the same day: `golangci-lint migrate` answered "unknown command" and `golangci-lint version` still reported
+   v1.64.8, so the v2 binary was not the one on `PATH` (not installed, or shadowed by an older one; check
+   `which -a golangci-lint` against `$(go env GOPATH)/bin`).
    **The lint gate has therefore never passed on this branch since Phase 5 began**, here or on the maintainer's
    machine; the scratch checks never ran it.
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).

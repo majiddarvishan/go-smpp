@@ -25,7 +25,7 @@ development tooling and is not linked into the library.
 
 ## Current status
 
-Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The remaining production-release blockers are the Phase 17 reference-machine throughput/minimum-session result, publication of that reference evidence, and the first production-ready tag.
+Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The Phase 17 reference-machine acceptance has passed (713,932 request PDUs/s with a single session, minimum passing session count 1; see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The remaining production-release blockers are publishing that run's exact environment and commit, and the first production-ready tag.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -36,7 +36,7 @@ See `PLAN.md` for detailed implementation progress and `.codex/` for architectur
 - [Timeout and liveness semantics](docs/TIMEOUTS_AND_LIVENESS.md)
 - [Interoperability, GSM7 and Unicode/emoji](docs/INTEROPERABILITY.md)
 - [Vendor extensions](docs/VENDOR_EXTENSIONS.md)
-- [Performance evidence (reference-machine result pending)](docs/PERFORMANCE.md)
+- [Performance evidence (Phase 17 reference result)](docs/PERFORMANCE.md)
 - [Test coverage floor](docs/COVERAGE.md)
 - [Project decisions](docs/DECISIONS.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
@@ -118,7 +118,7 @@ The shared codec registry covers all 27 SMPP 3.4 command/response identifiers an
 
 
 
-Phase 17 development validation has sustained more than 100k request PDUs/s for 60 seconds with a single localhost TCP session while keeping required SMPP responses enabled and outstanding work bounded. This is a development-run result, not the reference-machine acceptance result. The final acceptance workflow is available as `SMPP reference performance acceptance` and requires a self-hosted runner labeled `smpp-reference` that satisfies the documented 8-core / 10-GB Linux/amd64 contract.
+Phase 17 development validation has sustained more than 100k request PDUs/s for 60 seconds with a single localhost TCP session while keeping required SMPP responses enabled and outstanding work bounded. That development-run figure is not the acceptance result; the reference-machine result is recorded in [docs/PERFORMANCE.md](docs/PERFORMANCE.md). The acceptance run is `scripts/acceptance.sh`, or the `SMPP reference performance acceptance` workflow on a self-hosted runner labeled `smpp-reference` that satisfies the documented 8-core / 10-GB Linux/amd64 contract.
 
 ## Reliability and malformed-peer behavior
 

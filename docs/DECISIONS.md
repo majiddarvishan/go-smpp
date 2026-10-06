@@ -87,7 +87,7 @@ the change is provably behaviour-preserving.
 
 ## D2 — Declared minimum Go version
 
-- **Status:** proposed, **not applied** (review finding on `go 1.26.0`, Task 6.6). `go.mod` is unchanged; the decision is the maintainer's.
+- **Status:** **decided 2026-10-06, `go.mod` change not yet applied.** The maintainer's decision is a floor of **Go 1.25**, with newer releases through **Go 1.27** supported. `go.mod` still says `go 1.26.0` because the working rule is that the real `go.mod` is never edited without an explicit instruction; the one-line change is below. (Review finding on `go 1.26.0`, Task 6.6.)
 - **Applies to:** the `go` directive in `go.mod`, and the sentences that quote it (README, release checklist).
 
 ### Context
@@ -115,6 +115,15 @@ What this shows:
 - **1.21 is the floor, and it is a hard one**: `log/slog`, used by `session` and `cmd/smpp-sim`, first shipped in Go 1.21. Go 1.20 was not tested (no toolchain available) and cannot work as the code stands.
 - **The code does not depend on newer language semantics.** The `go` line selects language and runtime defaults: per-iteration loop variables arrive with a 1.22 line and the current timer-channel semantics with a 1.23 line. Rows 5 and 6 compile with a modern toolchain under the old semantics, and pass. So the library works under both old and new semantics, which matters because a consumer's own `go.mod` decides which apply to their binary.
 
+### Decision
+
+Declare **Go 1.25** as the minimum and support every release above it, which now includes 1.27. What backs this, and what does not:
+
+- 1.21, 1.22, 1.23 and 1.24 were each tested directly (table above). The maintainer ran the suite on a Go 1.26 toolchain. His `golangci-lint` binary reports being built with go1.27.0, which suggests a 1.27 toolchain is also in use locally, but that has not been confirmed against the acceptance run's `environment.txt`. Go 1.25, 1.26 and 1.27 were not available in the environment used for this record, so **1.25 is bracketed by a passing 1.24 and a passing 1.26, not tested on its own**, and 1.27 rests on the maintainer's runs. A CI job on exactly 1.25 settles the first.
+- Go 1.25 is the maintainer's chosen floor, higher than the verified 1.21; it is not a limit of the code. One thing to weigh: if Go 1.27 is already released, upstream supports only 1.26 and 1.27, so a 1.25 floor means promising a toolchain that has just left upstream support. That is a legitimate choice, but it is the point of the trade-off above.
+- **Supporting 1.27 means testing it.** CI should run a matrix of the floor and the newest release (`1.25.x` and `1.27.x`) once the CI stage opens, otherwise "supports 1.27" is a hope.
+- `scripts/acceptance.sh` hard-requires a `go1.26*` toolchain. If the reference host moves to 1.27, that check must change in the same commit.
+
 ### Options
 
 1. **Keep `go 1.26.0`.** No change, no new test burden. Cost: excludes any operator who cannot run a current toolchain.
@@ -128,14 +137,14 @@ Option 2 **only together with a CI job that builds and tests on the floor**, plu
 ### If you apply it
 
 ```sh
-sed -i 's/^go 1.26.0$/go 1.21/' go.mod
+sed -i 's/^go 1.26.0$/go 1.25/' go.mod
 ```
 
 and in the same commit:
 
-- README: the sentence "(`go.mod` requires Go 1.26.0)" in the supply-chain section.
+- README: the sentence "(`go.mod` requires Go 1.26.0)" in the supply-chain section (change it to 1.25).
 - `docs/RELEASE_CHECKLIST.md`: the minimum-Go-version item.
-- CI (held until the CI stage): a matrix of `1.21.x` and `1.26.x`; for example `go-version: ['1.21.x', '1.26.x']`.
+- CI (held until the CI stage): a matrix of the floor and the newest release; for example `go-version: ['1.25.x', '1.27.x']`.
 
 Things that do **not** change, checked: `.github/workflows/ci.yml` and `reference-acceptance.yml` install Go with a literal `1.26.x`, not `go-version-file`, so lowering `go.mod` does not change which toolchain they use; and `scripts/acceptance.sh` requires a 1.26.x *toolchain* regardless of the `go` line, which is right, since the reference result should be taken on the current compiler.
 

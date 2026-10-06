@@ -2,14 +2,36 @@
 
 ## Status
 
-**The Phase 17 reference-machine result has not been recorded yet.** No throughput or resource-bound figure
-in this file is a measurement, and none should be quoted as one until the table below is filled in from a
-run on the reference machine. Task 6.4 stays open until then.
+**The Phase 17 reference-machine acceptance has been run and passed** (maintainer's run, reported 2026-10-06,
+`scripts/acceptance.sh`, which refuses to run unless the machine meets the contract). The result and resource
+bounds are recorded below, taken from that run's console output.
 
-What exists today is development-machine validation (the README mentions more than 100k request PDUs/s on
-a single localhost session). That is diagnostic only. It is not the acceptance result, because it was not
-taken on the documented reference hardware, and this repository's own acceptance script refuses to run
-anywhere else (see below).
+**Still to fill in** from the run's `environment.txt`: the commit, Go version, kernel, memory and run date.
+`docs/RELEASE_CHECKLIST.md` requires the exact environment and commit to be published before the first
+production tag, so those cells are marked _not recorded_ rather than guessed. Keep the raw artifacts from
+`.bench/phase17-acceptance` alongside this table.
+
+## Result
+
+| | |
+| --- | --- |
+| Verdict | **PASS** |
+| Minimum passing session count | **1** (the first of 1, 2, 4 to pass; the others were not needed) |
+| Sustained request PDUs/s | **713,932**, about 7.1 times the 100,000 requirement |
+| Duration | 60 s |
+| Requests / responses | 42,836,172 / 42,836,172 (equal) |
+| Callers | 128 |
+| Goroutines | baseline 8, maximum 136 (callers + 8) |
+| Peak heap | 3 MiB (limit 1024) |
+| Retained heap growth after GC | 0 MiB (limit 64) |
+| Pending requests, maximum | 64 (window 64) |
+| Race run (`session`, `client`, `server`) | ok; these three packages were reported as `(cached)`, i.e. an identical earlier passing run |
+| CPU | 12th Gen Intel Core i5-12400 (the benchmark's `cpu:` line); `GOMAXPROCS` 8 |
+| Diagnostic benchmark, same host | `BenchmarkLocalhostTCPBidirectional/sessions_1-8`: 765,084 request PDUs/s, 1,307 ns/op, 897 B/op, 9 allocs/op, tx batch 32 |
+
+What this measures, so it is not over-read: one session over loopback TCP with required responses enabled and a
+trivial handler. It shows the library's own per-PDU cost and its bounded memory under sustained load. It says
+nothing about a real network, a real SMSC's processing time, or many sessions with different peers.
 
 ## The acceptance contract
 
@@ -57,11 +79,9 @@ Artifacts written to the output directory:
 | `minimum-session-count.txt` | the first passing session count |
 | `profile-benchmark.txt`, `*.pprof`, `*-top.txt` | profiles of the passing configuration |
 
-## Recording the result
+## Remaining fields
 
-Copy the values from the `PHASE17_RESULT` line of the passing `acceptance-sessions-N.txt` and from
-`environment.txt`, then replace the placeholders below. Keep the raw artifacts too (an attached archive or a
-release asset is fine); a table with no source files behind it is only a claim.
+Copy these from `environment.txt` in the artifact directory.
 
 | Field | Value |
 | --- | --- |
@@ -69,16 +89,6 @@ release asset is fine); a table with no source files behind it is only a claim.
 | Date (UTC) | _not recorded_ |
 | Go version | _not recorded_ |
 | Kernel | _not recorded_ |
-| CPUs / memory | _not recorded_ |
-| Minimum passing session count | _not recorded_ |
-| Sustained request PDUs/s (`request_pdu_s`) | _not recorded_ |
-| Duration | _not recorded_ |
-| Callers | _not recorded_ |
-| Goroutines, baseline and max | _not recorded_ |
-| Peak heap, MiB (`heap_peak_mib`) | _not recorded_ |
-| Retained heap growth, MiB (`heap_retained_growth_mib`) | _not recorded_ |
-| Pending max / window max | _not recorded_ |
-| Race run | _not recorded_ |
+| Memory | _not recorded_ |
 
-Once the table is filled in, update the README paragraph that lists the reference result as a remaining
-blocker, and tick the corresponding line in `docs/RELEASE_CHECKLIST.md`.
+Once they are filled in, tick the reference-evidence items in `docs/RELEASE_CHECKLIST.md`.
