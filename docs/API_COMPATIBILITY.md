@@ -12,7 +12,33 @@ Starting with v1.0.0, the project follows semantic-version compatibility for pub
 - minor releases may add exported symbols, optional fields, commands, TLVs, or capabilities without breaking existing source;
 - removal, rename, incompatible signature changes, or materially incompatible semantics require a new major version.
 
-The compatibility promise applies to exported identifiers in the root package and the public packages client, server, session, codec, protocol, encoding, message, and transport.
+## What the promise covers
+
+The compatibility promise applies to exported identifiers in the root package and the public packages `client`, `server`, `session`, `codec`, `protocol`, `encoding`, `message` and `transport`. "Exported identifier" means functions, methods, types, constants, variables, exported struct fields, and the method sets of exported interfaces.
+
+It does **not** apply to:
+
+- anything under `internal/` (today `internal/perflab`, the benchmark harness). Go forbids importing it from outside this module, and nothing in it is a promise;
+- the programs under `cmd/` and `examples/`: their flags, output and structure may change in any release;
+- `scripts/`, `docs/`, tests, and unexported identifiers.
+
+The usual Go rules for what counts as breaking apply, and a few are worth stating because this API exposes interfaces and configuration structs:
+
+- adding a field to a `Config` struct is compatible, which is why configuration is set with keyed fields; unkeyed struct literals are not supported;
+- **adding a method to an exported interface is breaking** when callers implement it (for example `session.Handler`, `session.PacketTracer`, `server.Authenticator`, `server.BindRateLimiter`), so such interfaces stay as small as they are, and new capabilities arrive as new optional interfaces or new fields;
+- changing a function or method signature, or the type of an exported field, is breaking even if existing call sites happen to still compile.
+
+## How it is checked, and how far
+
+Three tests in the root package keep parts of this honest. None of them is a full API diff, and it is worth being exact about what each does:
+
+| Test | What it enforces | What it does not |
+| --- | --- | --- |
+| `api_contract_test.go` | A compile-time pin of 28 selected identifiers across `client`, `server`, `session`, `codec`, `encoding`, `message` and `protocol`. For all 28, removal or rename stops the build of `go test`. For five (`client.Dial`, `client.New`, `server.Listen`, `server.ListenAndServe`, `session.New`) the exact function signature is pinned too; the rest are pinned by existence only, so a changed signature on them is not caught. | It is a representative sample, not an enumeration. Removing or changing an exported identifier that is not on its list does not fail any test. |
+| `architecture_test.go` | Dependency direction between the eight public packages (for example `protocol`, `encoding` and `transport` import no sibling). | Anything about the shape of exported identifiers. |
+| `posture_test.go` | No third-party dependencies, no `unsafe`, no cgo. | Anything about the API. |
+
+So the promise is wider than the mechanical check: until an exhaustive API snapshot exists, reviewers are the control for exported identifiers outside the 28 pinned ones. When you add an exported identifier to a public package, add it to `api_contract_test.go` if it is a main entry point; when you change or remove one, treat it as a compatibility decision first, per the baseline above.
 
 ## Stable behavioral contracts
 

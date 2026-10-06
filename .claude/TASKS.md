@@ -792,10 +792,30 @@ Goal: measurable quality floor, then `v1.0.0`.
     blocker sentence and `docs/RELEASE_CHECKLIST.md`.
     Related: this is also the last thing standing between the project and the `v1.0.0` tag (6.7), because
     `docs/RELEASE_CHECKLIST.md` forbids tagging from an unverified reference-performance state.
-- [ ] **6.5** Document the compatibility promise
+- [x] **6.5** Document the compatibility promise
   - `COMPATIBILITY.md` (or README section): SemVer covers exported identifiers in `protocol`,
     `codec`, `message`, `session`, `client`, `server`; `internal/` explicitly excluded.
   - Acceptance: cross-referenced with `api_contract_test.go`.
+  - Done, by extending `docs/API_COMPATIBILITY.md` rather than adding a second file: it already existed,
+    already had the SemVer promise and the behavioural contracts, and is already linked from the README. It
+    lacked the exclusions and the cross-reference. Added: a "What the promise covers" section (the covered
+    packages — the root and `client`, `server`, `session`, `codec`, `protocol`, `encoding`, `message`,
+    `transport`, which is two more than the task text listed because they are public too; and the explicit
+    exclusions: `internal/` including `internal/perflab`, `cmd/`, `examples/`, scripts, docs, tests and
+    unexported identifiers), the Go-compatibility rules that matter for this API (config fields are additive,
+    adding a method to an exported interface is breaking, signature and field-type changes are breaking), and
+    a "How it is checked, and how far" section with a table of the three root-package tests.
+    **The cross-reference is deliberately blunt about a weakness:** `api_contract_test.go` is a compile-time
+    pin of 28 selected identifiers, not an enumeration of the exported API, and it has no `Test` function at
+    all. Only 5 of the 28 (`client.Dial`, `client.New`, `server.Listen`, `server.ListenAndServe`, `session.New`)
+    pin an exact signature; the other 23 pin existence only. Removing or changing an exported identifier that
+    is not on its list fails nothing. The doc says so and
+    names reviewers as the control for the rest; it does not claim the promise is mechanically enforced.
+    Suggested follow-up, not done: an exhaustive exported-API snapshot test (a golden file per public package,
+    generated with `go/parser` or `go doc`, no new dependency) so a removal fails the build and an addition
+    needs a recorded update. That would make the promise checkable, and is best done before the first tag.
+    The interface rule (adding a method to an exported interface is breaking) is standard Go practice but is
+    policy text I wrote on your behalf: please read that bullet.
 - [ ] **6.6** Reconsider the declared minimum Go version
   - `go 1.26.0` requires the newest toolchain, which narrows adoption among conservative telecom
     operators. Lower it if no 1.26-only feature is load-bearing.
