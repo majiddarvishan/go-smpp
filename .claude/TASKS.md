@@ -838,8 +838,33 @@ Goal: measurable quality floor, then `v1.0.0`.
     1.26.x toolchain independently of the `go` line, which stays correct. If you apply it, also update the
     README sentence that quotes `go 1.26.0` and the release checklist. To apply:
     `sed -i 's/^go 1.26.0$/go 1.21/' go.mod`.
-- [ ] **6.7** Tag `v1.0.0`
+- [ ] **6.7** Tag `v1.0.0` — **NOT DONE ON PURPOSE; blocked on 6.4 and on your go-ahead**
   - Acceptance: all Phase 0–3 items closed; first git tag pushed.
+  - The literal acceptance clause is met: every item in Phases 0-3 is closed (the only unchecked boxes in this
+    file are 6.4, 6.6 and this one). I still did not tag, for reasons that are not formalities:
+    1. `docs/RELEASE_CHECKLIST.md` says "Do not create that tag from an unverified reference-performance
+       state", and lists the published reference environment, minimum passing session count, sustained
+       request-PDU/s and memory bounds as preconditions. 6.4 is the missing evidence and needs the reference host.
+    2. A tag is not undoable in practice. The Go module proxy caches a published version permanently; deleting or
+       moving the git tag afterwards does not retract it for anyone who has already fetched it. `v1.0.0` also
+       starts the SemVer promise in `docs/API_COMPATIBILITY.md`.
+    3. The commits are on `chore/phase0-hygiene`, not on `main` (`origin/main` is still at `00c80cd`). A first
+       release tag belongs on a reviewed, merged commit.
+    4. Decisions that shape what v1 promises are still open: the minimum Go version (6.6, D2), whether to
+       add an exhaustive exported-API snapshot first (6.5 follow-up), the `EnquireLinkInterval`-disabled
+       limitation (6.3), and the backlogged unbound-connection cap, whose Phase 5 exit criterion is knowingly
+       unmet.
+    There are no tags in the repository today (`git ls-remote --tags origin` is empty).
+    When you are ready, after the reference result is published and the branch is merged:
+    `git checkout main && git pull && git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
+    I will do it on request, but I would want an explicit instruction naming the commit.
+
+**Phase 6 status: 6.1, 6.2, 6.3 and 6.5 done; 6.4 blocked on hardware; 6.6 evidence done, decision yours; 6.7 not done on purpose.**
+Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held
+for the final stage. Open items that need a person, not more work from me: run `scripts/acceptance.sh` on the
+8-core / 10-GiB reference host and fill `docs/PERFORMANCE.md` (6.4); decide D2 (6.6); decide the enquire_link-disabled
+policy (6.3) and the unbound-connection cap (backlog); review the interface-compatibility wording added in 6.5;
+merge to `main`; then tag (6.7).
 
 ---
 
