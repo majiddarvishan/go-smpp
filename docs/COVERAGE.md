@@ -22,15 +22,17 @@ total, which also credits cross-package coverage (a `session` test exercising `c
 | Package | Floor | Measured (2026-10-05) |
 | --- | ---: | ---: |
 | `client` | 59 | 61.1 |
-| `codec` | 62 | 64.8 |
+| `codec` | 74 | 76.0 |
 | `encoding` | 72 | 74.5 |
 | `message` | 73 | 75.8 |
 | `protocol` | 54 | 56.8 |
 | `server` | 73 | 75.7 |
 | `session` | 80 | 82.3 |
 | `transport` | 78 | 80.4 |
-| module total | 71 | 73.3 |
+| module total | 74 | 76.6 |
 
+`codec` rose from 64.8 to 76.0 when the fuzz corpus was committed (`codec/testdata/fuzz/`, Task 6.2), because
+plain `go test` replays every corpus file; its floor was raised the same day.
 Measured with a Go 1.22 toolchain on linux/amd64. Each floor is set 2 points below the measurement.
 Run-to-run noise was under 0.5 points over five runs (the only moving package was `session`, 82.3 to 82.8,
 from timing-dependent branches), and the same figures held under `-race -covermode=atomic`.

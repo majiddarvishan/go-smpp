@@ -4,19 +4,20 @@
 #   total <minimum>                       the module total, counting cross-package coverage
 #   exclude <package> <reason...>         deliberately has no floor
 #
-# Set 2 points below the values measured on 2026-10-05 (Go 1.22 toolchain, linux/amd64). Measured
+# Set 2 points below the values measured on 2026-10-05 (Go 1.22 toolchain, linux/amd64); codec and total
+# were raised the same day when the committed fuzz corpus (Task 6.2) lifted codec from 64.8 to 76.0. Measured
 # run-to-run noise was under 0.5 points, so the margin is not there for flakiness alone: it also leaves
 # room for a small refactor. Raise a floor whenever coverage has risen; lower one only deliberately, in
 # a commit that says why.
 client     59
-codec      62
+codec      74
 encoding   72
 message    73
 protocol   54
 server     73
 session    80
 transport  78
-total      71
+total      74
 
 exclude .                        root package: only architecture/API/posture tests, no statements of its own
 exclude cmd/smpp-sim             program, exercised by scripts/acceptance.sh and the examples rather than unit tests

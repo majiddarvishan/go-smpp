@@ -712,9 +712,37 @@ Goal: measurable quality floor, then `v1.0.0`.
     Until the CI step is added, nothing *enforces* the floor automatically: run `scripts/coverage.sh`
     before merging. You have not run it yet on your toolchain (Go 1.26); the numbers there may differ
     slightly.
-- [ ] **6.2** Commit the fuzz corpus (T4)
+- [x] **6.2** Commit the fuzz corpus (T4)
   - Acceptance: `codec/testdata/fuzz/` holds the crashers and interesting inputs found so far, so
     the CI smoke does not start cold each run.
+  - Done. `codec/testdata/fuzz/FuzzFramer/` (13 files) and `.../FuzzDecodePDU/` (178 files), 17 KB in
+    total, plus a `README.md` with provenance and the refresh command. Obtained by fuzzing each target from a
+    cold cache for this task: `FuzzFramer` 120 s, 3.85 M executions; `FuzzDecodePDU` 150 s, 4.93 M
+    executions (Go 1.22, one CPU). **No crashing input was found, so there are no crashers to commit** —
+    the acceptance's "crashers" part is empty because none exist, not because they were left out. The
+    project notes mention none either.
+    Measured, not assumed, that it does what the finding asked: (1) a 2 s `FuzzDecodePDU` smoke now gathers
+    baseline coverage over 181 inputs instead of the 3 inline seeds, so it no longer starts cold; (2) plain
+    `go test` replays all 191 files as subtests (197 with the inline seeds), which is also why `codec`
+    coverage rose from 64.8 to 76.0 and its floor, and the total floor, were raised in
+    `.coverage-floor`/`docs/COVERAGE.md`.
+    Does the corpus catch regressions the rest of the suite misses? A little, and I measured it with six
+    plausible decoder bugs (TLV length check removed; C-string limit not clamped; `ReadUint32` off by one;
+    framer accepting a length below the header; TLV header truncation off by one; C-string scanning one octet
+    past its limit). Full suite without the corpus caught 4 of 6; the two fuzz targets with only their inline
+    seeds caught 0 of 6; with the corpus 5 of 6. `ReadUint32` off by one was caught **only** by the corpus.
+    The TLV-header off-by-one was missed by everything: the fuzz contract is "no panic", and that bug reads
+    a byte too far inside the buffer without panicking, so it needs a targeted unit test, not more fuzzing.
+    `TestFuzzCorpusIsCommitted` (`codec/fuzz_corpus_test.go`) fails if either directory is deleted or
+    emptied (both cases tried), since a tidy-up would otherwise silently switch off the regression suite
+    and the warm start.
+    Limits, and what I did not do: the targets' contract is panic-freedom plus the framer's frame-length
+    invariant, nothing about decoded values; `FuzzDecodePDU` covers the SMPP 3.4 registry in compatible
+    mode only, so SMPP 5.0 command decoding is not fuzzed; and `FuzzFramer` feeds one slice per run, so it
+    cannot reach the fragmentation paths (including Task 3.4's buffer release). A third target feeding the
+    framer in random chunks and comparing with a one-shot feed would cover that. I did not add targets
+    unasked; say if you want them. The CI step is unchanged (`.github/workflows/` untouched), and
+    needs no edit to benefit: it will pick the corpus up from `testdata`.
 - [ ] **6.3** Stalled-peer and slow-client tests (T3)
   - Acceptance: covered by 1.4; add the read-side equivalent.
 - [ ] **6.4** Publish Phase 17 reference-machine evidence
