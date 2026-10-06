@@ -689,9 +689,29 @@ connections per remote address or an accept-time admission hook: new public API 
 ## Phase 6 — Test coverage & release
 Goal: measurable quality floor, then `v1.0.0`.
 
-- [ ] **6.1** Coverage measurement and floor (T1)
+- [x] **6.1** Coverage measurement and floor (T1) — *CI wiring held*
   - Acceptance: `go test -coverprofile` in CI with a documented minimum that cannot silently
     regress.
+  - Done, except the CI step itself, which is held by the working rule that CI changes wait for the final
+    stage (`.github/workflows/` untouched). Delivered: `scripts/coverage.sh` (check and `--suggest`
+    modes; honours `GOFLAGS`, so `-race` works), `.coverage-floor` (versioned, so lowering a floor is a
+    visible diff), and `docs/COVERAGE.md` (floors, rules, and the exact one-line CI step to add later).
+    Measured on 2026-10-05, Go 1.22, linux/amd64: client 61.1, codec 64.8, encoding 74.5, message 75.8,
+    protocol 56.8, server 75.7, session 82.3-82.8, transport 80.4, module total 73.3 (counting
+    cross-package coverage). Floors are each 2 points below. Variability was measured rather than guessed:
+    five runs moved only `client` (61.1-61.5) and `session` (82.3-82.8), under 0.5 points, and the figures
+    held under `-race -covermode=atomic`.
+    The script is checked, not trusted: 9 scenarios on a scratch copy, all behaving: healthy run passes;
+    deleting `session`'s tests fails (`session` 0.0 < 80); a floor raised above reality fails; a new package
+    with no floor fails; a floor for a package that no longer exists fails; a total floor above reality
+    fails; a failing test fails the check before any coverage is judged; a missing floor file fails; a bad
+    argument exits 2.
+    Honest limit: statement coverage shows a line ran, not that anything asserted on it. `protocol` is the
+    lowest (56.8) and is mostly large encoder/decoder tables covered by round-trip and fuzz tests. This is a
+    regression guard, not a correctness claim; the mutation checks in this file are what tested the tests.
+    Until the CI step is added, nothing *enforces* the floor automatically: run `scripts/coverage.sh`
+    before merging. You have not run it yet on your toolchain (Go 1.26); the numbers there may differ
+    slightly.
 - [ ] **6.2** Commit the fuzz corpus (T4)
   - Acceptance: `codec/testdata/fuzz/` holds the crashers and interesting inputs found so far, so
     the CI smoke does not start cold each run.
