@@ -774,8 +774,24 @@ Goal: measurable quality floor, then `v1.0.0`.
     `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one.
     `docs/TIMEOUTS_AND_LIVENESS.md` gains a "Peers that stall while sending" section with the table.
     Coverage floors unchanged (the new tests exercise existing paths).
-- [ ] **6.4** Publish Phase 17 reference-machine evidence
+- [ ] **6.4** Publish Phase 17 reference-machine evidence — **BLOCKED: needs the reference machine**
   - Acceptance: throughput result and resource bounds recorded in `docs/PERFORMANCE.md`.
+  - Not done, and it cannot be done from here. The contract is a Linux/amd64 host with at least 8 logical
+    CPUs, 10 GiB RAM and Go 1.26.x; `scripts/acceptance.sh` checks all three and exits 2 otherwise, by
+    design. This sandbox has 1 CPU and Go 1.22. I did not run the harness here and quote a number: a figure
+    from the wrong hardware is exactly what the script exists to prevent, and the acceptance result is
+    reserved for the reference host.
+    What I did: wrote `docs/PERFORMANCE.md` (linked from the README) with the status stated up front as
+    "not recorded", the acceptance contract restated from the script and `acceptance_test.go` (machine
+    requirements; pass criteria: >= 100 000 request PDU/s, requests == responses, goroutine bound, peak heap
+    <= 1024 MiB, retained growth <= 64 MiB, pending/window within bound; session counts 1, 2, 4 tried in
+    order), exact commands, the list of artifacts the run writes, and a table of every field to copy from the
+    `PHASE17_RESULT` line, every cell `_not recorded_`. Nothing in it is a measurement.
+    To finish it (about 5 minutes of your time once you are on the host): `scripts/acceptance.sh`, fill the table
+    from `acceptance-sessions-N.txt` and `environment.txt`, keep the raw artifacts, then update the README
+    blocker sentence and `docs/RELEASE_CHECKLIST.md`.
+    Related: this is also the last thing standing between the project and the `v1.0.0` tag (6.7), because
+    `docs/RELEASE_CHECKLIST.md` forbids tagging from an unverified reference-performance state.
 - [ ] **6.5** Document the compatibility promise
   - `COMPATIBILITY.md` (or README section): SemVer covers exported identifiers in `protocol`,
     `codec`, `message`, `session`, `client`, `server`; `internal/` explicitly excluded.
