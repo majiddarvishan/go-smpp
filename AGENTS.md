@@ -5,7 +5,7 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 ## Mandatory working rules
 
 - `PLAN.md` is the implementation progress source of truth; completed and verified steps become `[x]`.
-- Minimum supported Go version is 1.26.
+- Minimum supported Go version is 1.25, and newer releases through 1.27 are supported (`docs/DECISIONS.md` D2).
 - The network transport is TCP. Do not implement X.25. TLS is optional and, when enabled, is layered over TCP.
 - SMPP 3.4 is the first complete target; the core stays SMPP 5.0-aware.
 - Client/ESME and server/SMSC share protocol/session core logic.

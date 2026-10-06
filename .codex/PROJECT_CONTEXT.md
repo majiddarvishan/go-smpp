@@ -48,7 +48,7 @@ The specifications are protocol references, not source-code dependencies.
 - Fatal structural/framing corruption terminates the offending TCP connection/session after structured diagnostic logging; no byte-stream resynchronization is attempted.
 - A server must isolate malformed input to the offending connection; the listener and unrelated sessions continue normally.
 - Minimize external dependencies; prefer the standard library.
-- Minimum supported Go version is 1.26.
+- Minimum supported Go version is 1.25, and newer releases through 1.27 are supported (`docs/DECISIONS.md` D2; changed from 1.26 on 2026-10-06).
 - Initial implementation must not use `unsafe`.
 - Extensible registry is required for vendor-specific TLVs and future/custom commands.
 

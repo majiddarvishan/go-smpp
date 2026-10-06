@@ -130,6 +130,8 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** The project is new, performance-sensitive, and targets Linux/amd64. Supporting an actively supported modern Go baseline avoids carrying compatibility cost for older toolchains while leaving Go 1.27 usable by consumers.
 
+**Superseded 2026-10-06:** the minimum is now **Go 1.25**, with releases through 1.27 supported; see `docs/DECISIONS.md` D2. The reference-acceptance toolchain (`scripts/acceptance.sh`) is a separate requirement and still names Go 1.26.x.
+
 ## D-026 — Sequence-number receive interoperability
 
 **Decision:** Locally generated sequence numbers remain in the SMPP-defined request range `0x00000001..0x7fffffff`. Inbound PDUs accept any non-zero uint32 sequence number through `0xffffffff`. A response to an inbound request must preserve the received value exactly, including values above `0x7fffffff`.

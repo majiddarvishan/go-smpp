@@ -814,7 +814,7 @@ Goal: measurable quality floor, then `v1.0.0`.
     needs a recorded update. That would make the promise checkable, and is best done before the first tag.
     The interface rule (adding a method to an exported interface is breaking) is standard Go practice but is
     policy text I wrote on your behalf: please read that bullet.
-- [ ] **6.6** Reconsider the declared minimum Go version — **decided (floor Go 1.25, support through 1.27); `go.mod` edit not yet applied**
+- [x] **6.6** Reconsider the declared minimum Go version — **decided and applied 2026-10-06: `go 1.25`, support through 1.27**
   - `go 1.26.0` requires the newest toolchain, which narrows adoption among conservative telecom
     operators. Lower it if no 1.26-only feature is load-bearing.
   - Evidence gathered; **`go.mod` deliberately not changed** (working rule 3: the real `go.mod` is never
@@ -828,9 +828,13 @@ Goal: measurable quality floor, then `v1.0.0`.
     it; 1.25 and 1.26 were not available, and you ran 1.26.
     **Maintainer decision 2026-10-06: floor Go 1.25, and 1.27 must be supported.** Recorded in D2, with the honest
     gaps: 1.25 is bracketed by passing 1.24 and 1.26 but not itself tested, 1.27 rests on his runs, and supporting 1.27
-    means a CI matrix (`1.25.x`, `1.27.x`) once the CI stage opens. Not applied to `go.mod`: working rule 3 says the real
-    `go.mod` is never edited without an explicit instruction. To apply: `sed -i 's/^go 1.26.0$/go 1.25/' go.mod`, plus the
-    README sentence that quotes 1.26.0, and `scripts/acceptance.sh` if the reference host moves to 1.27.
+    means a CI matrix (`1.25.x`, `1.27.x`) once the CI stage opens. **Applied afterwards, on the maintainer's explicit instruction** (working rule 3 otherwise forbids
+    editing the real `go.mod`): `go 1.26.0` -> `go 1.25`; the README sentence, `AGENTS.md`, `.codex/PROJECT_CONTEXT.md` and a
+    superseded note under `.codex/DECISIONS.md` D-025 updated with it. **Not verified by compiling here:** this
+    environment has no 1.25 toolchain and cannot build a `go 1.25` module, so the first real build is the maintainer's
+    (command in D2). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
+    or 1.27 yet. `scripts/acceptance.sh` still requires `go1.26*`, deliberately: it names the reference environment,
+    not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
     a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
     on the floor plus one on the newest release** (CI today installs only 1.26.x, so a declared floor would be
@@ -862,11 +866,11 @@ Goal: measurable quality floor, then `v1.0.0`.
     `git checkout main && git pull && git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
     I will do it on request, but I would want an explicit instruction naming the commit.
 
-**Phase 6 status: 6.1, 6.2, 6.3, 6.4 and 6.5 done; 6.6 decided (Go 1.25), `go.mod` edit pending; 6.7 not done on purpose.**
+**Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
 final stage, and the lint gate has never passed on this branch (see the CI checklist). Open items that need a person:
-send `environment.txt` from the acceptance run so `docs/PERFORMANCE.md` can be completed; say whether to apply the
-`go.mod` change; decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
+send `environment.txt` from the acceptance run so `docs/PERFORMANCE.md` can be completed; build and test on Go 1.25
+and 1.27 (the `go.mod` change is untested here); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
 interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
 
 ---

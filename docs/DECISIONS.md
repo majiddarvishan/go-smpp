@@ -87,7 +87,7 @@ the change is provably behaviour-preserving.
 
 ## D2 — Declared minimum Go version
 
-- **Status:** **decided 2026-10-06, `go.mod` change not yet applied.** The maintainer's decision is a floor of **Go 1.25**, with newer releases through **Go 1.27** supported. `go.mod` still says `go 1.26.0` because the working rule is that the real `go.mod` is never edited without an explicit instruction; the one-line change is below. (Review finding on `go 1.26.0`, Task 6.6.)
+- **Status:** **decided and applied 2026-10-06.** The maintainer's decision is a floor of **Go 1.25**, with newer releases through **Go 1.27** supported, and on his explicit instruction `go.mod` now says `go 1.25`. (Review finding on `go 1.26.0`, Task 6.6.) It was applied in a scratch-verified but not directly compiled state: the environment used for this record has no Go 1.25 toolchain, so the first build of the real `go.mod` is the maintainer's; see "What was and was not verified after applying" below.
 - **Applies to:** the `go` directive in `go.mod`, and the sentences that quote it (README, release checklist).
 
 ### Context
@@ -151,3 +151,13 @@ Things that do **not** change, checked: `.github/workflows/ci.yml` and `referenc
 ### Revisit when
 
 A feature newer than the floor is wanted for a good reason (then raise the floor deliberately and record it here), or when upstream's support window moves far enough from the floor that supporting it becomes a liability.
+
+### What was and was not verified after applying
+
+`go.mod` was changed with the one line above, and the README, `AGENTS.md` and `.codex/` statements of the minimum were updated with it; `.codex/DECISIONS.md` D-025 keeps its text and gains a "superseded" note. The environment this was done in cannot build a `go 1.25` module (its toolchains are 1.21 to 1.24, and `GOTOOLCHAIN=local` refuses a newer requirement), so the verification that matters is a run on a real 1.25 toolchain and on 1.27:
+
+```sh
+gofmt -l . && go build ./... && go vet ./... && go test -count=1 ./... && go test -race ./... && scripts/coverage.sh
+```
+
+Left alone on purpose, because CI changes are held: `.github/workflows/ci.yml` and `reference-acceptance.yml` still install Go `1.26.x`, so nothing automated tests the 1.25 floor yet (see the CI stage checklist in `.claude/TASKS.md`). `scripts/acceptance.sh` still requires a `go1.26*` toolchain: it names the reference-acceptance environment, not the module's minimum.

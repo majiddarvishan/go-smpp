@@ -20,7 +20,7 @@ recorded decision first (see `AGENTS.md`).
 
 What this does and does not cover: it is about this module's own sources. The Go standard library
 and runtime use `unsafe` and cgo internally, so trusting this library still means trusting the Go
-toolchain version you build it with (`go.mod` requires Go 1.26.0). Lint tooling used in CI is
+toolchain version you build it with (`go.mod` declares Go 1.25 as the minimum; see `docs/DECISIONS.md` D2). Lint tooling used in CI is
 development tooling and is not linked into the library.
 
 ## Current status
