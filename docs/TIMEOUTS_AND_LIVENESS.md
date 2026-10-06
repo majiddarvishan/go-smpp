@@ -47,3 +47,19 @@ Default: 30 seconds.
 ## Reconnect interaction
 
 For a dialed client.Client with reconnect enabled, a timeout that terminates the current session may lead to reconnect/rebind according to client.ReconnectPolicy. Requests that belonged to the lost session are not replayed automatically.
+
+## Peers that stall while sending
+
+`WriteTimeout` covers a peer that stops *reading*. The mirror case is a peer that stops *sending* partway through a PDU, or dribbles bytes of one that never completes. Activity is recorded per complete inbound PDU and per completed write, never per byte, so a half-sent PDU is not activity. What ends such a session depends on the state and configuration (all measured in `session/stalled_read_test.go` and `server/stalled_read_test.go`):
+
+| Situation | What closes the session | After about |
+| --- | --- | --- |
+| Before bind, bytes of any kind (half a length word, an unfinished PDU, a steady trickle) | `SessionInitTimeout`, which is absolute from connect: arriving bytes do not extend it | `SessionInitTimeout` |
+| Bound, default configuration | `EnquireLinkTimeout`: our `enquire_link` goes unanswered because the stream is stuck inside the unfinished PDU, whether the peer is silent or trickling | `EnquireLinkInterval` + `EnquireLinkTimeout` |
+| Bound, `EnquireLinkInterval` disabled, and we send nothing | `InactivityTimeout` | `InactivityTimeout` |
+| Bound, `EnquireLinkInterval` disabled, and we keep sending | **Nothing.** See below | never |
+
+Two consequences worth knowing:
+
+- A PDU that legitimately takes longer than `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one. SMPP PDUs are small, so this matters only on extremely slow links; raise the two values if it does.
+- **Limitation: with `EnquireLinkInterval` disabled, a peer that keeps reading but never sends anything back is not detected while the local side keeps sending.** Outbound writes count as activity, so `InactivityTimeout` never fires; every request ends in a response timeout, but the session stays up. The default configuration (`enquire_link` every 30 s) is not affected. If you disable `enquire_link`, either keep it on, or watch `Metrics().ResponseTimeouts` and close the session yourself. This is pinned by `TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending`; a policy such as "terminate after N consecutive response timeouts" would be a deliberate behaviour change and would update that test.

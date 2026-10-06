@@ -743,8 +743,37 @@ Goal: measurable quality floor, then `v1.0.0`.
     framer in random chunks and comparing with a one-shot feed would cover that. I did not add targets
     unasked; say if you want them. The CI step is unchanged (`.github/workflows/` untouched), and
     needs no edit to benefit: it will pick the corpus up from `testdata`.
-- [ ] **6.3** Stalled-peer and slow-client tests (T3)
+- [x] **6.3** Stalled-peer and slow-client tests (T3)
   - Acceptance: covered by 1.4; add the read-side equivalent.
+  - Done, and it found something. The write side (peer never reads) was Task 1.4. The read-side
+    equivalent is a peer that stops *sending*: half a length word, an unfinished PDU, or a trickle that never
+    completes. I probed the real code first and asserted afterwards. `session/stalled_read_test.go`
+    (net.Pipe, 6 tests): half a length word before bind and a byte-per-5 ms trickle of a declared-1 MiB PDU are
+    both closed by `SessionInitTimeout` (the trickle does not extend it); a bound peer stalled mid-PDU, and one
+    trickling, are both closed by `EnquireLinkTimeout` at about interval + timeout (81 ms for 40 + 40);
+    with enquire_link disabled and nothing sent, `InactivityTimeout` closes it. `server/stalled_read_test.go`
+    (real TCP and a real server, 2 tests): a client that sends half a bind, and a bound client that starts a
+    1 MiB PDU and stops, are both disconnected (the socket reaches EOF, not just the session list) and the
+    server forgets the session. Race-clean (`-count=2`).
+    Mutation-checked, 7 mutants all killed: init deadline never scheduled (both packages); bytes counting as
+    liveness via a per-read activity stamp plus an idle-style init timer (the slow-loris shape; kills both
+    trickle tests); outbound writes no longer counting as activity; an unanswered enquire_link not ending the
+    session (both packages); inactivity never firing.
+    **Finding, documented and pinned, not fixed:** with `EnquireLinkInterval` disabled, a peer that keeps
+    reading but never sends anything back is *not detected while the local side keeps sending*. Outbound writes
+    count as activity (as `docs/TIMEOUTS_AND_LIVENESS.md` already said), so `InactivityTimeout` never fires;
+    each request ends in a response timeout and the session stays up. Measured: alive after 3 s against a
+    200 ms inactivity timeout. The default configuration (enquire_link every 30 s) is not affected, so this is a
+    consequence of opting out of the liveness probe, not a default-config hole. It is pinned by
+    `TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending`, which will fail, on purpose,
+    if behaviour changes. A possible fix is a policy such as "terminate after N consecutive response
+    timeouts"; that is a behaviour change with its own design questions (what N, per-session or per-window,
+    interaction with reconnect), so I did not make it. Decision for you; until then the docs say to keep
+    enquire_link on or to watch `Metrics().ResponseTimeouts`.
+    Also documented, as a deliberate corollary: a PDU that legitimately takes longer than
+    `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one.
+    `docs/TIMEOUTS_AND_LIVENESS.md` gains a "Peers that stall while sending" section with the table.
+    Coverage floors unchanged (the new tests exercise existing paths).
 - [ ] **6.4** Publish Phase 17 reference-machine evidence
   - Acceptance: throughput result and resource bounds recorded in `docs/PERFORMANCE.md`.
 - [ ] **6.5** Document the compatibility promise
