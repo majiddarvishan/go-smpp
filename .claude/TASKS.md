@@ -868,6 +868,29 @@ merge to `main`; then tag (6.7).
 
 ---
 
+## CI stage checklist (held)
+
+CI changes are held for the final stage, so `.github/workflows/` is untouched. Everything that stage needs, in one place:
+
+1. **Lint step is probably broken as it stands.** `ci.yml` uses `golangci/golangci-lint-action@v7` with
+   `version: v1.62.2`. Action v7 supports golangci-lint **v2 only** (its source rejects a v1 version string:
+   "golangci-lint v1 is not supported by golangci-lint-action v7"), and `.golangci.yml` is in v1 format
+   (`linters: disable-all: true`). Found by search on 2026-10-06, not by running CI, so confirm when wiring it.
+   Two ways out: use `golangci-lint-action@v6` with a v1.x release (latest v1 is v1.64.8), or move to v2 with
+   `golangci-lint migrate` on the config. A v1.62.2 binary built with an older Go may also refuse a module whose
+   `go` line is newer than the Go it was built with; relevant if D2 is not applied.
+   On a developer machine the simplest way to run the same gate is `go install` of the chosen version, which builds
+   it with the local toolchain. The maintainer's full-check run on 2026-10-06 stopped at
+   `golangci-lint: command not found`, so **the lint gate has not been run on this branch since Phase 5 began**
+   (the scratch checks here never ran it either).
+2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
+3. **Go version (6.6, D2):** if the floor is lowered, a matrix of the floor and the newest release.
+4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
+   10 GiB, Go 1.26.x); its output feeds `docs/PERFORMANCE.md`.
+5. **Fuzz smoke:** needs no edit; it now starts from the committed corpus (6.2).
+
+---
+
 ## Explicitly deferred
 
 | Item | Reason |
