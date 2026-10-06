@@ -832,7 +832,13 @@ Goal: measurable quality floor, then `v1.0.0`.
     editing the real `go.mod`): `go 1.26.0` -> `go 1.25`; the README sentence, `AGENTS.md`, `.codex/PROJECT_CONTEXT.md` and a
     superseded note under `.codex/DECISIONS.md` D-025 updated with it. **Not verified by compiling here:** this
     environment has no 1.25 toolchain and cannot build a `go 1.25` module, so the first real build is the maintainer's
-    (command in D2). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
+    (command in D2). **Update, same day:** the maintainer ran build, vet, `go test -count=1 ./...`, `go test -race ./...`
+    and `scripts/coverage.sh` against `go 1.25` on his own toolchain (version not reported): all pass, coverage client
+    61.8-62.2, codec 76.2, server 75.9, session 83.1-83.5, total 76.5-76.7, all above their floors. That shows the
+    directive is accepted and no code needs a language feature newer than 1.25. It does **not** show that a Go 1.25
+    *toolchain* compiles the module: a newer toolchain accepts standard-library APIs added after 1.25 whatever the
+    `go` line says. The remaining check is `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (and the same with a
+    current 1.25.x). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
     or 1.27 yet. `scripts/acceptance.sh` still requires `go1.26*`, deliberately: it names the reference environment,
     not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
