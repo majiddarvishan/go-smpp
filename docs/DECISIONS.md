@@ -82,3 +82,63 @@ If revisited, prefer an unexported generic helper that keeps every exported
 method and its documentation unchanged, and add a test that drives all of the
 wrappers through the same success, error-status and wrong-body cases first, so
 the change is provably behaviour-preserving.
+
+---
+
+## D2 — Declared minimum Go version
+
+- **Status:** proposed, **not applied** (review finding on `go 1.26.0`, Task 6.6). `go.mod` is unchanged; the decision is the maintainer's.
+- **Applies to:** the `go` directive in `go.mod`, and the sentences that quote it (README, release checklist).
+
+### Context
+
+`go.mod` says `go 1.26.0`. A toolchain older than that either downloads a newer one (`GOTOOLCHAIN=auto`) or refuses to build ("requires go >= 1.26.0"), which on an air-gapped build host is a hard stop. The question the finding asks is whether any Go 1.26 feature is actually needed.
+
+### Evidence
+
+The whole module was built, vetted and tested, with the `go` directive in a scratch copy set to each value below and `GOTOOLCHAIN=local` so no toolchain was fetched. "Tests" means `go test -count=1 ./...` over all 10 packages, including the root package's architecture, API-contract and supply-chain tests.
+
+| Toolchain | `go` line | Build | Vet | Tests |
+| --- | --- | --- | --- | --- |
+| 1.21.9 | 1.21 | ok | ok | ok |
+| 1.22.2 | 1.22 | ok | ok | ok |
+| 1.23.1 | 1.23 | ok | ok | ok |
+| 1.24.13 | 1.24 | ok | ok | ok |
+| 1.24.13 | 1.21 | ok | ok | ok |
+| 1.24.13 | 1.22 | ok | ok | ok |
+
+The race detector (`session`, `server`, `client`, `transport`) is also clean on 1.21.9 / line 1.21 and on 1.24.13 / line 1.21. The maintainer has separately run the full suite on the real Go 1.26 toolchain.
+
+What this shows:
+
+- **No Go 1.26 feature is load-bearing, and nothing newer than Go 1.21 is.** A 1.21 compiler accepts every package, test file, example and command in the module.
+- **1.21 is the floor, and it is a hard one**: `log/slog`, used by `session` and `cmd/smpp-sim`, first shipped in Go 1.21. Go 1.20 was not tested (no toolchain available) and cannot work as the code stands.
+- **The code does not depend on newer language semantics.** The `go` line selects language and runtime defaults: per-iteration loop variables arrive with a 1.22 line and the current timer-channel semantics with a 1.23 line. Rows 5 and 6 compile with a modern toolchain under the old semantics, and pass. So the library works under both old and new semantics, which matters because a consumer's own `go.mod` decides which apply to their binary.
+
+### Options
+
+1. **Keep `go 1.26.0`.** No change, no new test burden. Cost: excludes any operator who cannot run a current toolchain.
+2. **Lower to `go 1.21`**, the verified floor. Widest adoption. Cost: you now promise a toolchain that upstream stopped supporting long ago, so those users also run a standard library (`crypto/tls`, `crypto/x509`, `net`) without current security fixes. That is their choice, but it is part of what the library is then deployed on.
+3. **Lower to an intermediate value** (for example `go 1.22`): the same evidence supports it. It narrows the promise to something less ancient but is otherwise arbitrary; the principled choices are 1 and 2.
+
+### Recommendation
+
+Option 2 **only together with a CI job that builds and tests on the floor**, plus one on the newest release. A declared minimum nobody tests is a claim that rots, and today CI installs only Go 1.26. If you do not want to maintain an old-toolchain job, choose option 1; that is a legitimate answer, not a failure.
+
+### If you apply it
+
+```sh
+sed -i 's/^go 1.26.0$/go 1.21/' go.mod
+```
+
+and in the same commit:
+
+- README: the sentence "(`go.mod` requires Go 1.26.0)" in the supply-chain section.
+- `docs/RELEASE_CHECKLIST.md`: the minimum-Go-version item.
+- CI (held until the CI stage): a matrix of `1.21.x` and `1.26.x`; for example `go-version: ['1.21.x', '1.26.x']`.
+
+Things that do **not** change, checked: `.github/workflows/ci.yml` and `reference-acceptance.yml` install Go with a literal `1.26.x`, not `go-version-file`, so lowering `go.mod` does not change which toolchain they use; and `scripts/acceptance.sh` requires a 1.26.x *toolchain* regardless of the `go` line, which is right, since the reference result should be taken on the current compiler.
+
+### Revisit when
+
+A feature newer than the floor is wanted for a good reason (then raise the floor deliberately and record it here), or when upstream's support window moves far enough from the floor that supporting it becomes a liability.

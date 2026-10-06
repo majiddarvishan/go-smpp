@@ -816,9 +816,28 @@ Goal: measurable quality floor, then `v1.0.0`.
     needs a recorded update. That would make the promise checkable, and is best done before the first tag.
     The interface rule (adding a method to an exported interface is breaking) is standard Go practice but is
     policy text I wrote on your behalf: please read that bullet.
-- [ ] **6.6** Reconsider the declared minimum Go version
+- [ ] **6.6** Reconsider the declared minimum Go version — **evidence done; decision and change pending (yours)**
   - `go 1.26.0` requires the newest toolchain, which narrows adoption among conservative telecom
     operators. Lower it if no 1.26-only feature is load-bearing.
+  - Evidence gathered; **`go.mod` deliberately not changed** (working rule 3: the real `go.mod` is never
+    touched). The answer to the finding's condition is yes: **no 1.26-only feature is load-bearing; the module
+    builds, vets and passes `go test ./...` (10 packages, root tests included) on real toolchains Go 1.21.9,
+    1.22.2, 1.23.1 and 1.24.13, each with a matching `go` line, and on 1.24.13 under `go 1.21` and `go 1.22`
+    lines** (so it also works under the old loop-variable and timer semantics). The race detector is clean on
+    `session`/`server`/`client`/`transport` for 1.21.9 and for 1.24.13 under a 1.21 line. Floor: **Go 1.21**,
+    because `log/slog` (used by `session` and `cmd/smpp-sim`) first shipped there; Go 1.20 not tested and cannot
+    work as written. I installed 1.21/1.22/1.23/1.24 from the distro to do this rather than reasoning about
+    it; 1.25 and 1.26 were not available, and you ran 1.26.
+    Recorded as `docs/DECISIONS.md` **D2** with status "proposed, not applied": the table, three options,
+    a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
+    on the floor plus one on the newest release** (CI today installs only 1.26.x, so a declared floor would be
+    untested); otherwise keep 1.26.0, which is a legitimate answer. Cost to state plainly: it invites builds on
+    toolchains upstream no longer patches, including `crypto/tls`.
+    Checked, so you do not have to: both workflows install Go with a literal `1.26.x`, not
+    `go-version-file`, so lowering `go.mod` does not change CI's toolchain; `scripts/acceptance.sh` requires a
+    1.26.x toolchain independently of the `go` line, which stays correct. If you apply it, also update the
+    README sentence that quotes `go 1.26.0` and the release checklist. To apply:
+    `sed -i 's/^go 1.26.0$/go 1.21/' go.mod`.
 - [ ] **6.7** Tag `v1.0.0`
   - Acceptance: all Phase 0–3 items closed; first git tag pushed.
 
