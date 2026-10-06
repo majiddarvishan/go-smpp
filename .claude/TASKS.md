@@ -876,13 +876,21 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    `version: v1.62.2`. Action v7 supports golangci-lint **v2 only** (its source rejects a v1 version string:
    "golangci-lint v1 is not supported by golangci-lint-action v7"), and `.golangci.yml` is in v1 format
    (`linters: disable-all: true`). Found by search on 2026-10-06, not by running CI, so confirm when wiring it.
-   Two ways out: use `golangci-lint-action@v6` with a v1.x release (latest v1 is v1.64.8), or move to v2 with
-   `golangci-lint migrate` on the config. A v1.62.2 binary built with an older Go may also refuse a module whose
-   `go` line is newer than the Go it was built with; relevant if D2 is not applied.
-   On a developer machine the simplest way to run the same gate is `go install` of the chosen version, which builds
-   it with the local toolchain. The maintainer's full-check run on 2026-10-06 stopped at
-   `golangci-lint: command not found`, so **the lint gate has not been run on this branch since Phase 5 began**
-   (the scratch checks here never ran it either).
+   **Confirmed by the maintainer's local run on 2026-10-06, and stronger than the action mismatch:** a v1.x
+   binary built locally with Go 1.26 fails on every package with `could not import sync/atomic ... export data
+   version 4 is greater than maximum supported version 2` (typecheck). That is the linter's bundled
+   `go/gcexportdata` reader being too old for Go 1.26's export format, not a defect in this code, and the v1 line
+   is frozen (last release v1.64.8), so **no v1.x release will work against a Go 1.26 toolchain, including the
+   v1.62.2 CI pins** (CI installs Go `1.26.x`). The way out is golangci-lint **v2** plus its action v7 and a v2 config:
+   `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, then `golangci-lint migrate` to
+   rewrite `.golangci.yml`, then `golangci-lint run ./...`. Lowering the `go` line (D2) would not help: the
+   toolchain, not the line, is what the linter cannot read.
+   Expect the migration to change the linter set slightly: in v2 `gosimple` is folded into `staticcheck`, which now
+   also carries the former `stylecheck` checks, so a first v2 run may report findings v1 never did. I have not
+   hand-written a v2 config or run v2 (downloads are barred by the working rules and I could not verify it), so
+   `.golangci.yml` is unchanged; the migrate output and the first run's findings are the thing to review.
+   **The lint gate has therefore never passed on this branch since Phase 5 began**, here or on the maintainer's
+   machine; the scratch checks never ran it.
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
 3. **Go version (6.6, D2):** if the floor is lowered, a matrix of the floor and the newest release.
 4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
