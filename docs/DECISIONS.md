@@ -119,10 +119,10 @@ What this shows:
 
 Declare **Go 1.25** as the minimum and support every release above it, which now includes 1.27. What backs this, and what does not:
 
-- 1.21, 1.22, 1.23 and 1.24 were each tested directly (table above). The maintainer ran the suite on a Go 1.26 toolchain. His `golangci-lint` binary reports being built with go1.27.0, which suggests a 1.27 toolchain is also in use locally, but that has not been confirmed against the acceptance run's `environment.txt`. Go 1.25, 1.26 and 1.27 were not available in the environment used for this record, so **1.25 is bracketed by a passing 1.24 and a passing 1.26, not tested on its own**, and 1.27 rests on the maintainer's runs. A CI job on exactly 1.25 settles the first.
+- 1.21, 1.22, 1.23 and 1.24 were each tested directly (table above). The maintainer ran the suite on a Go 1.26 toolchain. The reference acceptance run's `environment.txt` records **go1.27.0**, and that run includes a race-detector pass of `session`, `client` and `server`, so 1.27 is confirmed on the maintainer's machine. Go 1.25 and 1.26 were not available in the environment used for this record, so **1.25 is bracketed by a passing 1.24 and a passing 1.27, not tested on its own**. `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` settles it.
 - Go 1.25 is the maintainer's chosen floor, higher than the verified 1.21; it is not a limit of the code. One thing to weigh: if Go 1.27 is already released, upstream supports only 1.26 and 1.27, so a 1.25 floor means promising a toolchain that has just left upstream support. That is a legitimate choice, but it is the point of the trade-off above.
 - **Supporting 1.27 means testing it.** CI should run a matrix of the floor and the newest release (`1.25.x` and `1.27.x`) once the CI stage opens, otherwise "supports 1.27" is a hope.
-- `scripts/acceptance.sh` hard-requires a `go1.26*` toolchain. If the reference host moves to 1.27, that check must change in the same commit.
+- `scripts/acceptance.sh` hard-requires a `go1.26*` toolchain, yet the recorded reference run used go1.27.0, so the host has in effect moved (see `docs/PERFORMANCE.md`). That check must be changed in a commit, or the run repeated on 1.26.x.
 
 ### Options
 

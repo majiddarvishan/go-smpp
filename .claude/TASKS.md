@@ -785,11 +785,12 @@ Goal: measurable quality floor, then `v1.0.0`.
     `GOMAXPROCS` 8. `docs/PERFORMANCE.md` records all of it, says what it does and does not measure (one session,
     loopback, trivial handler), and README text that called the reference result pending is updated.
     Values come from the console output the maintainer pasted; nothing was run here (this environment cannot).
-    **Still open, and needed before the tag (6.7):** the commit, Go version, kernel, memory and date from the run's
-    `environment.txt`, which I have not seen; those cells say "not recorded". Also keep the raw artifacts.
-    One loose end: `scripts/acceptance.sh` requires a `go1.26*` toolchain, while the maintainer's `golangci-lint`
-    reports being built with go1.27.0. The two are reconcilable (different shells, or a toolchain switch) but
-    `environment.txt` will say which Go the run used.
+    **Environment now recorded** from the run's `environment.txt`: commit `c0f699c`, 2026-10-06T19:59:40Z, **go1.27.0**,
+    Linux 6.8.0-139, 12 logical CPUs (i5-12400), `GOMAXPROCS` 8, 31.1 GiB. Keep the raw artifacts too.
+    **Deviation, open:** the contract says Go 1.26.x and the script as committed requires `go1.26*` and would exit 2 on
+    go1.27.0, yet the run used go1.27.0, so it ran a locally modified script (or a different check; the recorded commit
+    may not describe the tree). Decide: keep 1.26.x as the reference toolchain and re-run, or move the reference to 1.27 and
+    commit the change to `scripts/acceptance.sh`. `docs/PERFORMANCE.md` says this plainly.
 - [x] **6.5** Document the compatibility promise
   - `COMPATIBILITY.md` (or README section): SemVer covers exported identifiers in `protocol`,
     `codec`, `message`, `session`, `client`, `server`; `internal/` explicitly excluded.
@@ -851,13 +852,13 @@ Goal: measurable quality floor, then `v1.0.0`.
     1.26.x toolchain independently of the `go` line, which stays correct. If you apply it, also update the
     README sentence that quotes `go 1.26.0` and the release checklist. To apply:
     `sed -i 's/^go 1.26.0$/go 1.21/' go.mod`.
-- [ ] **6.7** Tag `v1.0.0` — **NOT DONE ON PURPOSE; needs the environment details, the `main` merge and your go-ahead**
+- [ ] **6.7** Tag `v1.0.0` — **NOT DONE ON PURPOSE; needs the toolchain question settled, the `main` merge and your go-ahead**
   - Acceptance: all Phase 0–3 items closed; first git tag pushed.
-  - The literal acceptance clause is met: every item in Phases 0-3 is closed (the only unchecked boxes in this
-    file are 6.4, 6.6 and this one). I still did not tag, for reasons that are not formalities:
+  - The literal acceptance clause is met: every item in Phases 0-3 is closed (the only unchecked box in this
+    file is this one). I still did not tag, for reasons that are not formalities:
     1. `docs/RELEASE_CHECKLIST.md` requires the exact reference environment and commit to be published before the
-       tag. The result now exists (6.4), but the environment, commit, Go version, kernel and memory are not yet
-       recorded in `docs/PERFORMANCE.md`; they are in the run's `environment.txt`.
+       tag. Both are now in `docs/PERFORMANCE.md` (6.4), but the run used go1.27.0 while the written contract and the
+       committed script say Go 1.26.x. That mismatch should be settled before it is quoted as the release evidence.
     2. A tag is not undoable in practice. The Go module proxy caches a published version permanently; deleting or
        moving the git tag afterwards does not retract it for anyone who has already fetched it. `v1.0.0` also
        starts the SemVer promise in `docs/API_COMPATIBILITY.md`.
@@ -875,8 +876,8 @@ Goal: measurable quality floor, then `v1.0.0`.
 **Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
 final stage, and the lint gate has never passed on this branch (see the CI checklist). Open items that need a person:
-send `environment.txt` from the acceptance run so `docs/PERFORMANCE.md` can be completed; build and test on Go 1.25
-and 1.27 (the `go.mod` change is untested here); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
+settle the reference toolchain (the acceptance run used go1.27.0, the contract says 1.26.x); run `GOTOOLCHAIN=go1.25.0 go
+test -count=1 ./...` (the `go.mod` change is untested on a 1.25 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
 interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
 
 ---

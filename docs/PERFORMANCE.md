@@ -2,14 +2,16 @@
 
 ## Status
 
-**The Phase 17 reference-machine acceptance has been run and passed** (maintainer's run, reported 2026-10-06,
-`scripts/acceptance.sh`, which refuses to run unless the machine meets the contract). The result and resource
-bounds are recorded below, taken from that run's console output.
+**The Phase 17 reference-machine acceptance has been run and passed** (maintainer's run of
+`scripts/acceptance.sh` on 2026-10-06). The result and resource bounds are in the Result table and the exact
+environment is in the Environment table, both taken from that run's console output and `environment.txt`.
 
-**Still to fill in** from the run's `environment.txt`: the commit, Go version, kernel, memory and run date.
-`docs/RELEASE_CHECKLIST.md` requires the exact environment and commit to be published before the first
-production tag, so those cells are marked _not recorded_ rather than guessed. Keep the raw artifacts from
-`.bench/phase17-acceptance` alongside this table.
+**One deviation from the written contract, stated rather than smoothed over:** the contract below says Go 1.26.x,
+but this run used **go1.27.0**. The script as committed at the recorded commit requires `go1.26*` and would have
+exited with status 2 on go1.27.0, so the run used a locally modified copy of the script (or a different check). The
+maintainer should confirm which, and either keep Go 1.26.x as the reference toolchain and re-run, or move the
+contract to Go 1.27 and change the check in `scripts/acceptance.sh` in a commit. Until then treat this as a pass on
+Go 1.27.0, not as a pass on the contract as literally written.
 
 ## Result
 
@@ -26,7 +28,6 @@ production tag, so those cells are marked _not recorded_ rather than guessed. Ke
 | Retained heap growth after GC | 0 MiB (limit 64) |
 | Pending requests, maximum | 64 (window 64) |
 | Race run (`session`, `client`, `server`) | ok; these three packages were reported as `(cached)`, i.e. an identical earlier passing run |
-| CPU | 12th Gen Intel Core i5-12400 (the benchmark's `cpu:` line); `GOMAXPROCS` 8 |
 | Diagnostic benchmark, same host | `BenchmarkLocalhostTCPBidirectional/sessions_1-8`: 765,084 request PDUs/s, 1,307 ns/op, 897 B/op, 9 allocs/op, tx batch 32 |
 
 What this measures, so it is not over-read: one session over loopback TCP with required responses enabled and a
@@ -79,16 +80,19 @@ Artifacts written to the output directory:
 | `minimum-session-count.txt` | the first passing session count |
 | `profile-benchmark.txt`, `*.pprof`, `*-top.txt` | profiles of the passing configuration |
 
-## Remaining fields
+## Environment
 
-Copy these from `environment.txt` in the artifact directory.
+From `environment.txt` of the run.
 
 | Field | Value |
 | --- | --- |
-| Commit | _not recorded_ |
-| Date (UTC) | _not recorded_ |
-| Go version | _not recorded_ |
-| Kernel | _not recorded_ |
-| Memory | _not recorded_ |
+| Commit | `c0f699c09bdc572b7e5e500ea8f2ac2c53f58135` (the working tree may have differed: see the deviation above) |
+| Date (UTC) | 2026-10-06T19:59:40Z |
+| Go version | go1.27.0 |
+| Kernel | Linux 6.8.0-139-generic x86_64 GNU/Linux |
+| CPUs | 12 logical (12th Gen Intel Core i5-12400); `GOMAXPROCS` 8 |
+| Memory | 32,649,520 KiB (about 31.1 GiB) |
+| Parameters | duration 60 s, 128 callers, session candidates 1, 2, 4, tx batch 32, minimum 100,000 request PDUs/s |
 
-Once they are filled in, tick the reference-evidence items in `docs/RELEASE_CHECKLIST.md`.
+The recorded commit predates two later commits, `3b9e685` (`go.mod` to `go 1.25`) and documentation-only changes; no
+library source changed between them.

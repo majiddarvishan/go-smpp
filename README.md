@@ -25,7 +25,7 @@ development tooling and is not linked into the library.
 
 ## Current status
 
-Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The Phase 17 reference-machine acceptance has passed (713,932 request PDUs/s with a single session, minimum passing session count 1; see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The remaining production-release blockers are publishing that run's exact environment and commit, and the first production-ready tag.
+Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The Phase 17 reference-machine acceptance has passed (713,932 request PDUs/s with a single session, minimum passing session count 1; see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The exact environment and commit are recorded there too. The remaining production-release blocker is the first production-ready tag.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
