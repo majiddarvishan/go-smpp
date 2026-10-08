@@ -326,7 +326,7 @@ The experiment is still not the Phase 17 acceptance result: the required accepta
 
 ## Phase 17 reference acceptance runner
 
-`scripts/acceptance.sh` is the authoritative final-acceptance entry point. It refuses to run the acceptance claim unless the host provides at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.26.x; it runs the production workload with `GOMAXPROCS=8` by default.
+`scripts/acceptance.sh` is the authoritative final-acceptance entry point. It refuses to run the acceptance claim unless the host provides at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.27.x (it named Go 1.26.x until 2026-10-06); it runs the production workload with `GOMAXPROCS=8` by default.
 
 The sustained test starts at one TCP session, uses fixed concurrent load-generator workers, samples heap/goroutine/outstanding-work bounds, requires every request to receive its SMPP response, and rejects unexpected traffic errors. The script then tries 2 and 4 sessions only if the preceding count fails the configured throughput target. After the first passing count it captures CPU, heap, mutex, and block profiles and records the exact environment and commit.
 

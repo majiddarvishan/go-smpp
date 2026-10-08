@@ -6,12 +6,12 @@
 `scripts/acceptance.sh` on 2026-10-06). The result and resource bounds are in the Result table and the exact
 environment is in the Environment table, both taken from that run's console output and `environment.txt`.
 
-**One deviation from the written contract, stated rather than smoothed over:** the contract below says Go 1.26.x,
-but this run used **go1.27.0**. The script as committed at the recorded commit requires `go1.26*` and would have
-exited with status 2 on go1.27.0, so the run used a locally modified copy of the script (or a different check). The
-maintainer should confirm which, and either keep Go 1.26.x as the reference toolchain and re-run, or move the
-contract to Go 1.27 and change the check in `scripts/acceptance.sh` in a commit. Until then treat this as a pass on
-Go 1.27.0, not as a pass on the contract as literally written.
+**Reference toolchain: Go 1.27.x.** The run used go1.27.0. The maintainer confirmed that he had modified `scripts/acceptance.sh` locally for the run, and
+said he does not want Go 1.26 as the reference, so the edit was presumably the toolchain check, which then required Go 1.26.x. The
+committed script now requires `go1.27*`, so it matches the run. Two things this does not settle: the local edit itself was
+not seen, so that nothing besides the version check differed (thresholds, duration, session candidates) is an inference, though
+the parameters in `environment.txt` match the script's defaults; and the recorded commit predates the script change, so a reader
+reproducing the run should use the current script.
 
 ## Result
 
@@ -41,7 +41,7 @@ The contract is encoded in `scripts/acceptance.sh` and `internal/perflab/accepta
 
 Machine, checked by the script, which exits with status 2 if it is not met:
 
-- Linux/amd64, at least 8 logical CPUs, at least 10 GiB of RAM, Go 1.26.x.
+- Linux/amd64, at least 8 logical CPUs, at least 10 GiB of RAM, Go 1.27.x.
 - `GOMAXPROCS=8`, `SMPP_BENCH_PARALLELISM=16`, `SMPP_BENCH_TX_BATCH=32` unless overridden.
 
 Pass criteria, checked by the test over a sustained run (60 s by default):

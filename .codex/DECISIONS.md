@@ -130,7 +130,7 @@ Recoverable protocol/application errors where the frame boundary is intact remai
 
 **Reason:** The project is new, performance-sensitive, and targets Linux/amd64. Supporting an actively supported modern Go baseline avoids carrying compatibility cost for older toolchains while leaving Go 1.27 usable by consumers.
 
-**Superseded 2026-10-06:** the minimum is now **Go 1.25**, with releases through 1.27 supported; see `docs/DECISIONS.md` D2. The reference-acceptance toolchain (`scripts/acceptance.sh`) is a separate requirement and still names Go 1.26.x.
+**Superseded 2026-10-06:** the minimum is now **Go 1.25**, with releases through 1.27 supported; see `docs/DECISIONS.md` D2. The reference-acceptance toolchain (`scripts/acceptance.sh`) is a separate requirement and now names Go 1.27.x.
 
 ## D-026 — Sequence-number receive interoperability
 

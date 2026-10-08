@@ -1,6 +1,6 @@
 # CLAUDE.md — working notes for go-smpp
 
-Module: `github.com/majiddarvishan/go-smpp` · Go 1.26.0 · **zero external dependencies**
+Module: `github.com/majiddarvishan/go-smpp` · Go 1.25 minimum · **zero external dependencies**
 Scope: SMPP 3.4 + SMPP 5.0 library providing both ESME (client) and SMSC (server) roles over a
 single shared session core.
 
@@ -70,7 +70,7 @@ Windows-only run.
 
 ## Repo rules that constrain any change (from AGENTS.md)
 
-- Go 1.26 minimum. TCP only; TLS layered over TCP. No X.25.
+- Go 1.25 minimum (newer through 1.27 supported; `docs/DECISIONS.md` D2). TCP only; TLS layered over TCP. No X.25.
 - One shared session core for client and server. **No goroutine-per-message.**
 - Outbound sequence numbers in `0x1..0x7fffffff`; inbound accepted through `0xffffffff` and
   echoed back exactly.

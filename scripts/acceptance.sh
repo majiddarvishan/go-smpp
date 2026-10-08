@@ -13,8 +13,8 @@ mkdir -p "$OUT"
 cd "$ROOT"
 
 GO_VERSION=$(go env GOVERSION)
-if [[ "$GO_VERSION" != go1.26* ]]; then
-  echo "Phase 17 acceptance requires Go 1.26.x; found $GO_VERSION" >&2
+if [[ "$GO_VERSION" != go1.27* ]]; then
+  echo "Phase 17 acceptance requires Go 1.27.x; found $GO_VERSION" >&2
   exit 2
 fi
 

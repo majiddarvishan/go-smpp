@@ -787,10 +787,14 @@ Goal: measurable quality floor, then `v1.0.0`.
     Values come from the console output the maintainer pasted; nothing was run here (this environment cannot).
     **Environment now recorded** from the run's `environment.txt`: commit `c0f699c`, 2026-10-06T19:59:40Z, **go1.27.0**,
     Linux 6.8.0-139, 12 logical CPUs (i5-12400), `GOMAXPROCS` 8, 31.1 GiB. Keep the raw artifacts too.
-    **Deviation, open:** the contract says Go 1.26.x and the script as committed requires `go1.26*` and would exit 2 on
-    go1.27.0, yet the run used go1.27.0, so it ran a locally modified script (or a different check; the recorded commit
-    may not describe the tree). Decide: keep 1.26.x as the reference toolchain and re-run, or move the reference to 1.27 and
-    commit the change to `scripts/acceptance.sh`. `docs/PERFORMANCE.md` says this plainly.
+    **Deviation, resolved 2026-10-06:** the run used go1.27.0 while the script then required `go1.26*`; the maintainer
+    confirmed he had modified the script locally and that he does not want 1.26 as the reference (so the edit was
+    presumably the toolchain check; I have not seen it). So the reference
+    toolchain is now **Go 1.27.x** and `scripts/acceptance.sh` requires `go1.27*` (tested: go1.24 refused, a shim reporting
+    go1.26.9 refused, one reporting go1.27.0 accepted and then stopped by the CPU check on this 1-CPU host).
+    Two honest limits: I have not seen his local edit, so that only the version check differed is his word (the parameters
+    in `environment.txt` match the script's defaults); and `reference-acceptance.yml` still installs Go `1.26.x`, which the
+    script now rejects, so that workflow must change to `1.27.x` at the CI stage.
 - [x] **6.5** Document the compatibility promise
   - `COMPATIBILITY.md` (or README section): SemVer covers exported identifiers in `protocol`,
     `codec`, `message`, `session`, `client`, `server`; `internal/` explicitly excluded.
@@ -840,8 +844,8 @@ Goal: measurable quality floor, then `v1.0.0`.
     *toolchain* compiles the module: a newer toolchain accepts standard-library APIs added after 1.25 whatever the
     `go` line says. The remaining check is `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (and the same with a
     current 1.25.x). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
-    or 1.27 yet. `scripts/acceptance.sh` still requires `go1.26*`, deliberately: it names the reference environment,
-    not the module's minimum.
+    or 1.27 yet. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
+    environment, not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
     a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
     on the floor plus one on the newest release** (CI today installs only 1.26.x, so a declared floor would be
@@ -858,7 +862,7 @@ Goal: measurable quality floor, then `v1.0.0`.
     file is this one). I still did not tag, for reasons that are not formalities:
     1. `docs/RELEASE_CHECKLIST.md` requires the exact reference environment and commit to be published before the
        tag. Both are now in `docs/PERFORMANCE.md` (6.4), but the run used go1.27.0 while the written contract and the
-       committed script say Go 1.26.x. That mismatch should be settled before it is quoted as the release evidence.
+       committed script say Go 1.26.x. That mismatch is settled: the reference toolchain is now 1.27.x and the script matches the run.
     2. A tag is not undoable in practice. The Go module proxy caches a published version permanently; deleting or
        moving the git tag afterwards does not retract it for anyone who has already fetched it. `v1.0.0` also
        starts the SemVer promise in `docs/API_COMPATIBILITY.md`.
@@ -876,8 +880,7 @@ Goal: measurable quality floor, then `v1.0.0`.
 **Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
 final stage, and the lint gate has never passed on this branch (see the CI checklist). Open items that need a person:
-settle the reference toolchain (the acceptance run used go1.27.0, the contract says 1.26.x); run `GOTOOLCHAIN=go1.25.0 go
-test -count=1 ./...` (the `go.mod` change is untested on a 1.25 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
+run `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (the `go.mod` change is untested on a 1.25 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
 interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
 
 ---
@@ -911,7 +914,8 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
 3. **Go version (6.6, D2):** if the floor is lowered, a matrix of the floor and the newest release.
 4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
-   10 GiB, Go 1.26.x); its output feeds `docs/PERFORMANCE.md`.
+   10 GiB, **Go 1.27.x**); its `go-version` must change from `1.26.x` to `1.27.x`, because `scripts/acceptance.sh` now
+   rejects 1.26. Its output feeds `docs/PERFORMANCE.md`.
 5. **Fuzz smoke:** needs no edit; it now starts from the committed corpus (6.2).
 
 ---

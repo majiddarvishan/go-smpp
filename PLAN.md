@@ -31,7 +31,7 @@ This file is the source of truth for implementation progress. Every completed ph
 ## Phase 1 — Module skeleton and protocol primitives
 
 - [x] Initialize Go module as `github.com/majiddarvishan/go-smpp`.
-- [x] Pin minimum supported Go version to Go 1.26.
+- [x] Pin minimum supported Go version to Go 1.26. *(Superseded 2026-10-06: Go 1.25, see `docs/DECISIONS.md` D2.)*
 - [x] Create package skeleton with dependency-direction tests/review.
 - [x] Define `CommandID`, `CommandStatus`, `SequenceNumber`, TON, NPI, data-coding and session-state types.
 - [x] Define SMPP 3.4 and 5.0 capability/profile types without duplicating the core.
