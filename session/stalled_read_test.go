@@ -95,7 +95,7 @@ func TestPeerSendingHalfALengthWordBeforeBindIsClosedByInitTimeout(t *testing.T)
 		t.Fatal(err)
 	}
 	defer sess.Close()
-	go b.Write([]byte{0, 0})
+	go func() { _, _ = b.Write([]byte{0, 0}) }() // the write fails once the session closes; that is the point
 	took := waitTerminated(t, sess, readStallLimit)
 	wantTimeout(t, sess, TimeoutSessionInit)
 	if took < 50*time.Millisecond {
@@ -133,7 +133,7 @@ func TestTricklingAnUnfinishedPDUDoesNotExtendTheInitDeadline(t *testing.T) {
 
 func TestBoundPeerThatStallsMidPDUIsClosedByEnquireLinkTimeout(t *testing.T) {
 	sess, peer := bindAgainstStallingPeer(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: 40 * time.Millisecond, EnquireLinkTimeout: 40 * time.Millisecond, InactivityTimeout: 10 * time.Second})
-	go peer.Write(unfinishedPDU(8))
+	go func() { _, _ = peer.Write(unfinishedPDU(8)) }() // fails when the session closes; ignored
 	waitTerminated(t, sess, readStallLimit)
 	wantTimeout(t, sess, TimeoutEnquireLink)
 }
@@ -162,7 +162,7 @@ func TestBoundPeerTricklingAnUnfinishedPDUIsNotTreatedAsAlive(t *testing.T) {
 
 func TestReadStallWithEnquireLinkDisabledAndNothingSentIsClosedByInactivity(t *testing.T) {
 	sess, peer := bindAgainstStallingPeer(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: 200 * time.Millisecond})
-	go peer.Write(unfinishedPDU(8))
+	go func() { _, _ = peer.Write(unfinishedPDU(8)) }() // fails when the session closes; ignored
 	waitTerminated(t, sess, readStallLimit)
 	wantTimeout(t, sess, TimeoutInactivity)
 }
@@ -177,7 +177,7 @@ func TestReadStallWithEnquireLinkDisabledAndNothingSentIsClosedByInactivity(t *t
 // consecutive response timeouts" is ever added, this test should change with it.
 func TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending(t *testing.T) {
 	sess, peer := bindAgainstStallingPeer(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: 100 * time.Millisecond, ResponseTimeout: 60 * time.Millisecond})
-	go peer.Write(unfinishedPDU(8))
+	go func() { _, _ = peer.Write(unfinishedPDU(8)) }() // fails when the session closes; ignored
 
 	stop := make(chan struct{})
 	defer close(stop)

@@ -8,16 +8,18 @@ run:
 # deliberately deferred (see .claude/TASKS.md, "Explicitly deferred").
 #
 # Converted to the golangci-lint v2 format by hand on 2026-10-06, because
-# golangci-lint v1 cannot read Go 1.26+ export data and the v2 binary the
-# maintainer installed has no `migrate` command. It mirrors what `migrate` is
-# documented to produce, so that v2 behaves as the v1 gate did:
+# golangci-lint v1 cannot read Go 1.26+ export data (and the binary on the
+# maintainer's PATH turned out to be v1.64.8, which has no `migrate`). It mirrors
+# what `migrate` is documented to produce, so that v2 behaves as the v1 gate did:
 #   - gosimple is folded into staticcheck in v2, so it is no longer listed;
 #   - v2 staticcheck also carries the former stylecheck (ST*) checks, which v1
 #     never ran here, so they are switched off to keep the gate equivalent.
 #     Enabling them is a separate, deliberate step;
 #   - v1's default exclusions are gone in v2, so the matching presets and the
 #     generated-code rule are restored.
-# NOT yet verified against a real v2 binary: run `golangci-lint config verify`.
+# Verified 2026-10-06 with golangci-lint v2.14.0 built with go1.27.1:
+# `config verify` passes. Run it with a v2 binary built by a Go toolchain at least
+# as new as the `go` line in go.mod, or it refuses to load the config.
 linters:
   default: none
   enable:

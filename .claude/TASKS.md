@@ -909,9 +909,13 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    Follow-up the same day: `golangci-lint migrate` answered "unknown command" and `golangci-lint version` still reported
    v1.64.8, so the v2 binary was not the one on `PATH` (not installed, or shadowed by an older one; check
    `which -a golangci-lint` against `$(go env GOPATH)/bin`).
-   Later the same day: the maintainer installed v2.14.0 (`golangci-lint version` reports `2.14.0`), but its command list is
-   `cache completion config custom help linters run version`: no `migrate`, `fmt` or `formatters`, which every v2 release
-   documents. I do not know why, so I did not rely on `migrate`. `.golangci.yml` is now **hand-converted to the v2 format**
+   Later the same day, what had been going wrong: the binary on the maintainer's `PATH` was **v1.64.8 built with go1.24.2**
+   (`go version -m` shows the module path without `/v2`), which explains the missing `migrate`/`fmt`/`formatters` and the
+   error "the Go language version (go1.24) used to build golangci-lint is lower than the targeted Go version (1.25)".
+   The earlier `go install` of v2 had asked for `GOTOOLCHAIN=go1.27.0` (a version not installed; with `GOSUMDB=off` Go will
+   not download a toolchain), my mistake, and so installed nothing. Installing with `GOTOOLCHAIN=local` worked: v2.14.0 built
+   with go1.27.1. (Note for CI and contributors: a lint binary built by a Go older than the `go` line in `go.mod` refuses to
+   load the config.) `.golangci.yml` is now **hand-converted to the v2 format**
    mirroring what `migrate` is documented to produce (`version: "2"`, `default: none`, `gosimple` dropped because
    staticcheck absorbs it, the `ST*` style checks switched off to keep the gate equivalent to v1, and v1's default
    exclusions restored as presets). **It has not been checked against a v2 binary.** Run `golangci-lint config verify`, then
