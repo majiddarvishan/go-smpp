@@ -909,6 +909,14 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    Follow-up the same day: `golangci-lint migrate` answered "unknown command" and `golangci-lint version` still reported
    v1.64.8, so the v2 binary was not the one on `PATH` (not installed, or shadowed by an older one; check
    `which -a golangci-lint` against `$(go env GOPATH)/bin`).
+   Later the same day: the maintainer installed v2.14.0 (`golangci-lint version` reports `2.14.0`), but its command list is
+   `cache completion config custom help linters run version`: no `migrate`, `fmt` or `formatters`, which every v2 release
+   documents. I do not know why, so I did not rely on `migrate`. `.golangci.yml` is now **hand-converted to the v2 format**
+   mirroring what `migrate` is documented to produce (`version: "2"`, `default: none`, `gosimple` dropped because
+   staticcheck absorbs it, the `ST*` style checks switched off to keep the gate equivalent to v1, and v1's default
+   exclusions restored as presets). **It has not been checked against a v2 binary.** Run `golangci-lint config verify`, then
+   `golangci-lint run ./...`; enabling the `ST*` checks later is a deliberate step, not part of this conversion.
+   In CI the action step would become `golangci-lint-action@v7` with a v2 `version` (for example `v2.14.0`).
    **The lint gate has therefore never passed on this branch since Phase 5 began**, here or on the maintainer's
    machine; the scratch checks never ran it.
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).

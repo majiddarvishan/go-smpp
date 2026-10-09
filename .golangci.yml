@@ -1,17 +1,40 @@
+version: "2"
+
 run:
   timeout: 5m
 
 # Phase 0 (Task 0.5): start with golangci-lint's own default set, made
-# explicit here rather than left implicit, plus staticcheck (already part of
-# the default set in the pinned CI version, kept listed for clarity and so it
-# stays on if the default set ever changes). gocognit and funlen are
-# deliberately deferred to Phase 4, where the large-file split happens.
+# explicit here rather than left implicit. gocognit and funlen are
+# deliberately deferred (see .claude/TASKS.md, "Explicitly deferred").
+#
+# Converted to the golangci-lint v2 format by hand on 2026-10-06, because
+# golangci-lint v1 cannot read Go 1.26+ export data and the v2 binary the
+# maintainer installed has no `migrate` command. It mirrors what `migrate` is
+# documented to produce, so that v2 behaves as the v1 gate did:
+#   - gosimple is folded into staticcheck in v2, so it is no longer listed;
+#   - v2 staticcheck also carries the former stylecheck (ST*) checks, which v1
+#     never ran here, so they are switched off to keep the gate equivalent.
+#     Enabling them is a separate, deliberate step;
+#   - v1's default exclusions are gone in v2, so the matching presets and the
+#     generated-code rule are restored.
+# NOT yet verified against a real v2 binary: run `golangci-lint config verify`.
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - "-ST*"
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
