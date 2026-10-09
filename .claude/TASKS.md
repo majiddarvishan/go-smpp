@@ -879,7 +879,7 @@ Goal: measurable quality floor, then `v1.0.0`.
 
 **Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
-final stage, and the lint gate has never passed on this branch (see the CI checklist). Open items that need a person:
+final stage, and the lint gate had never run on this branch before 2026-10-06 (see the CI checklist). Open items that need a person:
 run `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (the `go.mod` change is untested on a 1.25 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
 interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
 
@@ -918,13 +918,15 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    load the config.) `.golangci.yml` is now **hand-converted to the v2 format**
    mirroring what `migrate` is documented to produce (`version: "2"`, `default: none`, `gosimple` dropped because
    staticcheck absorbs it, the `ST*` style checks switched off to keep the gate equivalent to v1, and v1's default
-   exclusions restored as presets). **It has not been checked against a v2 binary.** Run `golangci-lint config verify`, then
-   `golangci-lint run ./...`; enabling the `ST*` checks later is a deliberate step, not part of this conversion.
+   exclusions restored as presets). **Verified by the maintainer with v2.14.0: `config verify` passes.** The first real
+   `golangci-lint run ./...` on this branch reported 4 `errcheck` findings, all in my own `session/stalled_read_test.go` (Task 6.3:
+   unchecked `Write` results in goroutines), now fixed; nothing else was reported. Enabling the `ST*` checks later is a
+   deliberate step, not part of this conversion.
    In CI the action step would become `golangci-lint-action@v7` with a v2 `version` (for example `v2.14.0`).
-   **The lint gate has therefore never passed on this branch since Phase 5 began**, here or on the maintainer's
-   machine; the scratch checks never ran it.
+   **Net: the lint gate never ran on this branch before 2026-10-06; its first run (v2.14.0) found only the 4 findings above.**
+   Re-run it after pulling to confirm a clean pass; the scratch checks here never ran it.
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
-3. **Go version (6.6, D2):** if the floor is lowered, a matrix of the floor and the newest release.
+3. **Go version (6.6, D2):** the floor is now Go 1.25, so a matrix of `1.25.x` and `1.27.x`.
 4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
    10 GiB, **Go 1.27.x**); its `go-version` must change from `1.26.x` to `1.27.x`, because `scripts/acceptance.sh` now
    rejects 1.26. Its output feeds `docs/PERFORMANCE.md`.
