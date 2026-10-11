@@ -76,6 +76,7 @@ func (s *Session) processFrame(frame []byte) error {
 	}
 	now := time.Now()
 	s.noteActivityAt(now)
+	s.noteInboundAt(now)
 	s.tracePacket(PacketInbound, pdu.Header, frame)
 	if pdu.Header.CommandID.IsResponse() {
 		s.metrics.responsesReceived.Add(1)

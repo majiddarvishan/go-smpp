@@ -30,7 +30,7 @@ Defaults: interval 30 seconds; response timeout 10 seconds.
 
 ## Inactivity timeout
 
-InactivityTimeout applies only in a bound state. If no inbound or outbound SMPP activity has been recorded for the configured interval, the session closes with TimeoutInactivity.
+InactivityTimeout applies only in a bound state. If no complete inbound PDU has been received for the configured interval, the session closes with TimeoutInactivity. Only inbound PDUs count: our own writes do not, so a peer that keeps reading but never answers is closed after InactivityTimeout however much we send. (Before 2026-10-11 outbound writes also counted, which let such a peer hold a session open indefinitely; see "Peers that stall while sending".)
 
 Default: 2 minutes.
 
@@ -57,9 +57,9 @@ For a dialed client.Client with reconnect enabled, a timeout that terminates the
 | Before bind, bytes of any kind (half a length word, an unfinished PDU, a steady trickle) | `SessionInitTimeout`, which is absolute from connect: arriving bytes do not extend it | `SessionInitTimeout` |
 | Bound, default configuration | `EnquireLinkTimeout`: our `enquire_link` goes unanswered because the stream is stuck inside the unfinished PDU, whether the peer is silent or trickling | `EnquireLinkInterval` + `EnquireLinkTimeout` |
 | Bound, `EnquireLinkInterval` disabled, and we send nothing | `InactivityTimeout` | `InactivityTimeout` |
-| Bound, `EnquireLinkInterval` disabled, and we keep sending | **Nothing.** See below | never |
+| Bound, and we keep sending (with `EnquireLinkInterval` disabled, or enabled but our writes keep the idle check from ever reaching it) | `InactivityTimeout`, measured from the last inbound PDU | `InactivityTimeout` |
 
 Two consequences worth knowing:
 
 - A PDU that legitimately takes longer than `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one. SMPP PDUs are small, so this matters only on extremely slow links; raise the two values if it does.
-- **Limitation: with `EnquireLinkInterval` disabled, a peer that keeps reading but never sends anything back is not detected while the local side keeps sending.** Outbound writes count as activity, so `InactivityTimeout` never fires; every request ends in a response timeout, but the session stays up. The default configuration (`enquire_link` every 30 s) is not affected. If you disable `enquire_link`, either keep it on, or watch `Metrics().ResponseTimeouts` and close the session yourself. This is pinned by `TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending`; a policy such as "terminate after N consecutive response timeouts" would be a deliberate behaviour change and would update that test.
+- **A peer that stalls while we keep sending is detected only after `InactivityTimeout`** (2 minutes by default), not after `EnquireLinkInterval` + `EnquireLinkTimeout`, because while we are writing the enquire_link idle check never reaches its interval. Lower `InactivityTimeout` if you need to cut such a peer off faster. A peer that answers keeps the session alive for as long as it likes. This is pinned by `TestReadStalledPeerIsClosedByInactivityWhileWeKeepSending...` (enquire_link disabled and enabled) and its positive control `TestAnsweringPeerKeepsASendingSessionAlivePastTheInactivityTimeout`.

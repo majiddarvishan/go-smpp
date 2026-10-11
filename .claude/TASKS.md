@@ -774,6 +774,22 @@ Goal: measurable quality floor, then `v1.0.0`.
     `EnquireLinkInterval` + `EnquireLinkTimeout` to arrive is cut off like a stalled one.
     `docs/TIMEOUTS_AND_LIVENESS.md` gains a "Peers that stall while sending" section with the table.
     Coverage floors unchanged (the new tests exercise existing paths).
+    **Correction and resolution, 2026-10-11.** Two things in the entry above were wrong or are now superseded. (1) I wrote
+    that the default configuration (enquire_link on) was not affected. It was, whenever the local side keeps sending: our
+    own writes counted as activity, so the enquire_link idle check never reached its interval and `InactivityTimeout` never
+    fired either. A probe with enquire_link enabled (80 ms + 80 ms), inactivity 300 ms and a sender every 20 ms showed the
+    session still alive after 2 s with 25 response timeouts. (2) The maintainer decided the policy: when `InactivityTimeout`
+    is reached, disconnect. Implemented as: `InactivityTimeout` is measured from the last complete **inbound** PDU
+    (`lastInbound`, set in `rx.go`); outbound writes no longer count toward it. enquire_link's idle check still counts
+    activity in either direction. The old pinned-limitation test is replaced by two tests (enquire_link disabled; enabled
+    with writes well inside its interval) that now expect `TimeoutInactivity`, plus a positive control that an answering
+    peer keeps a continuously sending session alive for six inactivity periods with enquire_link off and on. 4 mutants,
+    all killed (the old any-activity rule; inbound never recorded; writes also recorded as inbound; inactivity never firing).
+    The enquire_link-enabled test first failed for my own reason: writes every ~80 ms against an 80 ms interval let an
+    enquire_link out now and then (so it ended with an enquire_link timeout); it now writes every ~40 ms against 150 ms.
+    Behaviour change, stated plainly: a bound session with no inbound PDU for `InactivityTimeout` now closes even if we
+    are sending. In healthy request/response traffic inbound PDUs (responses) keep arriving, so nothing changes; a session
+    where we send only one-way PDUs and the peer never replies, with enquire_link disabled, will now be closed.
 - [x] **6.4** Publish Phase 17 reference-machine evidence — *result recorded; environment details pending*
   - Acceptance: throughput result and resource bounds recorded in `docs/PERFORMANCE.md`.
   - Done on 2026-10-06 from the maintainer's run of `scripts/acceptance.sh` on the reference host (the script

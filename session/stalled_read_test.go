@@ -167,20 +167,19 @@ func TestReadStallWithEnquireLinkDisabledAndNothingSentIsClosedByInactivity(t *t
 	wantTimeout(t, sess, TimeoutInactivity)
 }
 
-// DOCUMENTED LIMITATION, pinned so it cannot change unnoticed. With
-// enquire_link disabled, outbound traffic counts as activity (docs/
-// TIMEOUTS_AND_LIVENESS.md: "inbound or outbound SMPP activity"). So a peer that
-// drains our writes but has stopped sending anything back is not detected while
-// we keep sending: every request ends in a response timeout, the session
-// stays up. The default configuration (enquire_link every 30 s) is not affected,
-// see the EnquireLink tests above. If a policy such as "terminate after N
-// consecutive response timeouts" is ever added, this test should change with it.
-func TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending(t *testing.T) {
-	sess, peer := bindAgainstStallingPeer(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: 100 * time.Millisecond, ResponseTimeout: 60 * time.Millisecond})
+// Decision (maintainer, 2026-10-11): when InactivityTimeout is reached, disconnect.
+// InactivityTimeout is measured from the last complete inbound PDU, so our own
+// writes cannot keep a session alive. Before this, outbound writes counted as
+// activity, and a peer that kept reading but never answered was held open for as
+// long as we kept sending, with enquire_link disabled (the first test below) and
+// also with it enabled (the second: our writes kept the idle check from ever
+// reaching the enquire_link interval).
+func stallWhileSending(t *testing.T, cfg Config) (*Session, time.Time) {
+	t.Helper()
+	sess, peer := bindAgainstStallingPeer(t, cfg)
 	go func() { _, _ = peer.Write(unfinishedPDU(8)) }() // fails when the session closes; ignored
-
 	stop := make(chan struct{})
-	defer close(stop)
+	t.Cleanup(func() { close(stop) })
 	go func() {
 		for {
 			select {
@@ -193,17 +192,61 @@ func TestDisabledEnquireLinkLeavesAReadStalledPeerUndetectedWhileWeKeepSending(t
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			_, _ = sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2"), ShortMessage: []byte("x")})
 			cancel()
-			time.Sleep(20 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}()
+	return sess, time.Now()
+}
 
-	// five times the inactivity timeout
-	select {
-	case <-sess.Done():
-		t.Fatalf("session terminated (%v); the documented limitation no longer holds, update this test and docs/TIMEOUTS_AND_LIVENESS.md", sess.Err())
-	case <-time.After(500 * time.Millisecond):
+func TestReadStalledPeerIsClosedByInactivityWhileWeKeepSendingWithEnquireLinkDisabled(t *testing.T) {
+	const inactivity = 200 * time.Millisecond
+	sess, started := stallWhileSending(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: -1, InactivityTimeout: inactivity, ResponseTimeout: 30 * time.Millisecond})
+	waitTerminated(t, sess, readStallLimit)
+	wantTimeout(t, sess, TimeoutInactivity)
+	if took := time.Since(started); took < inactivity-50*time.Millisecond {
+		t.Fatalf("closed after %v, before the %v inactivity timeout", took, inactivity)
 	}
-	if got := sess.Metrics().ResponseTimeouts; got < 3 {
-		t.Fatalf("only %d response timeouts; the sender loop did not exercise the stall", got)
+}
+
+func TestReadStalledPeerIsClosedByInactivityWhileWeKeepSendingWithEnquireLinkEnabled(t *testing.T) {
+	// Writes arrive every ~40 ms (30 ms waiting for a response that never comes, plus a
+	// 10 ms pause), well inside the 150 ms enquire_link interval, so the idle check
+	// never lets an enquire_link out: only the inbound-based inactivity rule can end this.
+	sess, _ := stallWhileSending(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: 150 * time.Millisecond, EnquireLinkTimeout: 150 * time.Millisecond, InactivityTimeout: 400 * time.Millisecond, ResponseTimeout: 30 * time.Millisecond})
+	waitTerminated(t, sess, readStallLimit)
+	wantTimeout(t, sess, TimeoutInactivity)
+}
+
+// Positive control: a peer that answers keeps the session alive for many times
+// the inactivity timeout, with enquire_link off and on. Without this, the two
+// tests above would also pass if inbound PDUs were simply never counted.
+func TestAnsweringPeerKeepsASendingSessionAlivePastTheInactivityTimeout(t *testing.T) {
+	for _, el := range []time.Duration{-1, 80 * time.Millisecond} {
+		clientConn, peerConn := net.Pipe()
+		registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stats livenessPeerStats
+		go runLivenessPeer(peerConn, registry, &stats)
+		const inactivity = 100 * time.Millisecond
+		sess, err := New(clientConn, Config{Role: RoleESME, SessionInitTimeout: time.Second, EnquireLinkInterval: el, EnquireLinkTimeout: 80 * time.Millisecond, InactivityTimeout: inactivity})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(6 * inactivity)
+		for time.Now().Before(deadline) {
+			if _, err := sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2")}); err != nil {
+				t.Fatalf("enquire_link=%v: session ended while the peer was answering: %v (session err: %v)", el, err, sess.Err())
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		cancel()
+		_ = sess.Close()
+		_ = peerConn.Close()
 	}
 }

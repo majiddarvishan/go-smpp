@@ -128,7 +128,8 @@ type Session struct {
 	enquireLinkDeadline deadlineItem
 
 	createdAt    time.Time
-	lastActivity atomic.Int64
+	lastActivity atomic.Int64 // any complete inbound PDU or completed write; drives the enquire_link idle check
+	lastInbound  atomic.Int64 // any complete inbound PDU only; drives InactivityTimeout
 	peerCaps     atomic.Value // protocol.PeerCapabilities
 	metrics      sessionMetrics
 
@@ -217,6 +218,7 @@ func New(conn net.Conn, config Config) (*Session, error) {
 		createdAt: now,
 	}
 	s.lastActivity.Store(now.UnixNano())
+	s.lastInbound.Store(now.UnixNano())
 	s.window.onUnderflow = s.reportWindowUnderflow
 	s.peerCaps.Store(protocol.PeerCapabilities{})
 	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)

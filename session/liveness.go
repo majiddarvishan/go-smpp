@@ -83,8 +83,8 @@ func (s *Session) fireSessionInitDeadline(now time.Time) {
 	s.terminate(&TimeoutError{Kind: TimeoutSessionInit, After: s.config.SessionInitTimeout})
 }
 
-// fireInactivityDeadline re-derives idle from the live lastActivityTime()
-// rather than trusting the time this fire was scheduled for: any activity
+// fireInactivityDeadline re-derives idle from the live lastInboundTime()
+// rather than trusting the time this fire was scheduled for: any inbound PDU
 // recorded after scheduling (or the session not being bound yet at all) both
 // mean it is not actually time to act, and the slot just reschedules itself
 // for whenever it now looks like idle will genuinely reach the threshold —
@@ -101,7 +101,9 @@ func (s *Session) fireInactivityDeadline(now time.Time) {
 		s.deadlines.scheduleItemAt(&s.inactivityDeadline, now, s.config.InactivityTimeout, TimeoutInactivity, 0, 0)
 		return
 	}
-	idle := now.Sub(s.lastActivityTime())
+	// Inbound only: our own writes must not keep a session alive, or a peer that
+	// reads but never answers would be held open for as long as we keep sending.
+	idle := now.Sub(s.lastInboundTime())
 	if idle < s.config.InactivityTimeout {
 		s.deadlines.scheduleItemAt(&s.inactivityDeadline, now, s.config.InactivityTimeout-idle, TimeoutInactivity, 0, 0)
 		return
@@ -167,4 +169,14 @@ func (s *Session) noteActivityAt(at time.Time) {
 
 func (s *Session) lastActivityTime() time.Time {
 	return time.Unix(0, s.lastActivity.Load())
+}
+
+// noteInboundAt records a complete inbound PDU, the only evidence that the peer
+// itself is alive. Outbound writes are not recorded here.
+func (s *Session) noteInboundAt(at time.Time) {
+	s.lastInbound.Store(at.UnixNano())
+}
+
+func (s *Session) lastInboundTime() time.Time {
+	return time.Unix(0, s.lastInbound.Load())
 }
