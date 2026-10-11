@@ -882,7 +882,7 @@ Goal: measurable quality floor, then `v1.0.0`.
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
 final stage, and the lint gate had never run on this branch before 2026-10-06 (see the CI checklist). Open items that need a person:
 (the `go 1.25` floor is confirmed on a real 1.25.0 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
-interface-compatibility wording added in 6.5; get a clean `golangci-lint run ./...` with the v2 binary first on `PATH` (a plain `golangci-lint` still resolved to an old v1 and rejected the v2 config); fix CI; then tag (6.7), which the maintainer has said to hold for now. `main` was merged (fast-forward to `853fd38`) on 2026-10-06.
+interface-compatibility wording added in 6.5; fix CI (the local `golangci-lint run ./...` is now clean: 0 issues with v2.14.0; only the stale v1 earlier on `PATH` remains to tidy); then tag (6.7), which the maintainer has said to hold for now. `main` was merged (fast-forward to `853fd38`) on 2026-10-06.
 
 ---
 
@@ -924,8 +924,10 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    unchecked `Write` results in goroutines), now fixed; nothing else was reported. Enabling the `ST*` checks later is a
    deliberate step, not part of this conversion.
    In CI the action step would become `golangci-lint-action@v7` with a v2 `version` (for example `v2.14.0`).
-   **Net: the lint gate never ran on this branch before 2026-10-06; its first run (v2.14.0) found only the 4 findings above.**
-   Re-run it after pulling to confirm a clean pass; the scratch checks here never ran it.
+   **Net: the lint gate never ran on this branch before 2026-10-06; its first run (v2.14.0) found only the 4 findings above,
+   and after they were fixed the maintainer's re-run reported `0 issues.`** The remaining trap is local: `which -a
+   golangci-lint` lists an old v1 (`~/golang/bin`) before the v2 (`~/golib/bin`), so a bare `golangci-lint` still picks v1
+   and rejects the v2 config; call the v2 binary by path, or fix `PATH`, or delete the old one.
 2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
 3. **Go version (6.6, D2):** the floor is now Go 1.25, so a matrix of `1.25.x` and `1.27.x`.
 4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
