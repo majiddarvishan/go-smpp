@@ -10,15 +10,21 @@ permissions:
 
 jobs:
   test:
+    name: test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The module's declared floor (go.mod) and the newest release we support.
+        go: ['1.25.x', '1.27.x']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Go 1.26
+      - name: Set up Go ${{ matrix.go }}
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26.x'
+          go-version: ${{ matrix.go }}
           cache: false
 
       - name: Enforce gofmt
@@ -30,13 +36,20 @@ jobs:
             exit 1
           fi
 
+      # golangci-lint v1 cannot read Go 1.26+ export data and action v7 only accepts v2,
+      # so this is v2. Once per run, on the newest toolchain.
       - name: Lint
+        if: matrix.go == '1.27.x'
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.62.2
+          version: v2.14.0
 
       - name: Unit tests
         run: go test ./...
+
+      - name: Coverage floor
+        if: matrix.go == '1.27.x'
+        run: scripts/coverage.sh
 
       - name: Race tests
         run: go test -race ./...
