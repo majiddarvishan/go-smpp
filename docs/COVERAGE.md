@@ -59,12 +59,11 @@ encoders and decoders that are exercised by round-trip and fuzz tests rather tha
 
 ## Running it in CI
 
-Not wired in yet: CI changes are held for the final stage of the project. When that happens, the step is one
-line, placed after "Unit tests" in `.github/workflows/ci.yml`:
+The step is in `.github/workflows/ci.yml` after "Unit tests", on the newest-Go leg of the matrix only, in pull request #1
+(passing there). It applies to `main` once that PR is merged; until then `main`'s CI does not run it, so run it locally before merging.
 
 ```yaml
       - name: Coverage floor
+        if: matrix.go == '1.27.x'
         run: scripts/coverage.sh
 ```
-
-Until then, run it locally before merging.

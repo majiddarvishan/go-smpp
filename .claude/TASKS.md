@@ -689,11 +689,11 @@ connections per remote address or an accept-time admission hook: new public API 
 ## Phase 6 — Test coverage & release
 Goal: measurable quality floor, then `v1.0.0`.
 
-- [x] **6.1** Coverage measurement and floor (T1) — *CI wiring held*
+- [x] **6.1** Coverage measurement and floor (T1) — *CI step added in PR #1, pending merge*
   - Acceptance: `go test -coverprofile` in CI with a documented minimum that cannot silently
     regress.
-  - Done, except the CI step itself, which is held by the working rule that CI changes wait for the final
-    stage (`.github/workflows/` untouched). Delivered: `scripts/coverage.sh` (check and `--suggest`
+  - Done. The CI step was held by the working rule that CI changes wait for the final stage, and has now been added in
+    PR #1 (see the CI stage checklist); it applies to `main` only once the maintainer merges that PR. Delivered: `scripts/coverage.sh` (check and `--suggest`
     modes; honours `GOFLAGS`, so `-race` works), `.coverage-floor` (versioned, so lowering a floor is a
     visible diff), and `docs/COVERAGE.md` (floors, rules, and the exact one-line CI step to add later).
     Measured on 2026-10-05, Go 1.22, linux/amd64: client 61.1, codec 64.8, encoding 74.5, message 75.8,
@@ -709,7 +709,7 @@ Goal: measurable quality floor, then `v1.0.0`.
     Honest limit: statement coverage shows a line ran, not that anything asserted on it. `protocol` is the
     lowest (56.8) and is mostly large encoder/decoder tables covered by round-trip and fuzz tests. This is a
     regression guard, not a correctness claim; the mutation checks in this file are what tested the tests.
-    Until the CI step is added, nothing *enforces* the floor automatically: run `scripts/coverage.sh`
+    Until PR #1 is merged, nothing on `main` *enforces* the floor automatically: run `scripts/coverage.sh`
     before merging. You have not run it yet on your toolchain (Go 1.26); the numbers there may differ
     slightly.
 - [x] **6.2** Commit the fuzz corpus (T4)
@@ -844,8 +844,8 @@ Goal: measurable quality floor, then `v1.0.0`.
     *toolchain* compiles the module: a newer toolchain accepts standard-library APIs added after 1.25 whatever the
     `go` line says. **That check has now been done:** the maintainer ran `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...`
     against `go 1.25` on 2026-10-06 and every package passed, so the floor holds on a real 1.25.0 compiler (the first
-    release of that line; later 1.25.x patch releases were not run). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
-    or 1.27 yet. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
+    release of that line; later 1.25.x patch releases were not run). In CI: PR #1 adds a `1.25.x` / `1.27.x` matrix, and both legs passed
+    on the PR, so once merged the 1.25 floor and 1.27 are tested automatically. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
     environment, not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
     a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
@@ -886,9 +886,15 @@ interface-compatibility wording added in 6.5; fix CI (the local `golangci-lint r
 
 ---
 
-## CI stage checklist (held)
+## CI stage checklist (implemented in PR #1; not merged, by the maintainer's choice)
 
-CI changes are held for the final stage, so `.github/workflows/` is untouched. Everything that stage needs, in one place:
+**Status 2026-10-11.** All five items below are implemented on branch `ci/lint-v2-go-matrix`, open as PR #1 against `main`;
+`main` itself still has the old, red workflows until the maintainer merges. CI ran on the PR and **both matrix legs passed**:
+`test (Go 1.25.x)` (unit tests; lint and coverage correctly skipped) and `test (Go 1.27.x)` (lint with golangci-lint v2.14.0 via
+action v7, unit tests, coverage floor). The earlier note that the Lint step was "probably" broken is thereby confirmed from the
+other side: the v2 setup works in CI. Not exercised by that run: `reference-acceptance.yml` (it only starts on a manual dispatch or a
+`[reference]` commit message, and needs the self-hosted runner), so its switch to Go 1.27.x is unverified. The history of how
+item 1 was worked out is kept below.
 
 1. **Lint step is probably broken as it stands.** `ci.yml` uses `golangci/golangci-lint-action@v7` with
    `version: v1.62.2`. Action v7 supports golangci-lint **v2 only** (its source rejects a v1 version string:
@@ -928,11 +934,12 @@ CI changes are held for the final stage, so `.github/workflows/` is untouched. E
    and after they were fixed the maintainer's re-run reported `0 issues.`** The remaining trap is local: `which -a
    golangci-lint` lists an old v1 (`~/golang/bin`) before the v2 (`~/golib/bin`), so a bare `golangci-lint` still picks v1
    and rejects the v2 config; call the v2 binary by path, or fix `PATH`, or delete the old one.
-2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`).
-3. **Go version (6.6, D2):** the floor is now Go 1.25, so a matrix of `1.25.x` and `1.27.x`.
+   **Done in PR #1:** `golangci-lint-action@v7` with `v2.14.0`, newest-Go leg only; passes in CI.
+2. **Coverage floor (6.1):** add `run: scripts/coverage.sh` after "Unit tests" (see `docs/COVERAGE.md`). **Done in PR #1**, newest-Go leg; passes in CI.
+3. **Go version (6.6, D2):** the floor is now Go 1.25, so a matrix of `1.25.x` and `1.27.x`. **Done in PR #1**; both legs pass.
 4. **Reference acceptance (6.4):** `reference-acceptance.yml` needs a self-hosted `smpp-reference` runner (8 CPUs,
    10 GiB, **Go 1.27.x**); its `go-version` must change from `1.26.x` to `1.27.x`, because `scripts/acceptance.sh` now
-   rejects 1.26. Its output feeds `docs/PERFORMANCE.md`.
+   rejects 1.26. Its output feeds `docs/PERFORMANCE.md`. **Changed to 1.27.x in PR #1; not exercised by the PR's CI run.**
 5. **Fuzz smoke:** needs no edit; it now starts from the committed corpus (6.2).
 
 ---
