@@ -842,8 +842,9 @@ Goal: measurable quality floor, then `v1.0.0`.
     61.8-62.2, codec 76.2, server 75.9, session 83.1-83.5, total 76.5-76.7, all above their floors. That shows the
     directive is accepted and no code needs a language feature newer than 1.25. It does **not** show that a Go 1.25
     *toolchain* compiles the module: a newer toolchain accepts standard-library APIs added after 1.25 whatever the
-    `go` line says. The remaining check is `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (and the same with a
-    current 1.25.x). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
+    `go` line says. **That check has now been done:** the maintainer ran `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...`
+    against `go 1.25` on 2026-10-06 and every package passed, so the floor holds on a real 1.25.0 compiler (the first
+    release of that line; later 1.25.x patch releases were not run). Held with CI: both workflows still install Go `1.26.x`, so nothing automated tests the 1.25 floor
     or 1.27 yet. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
     environment, not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
@@ -880,8 +881,8 @@ Goal: measurable quality floor, then `v1.0.0`.
 **Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
 Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
 final stage, and the lint gate had never run on this branch before 2026-10-06 (see the CI checklist). Open items that need a person:
-run `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...` (the `go.mod` change is untested on a 1.25 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
-interface-compatibility wording added in 6.5; install golangci-lint v2 and run it; merge to `main`; then tag (6.7).
+(the `go 1.25` floor is confirmed on a real 1.25.0 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
+interface-compatibility wording added in 6.5; get a clean `golangci-lint run ./...` with the v2 binary first on `PATH` (a plain `golangci-lint` still resolved to an old v1 and rejected the v2 config); fix CI; then tag (6.7), which the maintainer has said to hold for now. `main` was merged (fast-forward to `853fd38`) on 2026-10-06.
 
 ---
 
