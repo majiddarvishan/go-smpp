@@ -276,12 +276,14 @@ func (s *Server) Serve(ctx context.Context) error {
 		closed := s.closed
 		s.mu.Unlock()
 		if closed || atLimit || tooManyUnbound {
+			// Count before closing: the peer learns of the refusal from the close, and
+			// anything it does next (reading BindStats, say) must already see it.
+			if !closed && tooManyUnbound && !atLimit {
+				s.refusedUnbound.Add(1)
+			}
 			_ = conn.Close()
 			if closed {
 				return nil
-			}
-			if tooManyUnbound && !atLimit {
-				s.refusedUnbound.Add(1)
 			}
 			continue
 		}

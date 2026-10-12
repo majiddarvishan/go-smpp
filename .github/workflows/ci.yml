@@ -62,7 +62,16 @@ jobs:
         run: scripts/coverage.sh
 
       - name: Race tests
-        run: go test -race ./...
+        run: |
+          set -o pipefail
+          go test -race ./... 2>&1 | tee "$RUNNER_TEMP/race.log"
+
+      - name: Report failing race tests
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/race.log" ] || exit 0
+          lines=$(grep -E '^(--- FAIL|FAIL|panic:|WARNING: DATA RACE|    .*_test\.go:[0-9]+:)' "$RUNNER_TEMP/race.log" | head -12 | sed 's/$/%0A/' | tr -d '\n')
+          [ -z "$lines" ] || echo "::error title=Race tests failed::${lines}"
 
       - name: Phase 18 fuzz smoke
         run: |
