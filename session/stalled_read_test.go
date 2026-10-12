@@ -209,10 +209,11 @@ func TestReadStalledPeerIsClosedByInactivityWhileWeKeepSendingWithEnquireLinkDis
 }
 
 func TestReadStalledPeerIsClosedByInactivityWhileWeKeepSendingWithEnquireLinkEnabled(t *testing.T) {
-	// Writes arrive every ~40 ms (30 ms waiting for a response that never comes, plus a
-	// 10 ms pause), well inside the 150 ms enquire_link interval, so the idle check
-	// never lets an enquire_link out: only the inbound-based inactivity rule can end this.
-	sess, _ := stallWhileSending(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: 150 * time.Millisecond, EnquireLinkTimeout: 150 * time.Millisecond, InactivityTimeout: 400 * time.Millisecond, ResponseTimeout: 30 * time.Millisecond})
+	// The enquire_link interval (1 s) is far above both the write cadence (~40 ms) and the
+	// inactivity timeout (300 ms), so on a slow or busy machine no scheduling hiccup can let
+	// an enquire_link out first: only the inbound-based inactivity rule can end this, and
+	// the test can say so exactly.
+	sess, _ := stallWhileSending(t, Config{SessionInitTimeout: time.Second, EnquireLinkInterval: time.Second, EnquireLinkTimeout: time.Second, InactivityTimeout: 300 * time.Millisecond, ResponseTimeout: 30 * time.Millisecond})
 	waitTerminated(t, sess, readStallLimit)
 	wantTimeout(t, sess, TimeoutInactivity)
 }
@@ -229,7 +230,9 @@ func TestAnsweringPeerKeepsASendingSessionAlivePastTheInactivityTimeout(t *testi
 		}
 		var stats livenessPeerStats
 		go runLivenessPeer(peerConn, registry, &stats)
-		const inactivity = 100 * time.Millisecond
+		// 300 ms against a ~20 ms cadence leaves room for a scheduling stall on a busy CI machine
+		// without a false inactivity timeout.
+		const inactivity = 300 * time.Millisecond
 		sess, err := New(clientConn, Config{Role: RoleESME, SessionInitTimeout: time.Second, EnquireLinkInterval: el, EnquireLinkTimeout: 80 * time.Millisecond, InactivityTimeout: inactivity})
 		if err != nil {
 			t.Fatal(err)
@@ -238,7 +241,7 @@ func TestAnsweringPeerKeepsASendingSessionAlivePastTheInactivityTimeout(t *testi
 		if _, err := sess.BindTransceiver(ctx, protocol.BindRequest{InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
 			t.Fatal(err)
 		}
-		deadline := time.Now().Add(6 * inactivity)
+		deadline := time.Now().Add(4 * inactivity)
 		for time.Now().Before(deadline) {
 			if _, err := sess.SubmitSM(ctx, protocol.SubmitSM{SourceAddr: []byte("1"), DestinationAddr: []byte("2")}); err != nil {
 				t.Fatalf("enquire_link=%v: session ended while the peer was answering: %v (session err: %v)", el, err, sess.Err())

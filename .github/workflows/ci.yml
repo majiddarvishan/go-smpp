@@ -45,7 +45,17 @@ jobs:
           version: v2.14.0
 
       - name: Unit tests
-        run: go test ./...
+        run: |
+          set -o pipefail
+          go test ./... 2>&1 | tee "$RUNNER_TEMP/unit.log"
+
+      # The step log is awkward to read outside the web UI; surface failing tests as an annotation.
+      - name: Report failing unit tests
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/unit.log" ] || exit 0
+          lines=$(grep -E '^(--- FAIL|FAIL|panic:|    .*_test\.go:[0-9]+:)' "$RUNNER_TEMP/unit.log" | head -12 | sed 's/$/%0A/' | tr -d '\n')
+          [ -z "$lines" ] || echo "::error title=Unit tests failed::${lines}"
 
       - name: Coverage floor
         if: matrix.go == '1.27.x'

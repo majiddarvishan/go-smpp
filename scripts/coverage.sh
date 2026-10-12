@@ -31,10 +31,25 @@ MODULE=$(go list -m)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# In GitHub Actions the step log is hard to read from outside the web UI, so the
+# outcome is also written as an annotation (visible on the run and through the
+# API). Newlines are encoded as %0A, as workflow commands require.
+annotate() { # level title message-lines...
+  [[ -n "${GITHUB_ACTIONS:-}" ]] || return 0
+  local level=$1 title=$2; shift 2
+  local body=""
+  local line
+  for line in "$@"; do body+="${line}%0A"; done
+  echo "::${level} title=${title}::${body}"
+}
+failing_lines() { grep -E '^(--- FAIL|FAIL|panic:|    .*_test\.go:[0-9]+:)' "$1" | head -12; }
+
 # 1. Per-package coverage, from each package's own tests. The tests must pass.
 if ! go test -count=1 -cover ./... >"$TMP/pkg.txt" 2>&1; then
   cat "$TMP/pkg.txt" >&2
   echo "coverage: tests failed; coverage is not meaningful until they pass" >&2
+  mapfile -t failed < <(failing_lines "$TMP/pkg.txt")
+  annotate error "coverage.sh: tests failed (first run)" "${failed[@]}"
   exit 1
 fi
 # "<pkg> <percent>" for every package that reports coverage with statements.
@@ -52,7 +67,13 @@ awk -v mod="$MODULE" '
 
 # 2. Module total, counting cross-package coverage (a session test exercising
 # codec counts for codec).
-go test -count=1 -coverpkg=./... -coverprofile="$TMP/total.out" ./... >/dev/null
+if ! go test -count=1 -coverpkg=./... -coverprofile="$TMP/total.out" ./... >"$TMP/total.txt" 2>&1; then
+  cat "$TMP/total.txt" >&2
+  echo "coverage: tests failed in the module-total run" >&2
+  mapfile -t failed < <(failing_lines "$TMP/total.txt")
+  annotate error "coverage.sh: tests failed (module-total run)" "${failed[@]}"
+  exit 1
+fi
 TOTAL=$(go tool cover -func="$TMP/total.out" | awk '/^total:/ {sub("%", "", $3); print $3}')
 echo "total $TOTAL" >>"$TMP/measured.txt"
 
@@ -102,5 +123,14 @@ done
 
 if (( status != 0 )); then
   echo "coverage: FAILED. Add tests, or lower a floor explicitly and say why in the commit (docs/COVERAGE.md)." >&2
+fi
+rows=()
+for name in $(printf '%s\n' "${!measured[@]}" | sort); do
+  rows+=("${name}: measured ${measured[$name]}, floor ${floor[$name]:-none}")
+done
+if (( status != 0 )); then
+  annotate error "coverage.sh: floor not met" "${rows[@]}"
+else
+  annotate notice "coverage.sh: measured vs floor" "${rows[@]}"
 fi
 exit $status

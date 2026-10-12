@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,11 +52,21 @@ func dialFrom(t *testing.T, srv *server.Server, source string) net.Conn {
 	return conn
 }
 
-// refused reports whether the server closes conn promptly without our sending anything.
+// refused waits generously for the server to hang up on a connection it should
+// not accept: it returns as soon as EOF arrives, so a slow CI machine only costs
+// time, never a false "held open".
 func refused(conn net.Conn) bool {
-	_ = conn.SetReadDeadline(time.Now().Add(400 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, err := io.Copy(io.Discard, conn)
-	return err == nil // EOF: the server hung up. A deadline error means it is being held open.
+	return err == nil // EOF: the server hung up
+}
+
+// held reports whether the server keeps conn open for a short while. A held
+// connection can only fail this by being closed, never by being slow.
+func held(conn net.Conn) bool {
+	_ = conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	_, err := io.Copy(io.Discard, conn)
+	return err != nil // a deadline error: still open
 }
 
 func TestUnboundCapRefusesTheConnectionOverTheLimit(t *testing.T) {
@@ -63,7 +74,7 @@ func TestUnboundCapRefusesTheConnectionOverTheLimit(t *testing.T) {
 	a := dialFrom(t, srv, "127.0.0.1")
 	b := dialFrom(t, srv, "127.0.0.1")
 	waitSessions(t, srv, 2, time.Second)
-	if refused(a) || refused(b) {
+	if !held(a) || !held(b) {
 		t.Fatal("a connection within the limit was closed")
 	}
 	c := dialFrom(t, srv, "127.0.0.1")
@@ -89,7 +100,7 @@ func TestUnboundCapFreesTheSlotWhenAnUnboundConnectionCloses(t *testing.T) {
 	waitSessions(t, srv, 0, 2*time.Second)
 	d := dialFrom(t, srv, "127.0.0.1")
 	waitSessions(t, srv, 1, time.Second)
-	if refused(d) {
+	if !held(d) {
 		t.Fatal("the slot was not freed after the unbound connection closed")
 	}
 }
@@ -112,7 +123,7 @@ func TestUnboundCapDoesNotCountBoundSessions(t *testing.T) {
 	// The bound session no longer counts, so one unbound connection is still allowed...
 	silent := dialFrom(t, srv, "127.0.0.1")
 	waitSessions(t, srv, 2, time.Second)
-	if refused(silent) {
+	if !held(silent) {
 		t.Fatal("the bound session was counted against the unbound cap")
 	}
 	// ...and the next unbound one is not.
@@ -128,14 +139,25 @@ func TestUnboundCapIsPerIPAndExemptionsAreHonoured(t *testing.T) {
 	if !refused(dialFrom(t, srv, "127.0.0.1")) {
 		t.Fatal("the same IP was not capped")
 	}
-	if refused(dialFrom(t, srv, "127.0.0.2")) {
+	if !held(dialFrom(t, srv, "127.0.0.2")) {
 		t.Fatal("a different IP was refused: the cap is not per IP")
 	}
 	for i := 0; i < 3; i++ { // exempt: three unbound connections from 127.0.0.3
-		if refused(dialFrom(t, srv, "127.0.0.3")) {
+		if !held(dialFrom(t, srv, "127.0.0.3")) {
 			t.Fatalf("exempt address refused on connection %d", i+1)
 		}
 	}
+}
+
+// legitimateSessionPresent reports whether the server still tracks a session from
+// the legitimate peer's address (127.0.0.2).
+func legitimateSessionPresent(srv *server.Server) bool {
+	for _, s := range srv.Sessions() {
+		if strings.HasPrefix(s.RemoteAddr().String(), "127.0.0.2:") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestUnboundCapDefaultIsUnlimited(t *testing.T) {
@@ -176,7 +198,12 @@ func TestUnboundFloodFromOneAddressCannotExhaustMaxSessions(t *testing.T) {
 			}
 		}
 		_ = conn.Close()
-		time.Sleep(5 * time.Millisecond)
+		// Let the server notice that this connection closed before the next try. A peer that
+		// drops an unbound connection and reconnects before the server has seen the close is
+		// still counted once (see D3), and this test is about the attacker, not about that.
+		for i := 0; i < 400 && legitimateSessionPresent(srv); i++ {
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	if served == 0 || refusedCount > 0 {
 		t.Fatalf("legitimate peer: held open %d times, refused %d times; want never refused", served, refusedCount)

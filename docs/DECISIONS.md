@@ -193,6 +193,7 @@ CI: on `main`, `ci.yml` and `reference-acceptance.yml` still install Go `1.26.x`
 - **Distributed floods.** A flood spread over many source addresses is not stopped by a per-address limit; that needs network-level controls.
 - **It is not on by default**, so the Phase 5 exit criterion ("unauthenticated peers cannot exhaust `MaxSessions`") holds for a server configured with it, not for one left at defaults.
 - A peer that connects and binds slowly is counted as unbound until its bind completes; keep `SessionInitTimeout` consistent with the limit.
+- A peer that drops an *unbound* connection and reconnects before the server has noticed the close is still counted once, so with a limit of 1 it can be refused for a few milliseconds. A connection that had already bound does not count, so this only affects drops during the bind phase. (Found by a flaky test of my own, not in production.)
 
 ### Choosing a value
 
