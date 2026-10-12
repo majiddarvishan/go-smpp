@@ -676,13 +676,22 @@ Goal: close unauthenticated resource exposure and make operator foot-guns visibl
 **Exit criteria:** unauthenticated peers cannot exhaust `MaxSessions`; credential-exposure paths
 are documented and tested; supply-chain posture is stated up front.
 
-**Status: 5.1-5.4 done; the first exit criterion is NOT met.** Credential-exposure paths are documented
+**Status: 5.1-5.4 done; the first exit criterion is met only when `MaxUnboundPerIP` is configured (see the 2026-10-11 update below).** Credential-exposure paths are documented
 and tested (5.2, 5.3) and the supply-chain posture is stated up front and now enforced (5.4). But "unauthenticated
 peers cannot exhaust `MaxSessions`" is not true: 5.1 rate-limits *binds*, and a flood of connections that never
 bind is untouched by it (measured: 268 of 268 legitimate connection attempts refused in 1.5 s against
 `MaxSessions: 3`, `SessionInitTimeout: 300 ms`). Closing it needs a cap on concurrent unbound
 connections per remote address or an accept-time admission hook: new public API and a policy decision
 (NAT, trusted peers). **Backlogged by maintainer decision on 2026-10-05; see "Explicitly deferred".**
+
+**Update 2026-10-11:** the maintainer asked for it, configurable. `server.Config.MaxUnboundPerIP` (zero, the default, means unlimited, so
+nothing changes unless an operator opts in) limits connections from one IP that have not completed a bind; a connection over the limit is
+closed on arrival and counted in `BindStats.RefusedUnbound`. `Config.UnboundCapExempt` lists networks the cap never applies to (trusted
+peers, a NAT gateway). Only sessions still in the open (unbound) state count, so bound peers are unaffected. Verified on the original
+scenario: with `MaxSessions: 3`, `SessionInitTimeout: 300 ms` and `MaxUnboundPerIP: 1`, an attacker flooding silent connections from one
+address no longer keeps a legitimate peer from another address out (the legitimate peer was refused 268 of 268 times without the cap).
+Design, tests (11) and limits are in `docs/DECISIONS.md` D3. The criterion is therefore met *for a configured server*; it is not met by
+default, and not against a flood spread over many addresses or an IPv6 /64.
 
 ---
 
@@ -887,8 +896,7 @@ Goal: measurable quality floor, then `v1.0.0`.
        release tag belongs on a reviewed, merged commit.
     4. Decisions that shape what v1 promises are still open: the minimum Go version (6.6, D2), whether to
        add an exhaustive exported-API snapshot first (6.5 follow-up), the `EnquireLinkInterval`-disabled
-       limitation (6.3), and the backlogged unbound-connection cap, whose Phase 5 exit criterion is knowingly
-       unmet.
+       limitation (6.3), and the unbound-connection cap, now implemented but off by default (D3).
     There are no tags in the repository today (`git ls-remote --tags origin` is empty).
     When you are ready, after the reference result is published and the branch is merged:
     `git checkout main && git pull && git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
@@ -965,7 +973,7 @@ item 1 was worked out is kept below.
 | Item | Reason |
 | --- | --- |
 | C5 generic operation wrappers | Reduces line count but hurts greppability and godoc; current explicit style matches the repo's stdlib-only philosophy. Decision recorded by 4.5. |
-| Cap on concurrent unbound connections per remote address, or an accept-time admission hook (SEC1 remainder) | Maintainer decision 2026-10-05: not now, backlogged. Until then the Phase 5 exit criterion "unauthenticated peers cannot exhaust `MaxSessions`" is knowingly unmet. Measured: with `MaxSessions: 3` and `SessionInitTimeout: 300 ms`, a flood of silent connections refused 268 of 268 legitimate attempts in 1.5 s. Interim mitigation is outside the library: allow only known peer IPs at the firewall, and keep `SessionInitTimeout` short. Design questions to settle when picked up: NAT-shared addresses, trusted-peer exemptions, new public API (`server.Config`) and its compatibility cost. |
+| ~~Cap on concurrent unbound connections per remote address (SEC1 remainder)~~ | **Taken off the backlog 2026-10-11 and implemented** as `server.Config.MaxUnboundPerIP` (default off) with `UnboundCapExempt`; see `docs/DECISIONS.md` D3. Its limits (IPv6 /64 rotation, distributed floods, off by default) are recorded there. |
 | `gocognit` / `funlen` lint rules | Would only generate noise before 4.1's file split; revisit after Phase 4. |
 
 ---

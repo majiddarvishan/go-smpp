@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/majiddarvishan/go-smpp/protocol"
@@ -79,6 +81,30 @@ type Config struct {
 	// immediately without affecting the listener or existing sessions.
 	MaxSessions int
 
+	// MaxUnboundPerIP limits how many connections from one remote IP address may
+	// be open at once without having completed a bind. Zero or negative (the
+	// default) means unlimited. A connection that would exceed the limit is closed
+	// immediately, exactly like one that arrives while MaxSessions is full, and is
+	// counted in BindStats.RefusedUnbound. A session stops counting once it is
+	// bound, so peers that have bound are never affected.
+	//
+	// This is what stops a peer that connects and never binds from holding every
+	// MaxSessions slot, which BindRateLimiter cannot do because such connections
+	// never send a bind. Unbound connections are also ended by
+	// SessionConfig.SessionInitTimeout, but a peer can reconnect as fast as it is
+	// closed.
+	//
+	// The key is the IP address alone (port ignored; an IPv4-mapped IPv6 address
+	// is the same address as its IPv4 form), so many ESMEs behind one NAT address
+	// share one budget. Raise the limit for such deployments, or list the address
+	// in UnboundCapExempt.
+	MaxUnboundPerIP int
+
+	// UnboundCapExempt lists networks to which MaxUnboundPerIP never applies, for
+	// trusted peers or NAT gateways. Use unmapped addresses (10.0.0.0/8, not
+	// ::ffff:10.0.0.0/104). Ignored when MaxUnboundPerIP is not positive.
+	UnboundCapExempt []netip.Prefix
+
 	// BindRateLimiter, if set, is consulted before every bind reaches the
 	// Authenticator and told the outcome afterwards; see BindRateLimiter and
 	// NewBindThrottle. Nil (the default) means no rate limiting. It applies
@@ -105,10 +131,12 @@ type Server struct {
 	listener net.Listener
 	config   Config
 
-	bind *bindGuard
+	bind           *bindGuard
+	refusedUnbound atomic.Uint64
 
 	mu        sync.Mutex
 	sessions  map[*session.Session]struct{}
+	byHost    map[string]map[*session.Session]struct{} // sessions by remote IP, for MaxUnboundPerIP
 	serving   bool
 	closed    bool
 	closeOnce sync.Once
@@ -138,7 +166,7 @@ func NewWithConfig(listener net.Listener, config Config) *Server {
 			bind:          guard,
 		}
 	}
-	return &Server{listener: listener, config: config, bind: guard, sessions: make(map[*session.Session]struct{})}
+	return &Server{listener: listener, config: config, bind: guard, sessions: make(map[*session.Session]struct{}), byHost: make(map[string]map[*session.Session]struct{})}
 }
 
 // BindStats returns counters of bind attempts, rejected binds and throttled
@@ -148,7 +176,9 @@ func (s *Server) BindStats() BindStats {
 	if s == nil {
 		return BindStats{}
 	}
-	return s.bind.stats()
+	stats := s.bind.stats()
+	stats.RefusedUnbound = s.refusedUnbound.Load()
+	return stats
 }
 
 // Listen creates a plain TCP or TLS-over-TCP listener from Config.
@@ -236,14 +266,22 @@ func (s *Server) Serve(ctx context.Context) error {
 			return err
 		}
 
+		host := hostKey(conn.RemoteAddr())
+		capped := s.config.MaxUnboundPerIP > 0 && !s.config.exemptFromUnboundCap(host)
 		s.mu.Lock()
 		atLimit := s.config.MaxSessions > 0 && len(s.sessions) >= s.config.MaxSessions
+		// Serve has one accept loop and a session's unbound count can only fall
+		// between this check and the insertion below, so checking here is enough.
+		tooManyUnbound := capped && s.unboundFromLocked(host) >= s.config.MaxUnboundPerIP
 		closed := s.closed
 		s.mu.Unlock()
-		if closed || atLimit {
+		if closed || atLimit || tooManyUnbound {
 			_ = conn.Close()
 			if closed {
 				return nil
+			}
+			if tooManyUnbound && !atLimit {
+				s.refusedUnbound.Add(1)
 			}
 			continue
 		}
@@ -267,16 +305,26 @@ func (s *Server) Serve(ctx context.Context) error {
 			continue
 		}
 		s.sessions[sess] = struct{}{}
+		if s.byHost[host] == nil {
+			s.byHost[host] = make(map[*session.Session]struct{})
+		}
+		s.byHost[host][sess] = struct{}{}
 		s.mu.Unlock()
-		go s.watch(sess)
+		go s.watch(sess, host)
 	}
 }
 
-func (s *Server) watch(sess *session.Session) {
+func (s *Server) watch(sess *session.Session, host string) {
 	<-sess.Done()
 	sess.Wait()
 	s.mu.Lock()
 	delete(s.sessions, sess)
+	if peers := s.byHost[host]; peers != nil {
+		delete(peers, sess)
+		if len(peers) == 0 {
+			delete(s.byHost, host)
+		}
+	}
 	s.mu.Unlock()
 }
 

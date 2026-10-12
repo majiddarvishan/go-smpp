@@ -161,3 +161,43 @@ gofmt -l . && go build ./... && go vet ./... && go test -count=1 ./... && go tes
 ```
 
 CI: on `main`, `ci.yml` and `reference-acceptance.yml` still install Go `1.26.x`, so nothing there tests the 1.25 floor or 1.27, and `reference-acceptance.yml` would install a toolchain that `scripts/acceptance.sh` rejects. Pull request #1 fixes both: a `1.25.x` / `1.27.x` matrix in `ci.yml` (both legs passed) and `1.27.x` in `reference-acceptance.yml` (not exercised: it only runs on manual dispatch). It applies once the maintainer merges it (see the CI stage checklist in `.claude/TASKS.md`). `scripts/acceptance.sh` names the reference-acceptance environment (Go 1.27.x), not the module's minimum.
+
+---
+
+## D3 — Per-IP cap on unbound connections: configurable, off by default
+
+- **Status:** decided and implemented 2026-10-11 (SEC1 remainder; the maintainer reversed the 2026-10-05 backlog decision and asked for it to be configurable).
+- **Applies to:** `server.Config.MaxUnboundPerIP`, `server.Config.UnboundCapExempt`, `server.BindStats.RefusedUnbound`.
+
+### Context
+
+`MaxSessions` bounds how many sessions a server holds, and `BindRateLimiter` (Phase 5.1) throttles binds. Neither helps against a peer that connects and never sends a bind: each such connection holds a `MaxSessions` slot until `SessionInitTimeout` (30 s by default) closes it, and the peer reconnects as fast as it is closed. Measured with `MaxSessions: 3` and `SessionInitTimeout: 300 ms`, a flood of silent connections kept a legitimate peer out on 268 of 268 attempts in 1.5 s.
+
+### Decision
+
+- `Config.MaxUnboundPerIP int`: the most connections from one remote IP that may be open without having completed a bind. **Zero or negative, the default, means unlimited**, so nothing changes unless an operator opts in. A connection over the limit is closed on arrival, the same as one that arrives while `MaxSessions` is full, and counted in `BindStats.RefusedUnbound`.
+- `Config.UnboundCapExempt []netip.Prefix`: networks the cap never applies to, for trusted peers or a NAT gateway.
+- Only a session still in the open (unbound) state counts. Once a session binds it stops counting, so peers that have bound are never affected.
+- The key is the IP alone: the port is ignored and an IPv4-mapped IPv6 address is the same as its IPv4 form. `BindThrottle` now uses the same key.
+
+### Why this shape
+
+1. **Configuration, not a hook.** The maintainer asked for it to be configurable, and the two real policy questions (how many, and who is trusted) are answered by two plain fields. A pluggable admission interface was the alternative; it can still be added later without breaking these.
+2. **Off by default** because the right number depends on the deployment: many ESMEs behind one NAT address share a budget, and a default that quietly refuses legitimate peers is worse than one that does nothing. The cost is that a default-configured server is still exposed.
+3. **Counting only unbound sessions** keeps legitimate, authenticated traffic out of the policy entirely.
+4. **Cost follows one peer.** Sessions are indexed by remote IP, so deciding on a connection scans only that address's sessions, not the whole server.
+
+### What it does not do
+
+- **IPv6.** The key is a single address, so a client with a /64 can rotate through 2^64 addresses and never reach any one budget. A per-prefix key (for example /64) would address that; it is not implemented.
+- **Distributed floods.** A flood spread over many source addresses is not stopped by a per-address limit; that needs network-level controls.
+- **It is not on by default**, so the Phase 5 exit criterion ("unauthenticated peers cannot exhaust `MaxSessions`") holds for a server configured with it, not for one left at defaults.
+- A peer that connects and binds slowly is counted as unbound until its bind completes; keep `SessionInitTimeout` consistent with the limit.
+
+### Choosing a value
+
+A well-behaved peer holds one unbound connection at a time (it connects, binds, and is then bound). A value only slightly above the number of connections a legitimate peer opens at once is enough; raise it, or list the address in `UnboundCapExempt`, for NAT gateways.
+
+### Revisit when
+
+IPv6 clients are a real share of traffic (add a prefix key), or a flood from many addresses becomes a problem (consider an admission hook or global admission rate).

@@ -45,6 +45,11 @@ type BindStats struct {
 	Attempts  uint64 // binds that reached the server's bind path (authenticated or throttled)
 	Failures  uint64 // binds the Authenticator rejected
 	Throttled uint64 // binds rejected by the BindRateLimiter before authentication
+
+	// RefusedUnbound counts connections closed on arrival because their IP already
+	// had Config.MaxUnboundPerIP unbound connections. A rising value is the
+	// signature of a connection flood from one address.
+	RefusedUnbound uint64
 }
 
 // bindGuard is the server-side wiring shared by every session's handler.
@@ -147,16 +152,8 @@ type bindThrottle struct {
 	entries map[string]*throttleEntry
 }
 
-func remoteHost(addr net.Addr) string {
-	if addr == nil {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		return addr.String()
-	}
-	return host
-}
+// remoteHost keys the bind throttle by IP; see hostKey.
+func remoteHost(addr net.Addr) string { return hostKey(addr) }
 
 func (t *bindThrottle) AllowBind(_ context.Context, attempt BindAttempt) bool {
 	key := remoteHost(attempt.RemoteAddr)

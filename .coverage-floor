@@ -4,6 +4,7 @@
 #   total <minimum>                       the module total, counting cross-package coverage
 #   exclude <package> <reason...>         deliberately has no floor
 #
+# server and total were raised on 2026-10-11 when the unbound-connection cap and its tests landed (server 75.9 -> 78.3).
 # Set 2 points below the values measured on 2026-10-05 (Go 1.22 toolchain, linux/amd64); codec and total
 # were raised the same day when the committed fuzz corpus (Task 6.2) lifted codec from 64.8 to 76.0. Measured
 # run-to-run noise was under 0.5 points, so the margin is not there for flakiness alone: it also leaves
@@ -14,10 +15,10 @@ codec      74
 encoding   72
 message    73
 protocol   54
-server     73
+server     76
 session    80
 transport  78
-total      74
+total      75
 
 exclude .                        root package: only architecture/API/posture tests, no statements of its own
 exclude cmd/smpp-sim             program, exercised by scripts/acceptance.sh and the examples rather than unit tests
