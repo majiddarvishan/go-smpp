@@ -213,14 +213,28 @@ func TestRawPacketTraceDoesExposeThePasswordWhenEnabled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-	for _, r := range raws {
-		if bytes.Contains(r, []byte(leakMarker)) {
+	// The outbound bind is traced after its write completes, which can be after the
+	// bind_resp has already arrived and BindTransceiver has returned; on a busy machine
+	// that is routine. Wait for the trace instead of reading it immediately.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		mu.Lock()
+		n := len(raws)
+		found := false
+		for _, r := range raws {
+			if bytes.Contains(r, []byte(leakMarker)) {
+				found = true
+			}
+		}
+		mu.Unlock()
+		if found {
 			return
 		}
+		if time.Now().After(deadline) {
+			t.Fatalf("TraceRawPDU captured %d packets and none contained the password within 3s; the documented exposure no longer matches reality", n)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("TraceRawPDU captured %d packets and none contained the password; the documented exposure no longer matches reality", len(raws))
 }
 
 // With raw tracing off (the default) a tracer must receive no payload at all.
@@ -248,6 +262,17 @@ func TestPacketTraceCarriesNoPayloadByDefault(t *testing.T) {
 	defer cli.Close()
 	if _, err := cli.BindTransceiver(ctx, protocol.BindRequest{SystemID: []byte("esme"), Password: []byte(leakMarker), InterfaceVersion: protocol.InterfaceVersion34}); err != nil {
 		t.Fatal(err)
+	}
+	// Wait for the (asynchronously recorded) traces to appear, for the same reason as above.
+	waitDeadline := time.Now().Add(3 * time.Second)
+	for {
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n >= 2 || time.Now().After(waitDeadline) { // the outbound bind and the inbound bind_resp
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	mu.Lock()
 	defer mu.Unlock()

@@ -626,6 +626,11 @@ Goal: close unauthenticated resource exposure and make operator foot-guns visibl
     tracer always populating `RawPDU`; and never populating it.
     Limit worth knowing: this proves the library does not leak, not that an `Authenticator`,
     `SubmitHandler` or `PacketTracer` you write does not.
+    **Flaky-test fix, 2026-10-11:** CI exposed a race in `TestRawPacketTraceDoesExposeThePasswordWhenEnabled` (and a weaker
+    one in `TestPacketTraceCarriesNoPayloadByDefault`): the outbound bind is traced after its write completes, so on a
+    slow machine it can land after `BindTransceiver` has returned and the test had already looked. Reproduced by delaying
+    the outbound trace by 200 ms (the old test then fails with the exact CI message, "captured 1 packets and none contained
+    the password"), fixed by waiting up to 3 s for the trace; the real-failure mutant (RawPDU never populated) still fails.
 - [x] **5.3** Document the recommended TLS baseline (SEC4)
   - Package doc: `MinVersion: tls.VersionTLS12`, verified peer certificates. Keep configuration
     caller-supplied.
