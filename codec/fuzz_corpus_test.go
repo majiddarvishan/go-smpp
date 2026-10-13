@@ -10,12 +10,12 @@ import (
 // what lets plain `go test` replay it as a regression suite. A directory that
 // is deleted or emptied by a tidy-up would silently turn both off, so this
 // fails loudly instead. The minimums are well under the sizes committed on
-// 2026-10-05 (13 and 178 files) so refreshing the corpus never trips them.
+// 2026-10-05 and 2026-10-13 (13, 178 and 38 files) so refreshing the corpus never trips them.
 func TestFuzzCorpusIsCommitted(t *testing.T) {
 	for _, c := range []struct {
 		target string
 		min    int
-	}{{"FuzzFramer", 8}, {"FuzzDecodePDU", 100}} {
+	}{{"FuzzFramer", 8}, {"FuzzDecodePDU", 100}, {"FuzzFramerChunked", 20}} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "fuzz", c.target))
 		if err != nil {
 			t.Fatalf("%s: corpus directory is missing: %v", c.target, err)

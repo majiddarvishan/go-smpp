@@ -915,6 +915,27 @@ interface-compatibility wording added in 6.5; fix CI (the local `golangci-lint r
 
 ---
 
+## Follow-ups after Phase 6 (maintainer's list, 2026-10-11)
+
+Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-snapshot`, merged by him.
+
+- [x] **F1** InactivityTimeout disconnects a stalled peer (measured from inbound PDUs only). Done and merged in PR #1; see the
+  6.3 correction above and `docs/TIMEOUTS_AND_LIVENESS.md`.
+- [x] **F2** Configurable per-IP cap on unbound connections (`MaxUnboundPerIP`, off by default). Done and merged in PR #1; D3.
+- [x] **F3** `FuzzFramerChunked` (was "4a"). A differential fuzz target for the framer's state between `Feed` calls: delivering a
+  stream in arbitrary pieces must equal delivering it whole (same frames, same outcome, same leftover, a failed framer stays
+  failed). Inputs are the stream and a plan of read sizes. Fuzzed 100 s / 2.49 M executions from a cold cache with no crashing
+  input; 38 corpus files (4 KB) committed, guarded by `TestFuzzCorpusIsCommitted`; 2 s smoke added to CI. A first version used
+  70 KiB seeds so as to reach the buffer-release path and managed about 30 executions per second, so the large inputs moved
+  into a deterministic test, `TestFramerChunkedLargePDUs` (70 KiB to 1 MiB streams, six read shapes, plus the "holding nothing
+  means holding no large buffer" check), and the fuzz target runs at 27 000 per second. Mutation-checked, 5 framer bugs all
+  caught by the seeds and the large test alone (length word needing 5 bytes; stale `expected` after an emit; the Task 3.4
+  buffer release removed; a failed framer that is not sticky; a frame emitted one byte short).
+- [ ] **F4** Exhaustive exported-API snapshot test (was "3"). Next.
+- [ ] **F5** SMPP 5.0 decoder fuzz target (was "4b"). After F4.
+
+---
+
 ## CI stage checklist (implemented in PR #1; not merged, by the maintainer's choice)
 
 **Status 2026-10-11.** All five items below are implemented on branch `ci/lint-v2-go-matrix`, open as PR #1 against `main`;

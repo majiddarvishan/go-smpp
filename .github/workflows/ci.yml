@@ -77,6 +77,7 @@ jobs:
         run: |
           go test ./codec -run '^$' -fuzz=FuzzFramer -fuzztime=2s
           go test ./codec -run '^$' -fuzz=FuzzDecodePDU -fuzztime=2s
+          go test ./codec -run '^$' -fuzz=FuzzFramerChunked -fuzztime=2s
 
       - name: Protocol and codec benchmarks
         run: go test -run '^$' -bench=. -benchmem ./protocol ./codec
