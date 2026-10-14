@@ -1,0 +1,65 @@
+# Exported API of github.com/majiddarvishan/go-smpp/server. Regenerate with: go test -run TestExportedAPISnapshot -update .
+type Authenticator interface
+imethod Authenticator.Authenticate(context.Context, *session.Session, session.BindMode, protocol.BindRequest) (BindResult, error)
+type AuthenticatorFunc func(context.Context, *session.Session, session.BindMode, protocol.BindRequest) (BindResult, error)
+method (AuthenticatorFunc).Authenticate(ctx context.Context, s *session.Session, mode session.BindMode, request protocol.BindRequest) (BindResult, error)
+type BindAttempt struct
+field BindAttempt.Mode session.BindMode
+field BindAttempt.RemoteAddr net.Addr
+field BindAttempt.SystemID string
+type BindRateLimiter interface
+imethod BindRateLimiter.AllowBind(ctx context.Context, attempt BindAttempt) bool
+imethod BindRateLimiter.RecordBind(attempt BindAttempt, success bool)
+type BindResult struct
+field BindResult.Optional []protocol.OptionalParameter
+field BindResult.Status protocol.CommandStatus
+field BindResult.SystemID []byte
+type BindStats struct
+field BindStats.Attempts uint64
+field BindStats.Failures uint64
+field BindStats.RefusedUnbound uint64
+field BindStats.Throttled uint64
+type BindThrottleConfig struct
+field BindThrottleConfig.Lockout time.Duration
+field BindThrottleConfig.MaxFailures int
+field BindThrottleConfig.MaxTracked int
+field BindThrottleConfig.Now func() time.Time
+field BindThrottleConfig.Window time.Duration
+type Config struct
+field Config.Address string
+field Config.Authenticator Authenticator
+field Config.BindFailureDelay time.Duration
+field Config.BindRateLimiter BindRateLimiter
+field Config.Fallback session.Handler
+field Config.ListenConfig *net.ListenConfig
+field Config.MaxSessions int
+field Config.MaxUnboundPerIP int
+field Config.Network string
+field Config.SessionConfig session.Config
+field Config.SubmitHandler SubmitHandler
+field Config.TLSConfig *tls.Config
+field Config.UnboundCapExempt []netip.Prefix
+var ErrAlreadyServing error
+var ErrUnknownSession error
+func Listen(ctx context.Context, config Config) (*Server, error)
+func ListenAndServe(ctx context.Context, config Config) error
+func New(listener net.Listener, config session.Config) *Server
+func NewBindThrottle(config BindThrottleConfig) BindRateLimiter
+func NewWithConfig(listener net.Listener, config Config) *Server
+type Server struct
+method (*Server).Addr() net.Addr
+method (*Server).AlertNotification(ctx context.Context, sess *session.Session, notification protocol.AlertNotification) error
+method (*Server).BindStats() BindStats
+method (*Server).Close() error
+method (*Server).DataSM(ctx context.Context, sess *session.Session, request protocol.DataSM) (protocol.DataSMResp, error)
+method (*Server).DeliverSM(ctx context.Context, sess *session.Session, request protocol.DeliverSM) (protocol.DeliverSMResp, error)
+method (*Server).Outbind(ctx context.Context, sess *session.Session, request protocol.Outbind) error
+method (*Server).Serve(ctx context.Context) error
+method (*Server).Sessions() []*session.Session
+type SubmitHandler interface
+imethod SubmitHandler.SubmitSM(context.Context, *session.Session, protocol.SubmitSM) (SubmitResult, error)
+type SubmitHandlerFunc func(context.Context, *session.Session, protocol.SubmitSM) (SubmitResult, error)
+method (SubmitHandlerFunc).SubmitSM(ctx context.Context, s *session.Session, request protocol.SubmitSM) (SubmitResult, error)
+type SubmitResult struct
+field SubmitResult.MessageID []byte
+field SubmitResult.Status protocol.CommandStatus

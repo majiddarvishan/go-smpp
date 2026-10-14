@@ -1,0 +1,40 @@
+# Exported API of github.com/majiddarvishan/go-smpp/message. Regenerate with: go test -run TestExportedAPISnapshot -update .
+const BinaryMultipartOctets untyped int = 134
+const BinarySingleOctets untyped int = 140
+func BuildConcatUDH16(reference uint16, total byte, sequence byte) []byte
+func BuildConcatUDH8(reference byte, total byte, sequence byte) []byte
+func DecodeTextSegments(segments []Segment) (string, error)
+const ESMClassUDHI uint8 = 64
+func EncodeText(text string, allowSurrogates bool) (EncodedText, error)
+type EncodedText struct
+field EncodedText.Data []byte
+field EncodedText.DataCoding protocol.DataCoding
+field EncodedText.Kind encoding.Kind
+field EncodedText.Units int
+var ErrInvalidSAR error
+var ErrInvalidSegments error
+var ErrInvalidUDH error
+const GSM7MultipartSeptets untyped int = 153
+const GSM7SingleSeptets untyped int = 160
+func GSM7UDHFillBits(headerOctets int) uint8
+func ParseConcatUDH(userData []byte) (reference uint16, total uint8, sequence uint8, headerLen int, err error)
+func ParseSAR(optional []protocol.OptionalParameter) (reference uint16, total uint8, sequence uint8, err error)
+func Reassemble(segments []Segment) ([]byte, error)
+func SARTLVs(reference uint16, total uint8, sequence uint8) []protocol.OptionalParameter
+type Segment struct
+field Segment.Data []byte
+field Segment.DataCoding protocol.DataCoding
+field Segment.Kind encoding.Kind
+field Segment.Optional []protocol.OptionalParameter
+field Segment.Reference uint16
+field Segment.Sequence uint8
+field Segment.Total uint8
+field Segment.UDH []byte
+field Segment.Units int
+field Segment.UserData []byte
+func SegmentBinarySAR(data []byte, reference uint16) ([]Segment, error)
+func SegmentBinaryUDH(data []byte, reference byte) ([]Segment, error)
+func SegmentTextSAR(text string, allowSurrogates bool, reference uint16) ([]Segment, error)
+func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segment, error)
+const UCS2MultipartUnits untyped int = 67
+const UCS2SingleUnits untyped int = 70

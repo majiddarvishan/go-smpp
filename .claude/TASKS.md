@@ -931,7 +931,21 @@ Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-sna
   means holding no large buffer" check), and the fuzz target runs at 27 000 per second. Mutation-checked, 5 framer bugs all
   caught by the seeds and the large test alone (length word needing 5 bytes; stale `expected` after an emit; the Task 3.4
   buffer release removed; a failed framer that is not sticky; a frame emitted one byte short).
-- [ ] **F4** Exhaustive exported-API snapshot test (was "3"). Next.
+- [x] **F4** Exhaustive exported-API snapshot test (was "3"). `api_snapshot_test.go` type-checks each public package from source with the
+  standard library only (`go/types` and the `source` importer; about 3 s for all eight), writes one line per exported thing, and compares with
+  `testdata/api/<pkg>.txt` (987 lines in total). Constants include their values, structs list their exported fields, interfaces list their
+  methods and whether they are sealed, every named type lists its methods. A diff prints REMOVED or CHANGED (breaking) apart from ADDED
+  (allowed but acknowledged); `go test -run TestExportedAPISnapshot -update .` accepts a deliberate change. Public packages are found by
+  scanning directories, so a new one without a snapshot fails, as does a snapshot of a package that is gone.
+  Checked with 11 API changes it must catch, all caught (function removed, added, signature changed; constant value changed; struct field
+  type changed or removed; method added to an exported interface; interface method signature changed; interface becoming sealed; method
+  receiver value to pointer; exported type removed) and 4 harmless changes it must ignore, none failed (unexported function, struct field
+  and method added; a function body changed). A first version printed interface methods as `imethod Zz.(Zz).B()`; the catch case still
+  fired but with the wrong text, which is how the format was found and fixed.
+  One Go-version risk was found and handled: `go/types` keeps type aliases as aliases from Go 1.23, and `session.InboundPDU` is an alias, so
+  the test pins `gotypesalias=1`. Whether the files read the same on Go 1.25 and 1.27 is what the CI matrix decides.
+  `docs/API_COMPATIBILITY.md` is updated: the snapshot is now the first row of "How it is checked", and the sentence saying reviewers are
+  the only control for the rest of the API is replaced by the update workflow.
 - [ ] **F5** SMPP 5.0 decoder fuzz target (was "4b"). After F4.
 
 ---

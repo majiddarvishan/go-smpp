@@ -30,15 +30,22 @@ The usual Go rules for what counts as breaking apply, and a few are worth statin
 
 ## How it is checked, and how far
 
-Three tests in the root package keep parts of this honest. None of them is a full API diff, and it is worth being exact about what each does:
+Four tests in the root package keep this honest. The first below is the exhaustive one; the others are narrower, and it is worth being exact about what each does:
 
 | Test | What it enforces | What it does not |
 | --- | --- | --- |
-| `api_contract_test.go` | A compile-time pin of 28 selected identifiers across `client`, `server`, `session`, `codec`, `encoding`, `message` and `protocol`. For all 28, removal or rename stops the build of `go test`. For five (`client.Dial`, `client.New`, `server.Listen`, `server.ListenAndServe`, `session.New`) the exact function signature is pinned too; the rest are pinned by existence only, so a changed signature on them is not caught. | It is a representative sample, not an enumeration. Removing or changing an exported identifier that is not on its list does not fail any test. |
+| `api_snapshot_test.go` | **Every exported identifier** of the eight public packages, against the committed files in `testdata/api/`: constants with their values, variables, functions, types, the exported fields of structs, the methods of every named type, the methods of interfaces, and whether an interface is sealed. Anything removed or changed fails the test (it is breaking); anything added fails it too, until the snapshot is updated on purpose so a reviewer sees it. Unexported identifiers never appear, so changing them never fails it. A new public package without a snapshot, or a snapshot of a package that is gone, fails as well. | Behaviour: it sees signatures and shapes, not what a function does. It does not see struct tags or the order of struct fields. |
+| `api_contract_test.go` | A compile-time pin of 28 selected identifiers across `client`, `server`, `session`, `codec`, `encoding`, `message` and `protocol`. For all 28, removal or rename stops the build of `go test`. For five (`client.Dial`, `client.New`, `server.Listen`, `server.ListenAndServe`, `session.New`) the exact function signature is pinned too; the rest are pinned by existence only, so a changed signature on them is not caught. | It is a representative sample, not an enumeration; the snapshot test above is the exhaustive one. |
 | `architecture_test.go` | Dependency direction between the eight public packages (for example `protocol`, `encoding` and `transport` import no sibling). | Anything about the shape of exported identifiers. |
 | `posture_test.go` | No third-party dependencies, no `unsafe`, no cgo. | Anything about the API. |
 
-So the promise is wider than the mechanical check: until an exhaustive API snapshot exists, reviewers are the control for exported identifiers outside the 28 pinned ones. When you add an exported identifier to a public package, add it to `api_contract_test.go` if it is a main entry point; when you change or remove one, treat it as a compatibility decision first, per the baseline above.
+When the API changes, the snapshot test fails and prints what was **removed or changed** (breaking, so a compatibility decision first, per the baseline above) and what was **added** (allowed, but acknowledged). After a deliberate change, accept it with:
+
+```sh
+go test -run TestExportedAPISnapshot -update .
+```
+
+and commit the changed files in `testdata/api/`; the diff of those files is the API change a reviewer reads. The snapshot is generated with the standard library only (`go/types`, no new dependency), which is why a method added to an exported interface, a changed signature or a changed constant value are all visible. The one place Go's own type printer varies between releases is how it prints a type alias; the test pins `gotypesalias=1` so the output reads the same on every supported Go version.
 
 ## Stable behavioral contracts
 

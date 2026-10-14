@@ -1,0 +1,466 @@
+# Exported API of github.com/majiddarvishan/go-smpp/protocol. Regenerate with: go test -run TestExportedAPISnapshot -update .
+type AlertNotification struct
+field AlertNotification.ESMEAddr []byte
+field AlertNotification.ESMEAddrNPI NPI
+field AlertNotification.ESMEAddrTON TON
+field AlertNotification.Optional []OptionalParameter
+field AlertNotification.SourceAddr []byte
+field AlertNotification.SourceAddrNPI NPI
+field AlertNotification.SourceAddrTON TON
+type BindRequest struct
+field BindRequest.AddressNPI NPI
+field BindRequest.AddressRange []byte
+field BindRequest.AddressTON TON
+field BindRequest.InterfaceVersion InterfaceVersion
+field BindRequest.Password []byte
+field BindRequest.SystemID []byte
+field BindRequest.SystemType []byte
+type BindResponse struct
+field BindResponse.Optional []OptionalParameter
+field BindResponse.SystemID []byte
+type BroadcastSM struct
+field BroadcastSM.DataCoding DataCoding
+field BroadcastSM.MessageID []byte
+field BroadcastSM.Optional []OptionalParameter
+field BroadcastSM.PriorityFlag uint8
+field BroadcastSM.ReplaceIfPresentFlag uint8
+field BroadcastSM.SMDefaultMsgID uint8
+field BroadcastSM.ScheduleDeliveryTime []byte
+field BroadcastSM.ServiceType []byte
+field BroadcastSM.SourceAddr []byte
+field BroadcastSM.SourceAddrNPI NPI
+field BroadcastSM.SourceAddrTON TON
+field BroadcastSM.ValidityPeriod []byte
+type BroadcastSMResp struct
+field BroadcastSMResp.MessageID []byte
+field BroadcastSMResp.Optional []OptionalParameter
+type CancelBroadcastSM struct
+field CancelBroadcastSM.MessageID []byte
+field CancelBroadcastSM.Optional []OptionalParameter
+field CancelBroadcastSM.ServiceType []byte
+field CancelBroadcastSM.SourceAddr []byte
+field CancelBroadcastSM.SourceAddrNPI NPI
+field CancelBroadcastSM.SourceAddrTON TON
+type CancelSM struct
+field CancelSM.DestAddrNPI NPI
+field CancelSM.DestAddrTON TON
+field CancelSM.DestinationAddr []byte
+field CancelSM.MessageID []byte
+field CancelSM.ServiceType []byte
+field CancelSM.SourceAddr []byte
+field CancelSM.SourceAddrNPI NPI
+field CancelSM.SourceAddrTON TON
+const CommandAlertNotification CommandID = 258
+const CommandBindReceiver CommandID = 1
+const CommandBindReceiverResp CommandID = 2147483649
+const CommandBindTransceiver CommandID = 9
+const CommandBindTransceiverResp CommandID = 2147483657
+const CommandBindTransmitter CommandID = 2
+const CommandBindTransmitterResp CommandID = 2147483650
+const CommandBroadcastSM CommandID = 273
+const CommandBroadcastSMResp CommandID = 2147483921
+const CommandCancelBroadcastSM CommandID = 275
+const CommandCancelBroadcastSMResp CommandID = 2147483923
+const CommandCancelSM CommandID = 8
+const CommandCancelSMResp CommandID = 2147483656
+const CommandDataSM CommandID = 259
+const CommandDataSMResp CommandID = 2147483907
+const CommandDeliverSM CommandID = 5
+const CommandDeliverSMResp CommandID = 2147483653
+const CommandEnquireLink CommandID = 21
+const CommandEnquireLinkResp CommandID = 2147483669
+const CommandGenericNACK CommandID = 2147483648
+type CommandID uint32
+method (CommandID).IsResponse() bool
+method (CommandID).RequestID() CommandID
+method (CommandID).ResponseID() CommandID
+const CommandOutbind CommandID = 11
+const CommandQueryBroadcastSM CommandID = 274
+const CommandQueryBroadcastSMResp CommandID = 2147483922
+const CommandQuerySM CommandID = 3
+const CommandQuerySMResp CommandID = 2147483651
+const CommandReplaceSM CommandID = 7
+const CommandReplaceSMResp CommandID = 2147483655
+type CommandStatus uint32
+method (CommandStatus).OK() bool
+const CommandSubmitMulti CommandID = 33
+const CommandSubmitMultiResp CommandID = 2147483681
+const CommandSubmitSM CommandID = 4
+const CommandSubmitSMResp CommandID = 2147483652
+const CommandUnbind CommandID = 6
+const CommandUnbindResp CommandID = 2147483654
+type CongestionState uint8
+method (CongestionState).Valid() bool
+func CongestionStateFromOptional(optional []OptionalParameter) (CongestionState, bool, error)
+type DataCoding uint8
+const DataCodingCyrillic DataCoding = 6
+const DataCodingExtendedKanji DataCoding = 13
+const DataCodingIA5 DataCoding = 1
+const DataCodingISO2022JP DataCoding = 10
+const DataCodingJIS DataCoding = 5
+const DataCodingKSC5601 DataCoding = 14
+const DataCodingLatin1 DataCoding = 3
+const DataCodingLatinHebrew DataCoding = 7
+const DataCodingOctetBinary1 DataCoding = 2
+const DataCodingOctetBinary2 DataCoding = 4
+const DataCodingPictogram DataCoding = 9
+const DataCodingSMSCDefault DataCoding = 0
+const DataCodingUCS2 DataCoding = 8
+type DataSM struct
+field DataSM.DataCoding DataCoding
+field DataSM.DestAddrNPI NPI
+field DataSM.DestAddrTON TON
+field DataSM.DestinationAddr []byte
+field DataSM.ESMClass uint8
+field DataSM.Optional []OptionalParameter
+field DataSM.RegisteredDelivery uint8
+field DataSM.ServiceType []byte
+field DataSM.SourceAddr []byte
+field DataSM.SourceAddrNPI NPI
+field DataSM.SourceAddrTON TON
+type DataSMResp struct
+field DataSMResp.MessageID []byte
+field DataSMResp.Optional []OptionalParameter
+type DeliverSM struct
+field DeliverSM.DataCoding DataCoding
+field DeliverSM.DestAddrNPI NPI
+field DeliverSM.DestAddrTON TON
+field DeliverSM.DestinationAddr []byte
+field DeliverSM.ESMClass uint8
+field DeliverSM.Optional []OptionalParameter
+field DeliverSM.PriorityFlag uint8
+field DeliverSM.ProtocolID uint8
+field DeliverSM.RegisteredDelivery uint8
+field DeliverSM.ReplaceIfPresentFlag uint8
+field DeliverSM.SMDefaultMsgID uint8
+field DeliverSM.ScheduleDeliveryTime []byte
+field DeliverSM.ServiceType []byte
+field DeliverSM.ShortMessage []byte
+field DeliverSM.SourceAddr []byte
+field DeliverSM.SourceAddrNPI NPI
+field DeliverSM.SourceAddrTON TON
+field DeliverSM.ValidityPeriod []byte
+type DeliverSMResp struct
+field DeliverSMResp.MessageID []byte
+field DeliverSMResp.Optional []OptionalParameter
+const DestinationDistributionList DestinationFlag = 2
+type DestinationFlag uint8
+const DestinationSME DestinationFlag = 1
+type EmptyBody struct
+var ErrInvalidCongestionState error
+type FatalError struct
+field FatalError.Cause error
+field FatalError.Command CommandID
+field FatalError.DeclaredLength uint32
+field FatalError.Kind FatalErrorKind
+field FatalError.Reason string
+field FatalError.Sequence SequenceNumber
+method (*FatalError).Error() string
+method (*FatalError).Fatal() bool
+method (*FatalError).Unwrap() error
+type FatalErrorKind uint8
+method (FatalErrorKind).String() string
+const FatalFrameBoundaryLost FatalErrorKind = 7
+const FatalInvalidCString FatalErrorKind = 5
+const FatalInvalidCommandLength FatalErrorKind = 1
+const FatalInvalidFieldLength FatalErrorKind = 4
+const FatalInvalidTLVLength FatalErrorKind = 6
+const FatalPDUTooLarge FatalErrorKind = 2
+const FatalTruncatedFrame FatalErrorKind = 3
+const FatalUnknown FatalErrorKind = 0
+type InterfaceVersion uint8
+const InterfaceVersion34 InterfaceVersion = 52
+const InterfaceVersion50 InterfaceVersion = 80
+type MessageState uint8
+const MessageStateAccepted MessageState = 6
+const MessageStateDeleted MessageState = 4
+const MessageStateDelivered MessageState = 2
+const MessageStateEnroute MessageState = 1
+const MessageStateExpired MessageState = 3
+const MessageStateRejected MessageState = 8
+const MessageStateUndeliverable MessageState = 5
+const MessageStateUnknown MessageState = 7
+type NPI uint8
+const NPIData NPI = 3
+const NPIERMES NPI = 10
+const NPIISDN NPI = 1
+const NPIInternet NPI = 14
+const NPILandMobile NPI = 6
+const NPINational NPI = 8
+const NPIPrivate NPI = 9
+const NPITelex NPI = 4
+const NPIUnknown NPI = 0
+const NPIWAPClientID NPI = 18
+func NegotiatePeerCapabilities(local Profile, peer InterfaceVersion, advertised bool) PeerCapabilities
+type OptionalParameter struct
+field OptionalParameter.Tag uint16
+field OptionalParameter.Value []byte
+type OptionalResponse struct
+field OptionalResponse.Optional []OptionalParameter
+type Outbind struct
+field Outbind.Password []byte
+field Outbind.SystemID []byte
+type PeerCapabilities struct
+field PeerCapabilities.NegotiatedVersion InterfaceVersion
+field PeerCapabilities.PeerVersion InterfaceVersion
+field PeerCapabilities.SupportsSMPP50 bool
+field PeerCapabilities.SupportsTLV bool
+field PeerCapabilities.VersionAdvertised bool
+type Profile struct
+field Profile.InterfaceVersion InterfaceVersion
+method (Profile).IsSMPP50() bool
+method (Profile).SupportsOptionalParameters() bool
+method (Profile).Valid() bool
+func PutUint32(dst []byte, value uint32) bool
+type QueryBroadcastSM struct
+field QueryBroadcastSM.MessageID []byte
+field QueryBroadcastSM.Optional []OptionalParameter
+field QueryBroadcastSM.SourceAddr []byte
+field QueryBroadcastSM.SourceAddrNPI NPI
+field QueryBroadcastSM.SourceAddrTON TON
+type QueryBroadcastSMResp struct
+field QueryBroadcastSMResp.MessageID []byte
+field QueryBroadcastSMResp.Optional []OptionalParameter
+type QuerySM struct
+field QuerySM.MessageID []byte
+field QuerySM.SourceAddr []byte
+field QuerySM.SourceAddrNPI NPI
+field QuerySM.SourceAddrTON TON
+type QuerySMResp struct
+field QuerySMResp.ErrorCode uint8
+field QuerySMResp.FinalDate []byte
+field QuerySMResp.MessageID []byte
+field QuerySMResp.MessageState MessageState
+field QuerySMResp.Optional []OptionalParameter
+func ReadUint32(src []byte) (uint32, bool)
+type ReplaceSM struct
+field ReplaceSM.MessageID []byte
+field ReplaceSM.RegisteredDelivery uint8
+field ReplaceSM.SMDefaultMsgID uint8
+field ReplaceSM.ScheduleDeliveryTime []byte
+field ReplaceSM.ShortMessage []byte
+field ReplaceSM.SourceAddr []byte
+field ReplaceSM.SourceAddrNPI NPI
+field ReplaceSM.SourceAddrTON TON
+field ReplaceSM.ValidityPeriod []byte
+func SCInterfaceVersion(optional []OptionalParameter) (InterfaceVersion, bool)
+func SMPP34Profile() Profile
+func SMPP50Profile() Profile
+type SemanticError struct
+field SemanticError.Cause error
+field SemanticError.Command CommandID
+field SemanticError.Reason string
+field SemanticError.Sequence SequenceNumber
+field SemanticError.Status CommandStatus
+method (*SemanticError).Error() string
+method (*SemanticError).Unwrap() error
+const SequenceInboundMax SequenceNumber = 4294967295
+const SequenceMin SequenceNumber = 1
+type SequenceNumber uint32
+method (SequenceNumber).Valid() bool
+method (SequenceNumber).ValidInbound() bool
+method (SequenceNumber).ValidOutbound() bool
+const SequenceOutboundMax SequenceNumber = 2147483647
+type SessionState uint8
+method (SessionState).String() string
+const StateBoundRX SessionState = 4
+const StateBoundTRX SessionState = 5
+const StateBoundTX SessionState = 3
+const StateClosed SessionState = 0
+const StateOpen SessionState = 1
+const StateOutbound SessionState = 2
+const StateUnbound SessionState = 6
+const StatusAlreadyBound CommandStatus = 5
+const StatusBindFailed CommandStatus = 13
+const StatusBroadcastCancelFailed CommandStatus = 271
+const StatusBroadcastFailed CommandStatus = 269
+const StatusBroadcastQueryFailed CommandStatus = 270
+const StatusCancelFailed CommandStatus = 17
+const StatusCannotSubmitToDistributionList CommandStatus = 68
+const StatusDeliveryFailure CommandStatus = 254
+const StatusInvalidBindState CommandStatus = 4
+const StatusInvalidBroadcastAliasName CommandStatus = 264
+const StatusInvalidBroadcastAreaFormat CommandStatus = 265
+const StatusInvalidBroadcastChannel CommandStatus = 274
+const StatusInvalidBroadcastContentType CommandStatus = 267
+const StatusInvalidBroadcastFrequency CommandStatus = 263
+const StatusInvalidBroadcastMessageClass CommandStatus = 268
+const StatusInvalidBroadcastRepetition CommandStatus = 272
+const StatusInvalidBroadcastServiceGroup CommandStatus = 273
+const StatusInvalidCommandID CommandStatus = 3
+const StatusInvalidCommandLength CommandStatus = 2
+const StatusInvalidDataCodingScheme CommandStatus = 260
+const StatusInvalidDefaultMessageID CommandStatus = 99
+const StatusInvalidDestAddrSubunit CommandStatus = 262
+const StatusInvalidDestinationAddress CommandStatus = 11
+const StatusInvalidDestinationFlag CommandStatus = 64
+const StatusInvalidDestinationNPI CommandStatus = 81
+const StatusInvalidDestinationTON CommandStatus = 80
+const StatusInvalidDistributionListName CommandStatus = 52
+const StatusInvalidESMClass CommandStatus = 67
+const StatusInvalidMessageID CommandStatus = 12
+const StatusInvalidMessageLength CommandStatus = 1
+const StatusInvalidNumberOfBroadcastAreas CommandStatus = 266
+const StatusInvalidNumberOfDestinations CommandStatus = 51
+const StatusInvalidNumberOfMessages CommandStatus = 85
+const StatusInvalidOptionalParameterStream CommandStatus = 192
+const StatusInvalidOptionalParameterValue CommandStatus = 196
+const StatusInvalidParameterLength CommandStatus = 194
+const StatusInvalidPassword CommandStatus = 14
+const StatusInvalidPriorityFlag CommandStatus = 6
+const StatusInvalidRegisteredDeliveryFlag CommandStatus = 7
+const StatusInvalidReplaceFlag CommandStatus = 84
+const StatusInvalidScheduledDeliveryTime CommandStatus = 97
+const StatusInvalidServiceType CommandStatus = 21
+const StatusInvalidSourceAddrSubunit CommandStatus = 261
+const StatusInvalidSourceAddress CommandStatus = 10
+const StatusInvalidSourceNPI CommandStatus = 73
+const StatusInvalidSourceTON CommandStatus = 72
+const StatusInvalidSubmitWithReplace CommandStatus = 66
+const StatusInvalidSystemID CommandStatus = 15
+const StatusInvalidSystemType CommandStatus = 83
+const StatusInvalidValidityPeriod CommandStatus = 98
+const StatusMessageQueueFull CommandStatus = 20
+const StatusMissingOptionalParameter CommandStatus = 195
+const StatusOK CommandStatus = 0
+const StatusOptionalParameterNotAllowed CommandStatus = 193
+const StatusProhibited CommandStatus = 257
+const StatusQueryFailed CommandStatus = 103
+const StatusReceiverPermanentAppError CommandStatus = 101
+const StatusReceiverRejectMessage CommandStatus = 102
+const StatusReceiverTemporaryAppError CommandStatus = 100
+const StatusReplaceFailed CommandStatus = 19
+const StatusServiceTypeDenied CommandStatus = 259
+const StatusServiceTypeUnauthorized CommandStatus = 256
+const StatusServiceTypeUnavailable CommandStatus = 258
+const StatusSubmitFailed CommandStatus = 69
+const StatusSystemError CommandStatus = 8
+const StatusThrottled CommandStatus = 88
+const StatusUnknownError CommandStatus = 255
+type SubmitMulti struct
+field SubmitMulti.DataCoding DataCoding
+field SubmitMulti.Destinations []SubmitMultiDestination
+field SubmitMulti.ESMClass uint8
+field SubmitMulti.Optional []OptionalParameter
+field SubmitMulti.PriorityFlag uint8
+field SubmitMulti.ProtocolID uint8
+field SubmitMulti.RegisteredDelivery uint8
+field SubmitMulti.ReplaceIfPresentFlag uint8
+field SubmitMulti.SMDefaultMsgID uint8
+field SubmitMulti.ScheduleDeliveryTime []byte
+field SubmitMulti.ServiceType []byte
+field SubmitMulti.ShortMessage []byte
+field SubmitMulti.SourceAddr []byte
+field SubmitMulti.SourceAddrNPI NPI
+field SubmitMulti.SourceAddrTON TON
+field SubmitMulti.ValidityPeriod []byte
+type SubmitMultiDestination struct
+field SubmitMultiDestination.Address []byte
+field SubmitMultiDestination.Flag DestinationFlag
+field SubmitMultiDestination.NPI NPI
+field SubmitMultiDestination.TON TON
+type SubmitMultiResp struct
+field SubmitMultiResp.MessageID []byte
+field SubmitMultiResp.Optional []OptionalParameter
+field SubmitMultiResp.Unsuccessful []UnsuccessfulSME
+type SubmitSM struct
+field SubmitSM.DataCoding DataCoding
+field SubmitSM.DestAddrNPI NPI
+field SubmitSM.DestAddrTON TON
+field SubmitSM.DestinationAddr []byte
+field SubmitSM.ESMClass uint8
+field SubmitSM.Optional []OptionalParameter
+field SubmitSM.PriorityFlag uint8
+field SubmitSM.ProtocolID uint8
+field SubmitSM.RegisteredDelivery uint8
+field SubmitSM.ReplaceIfPresentFlag uint8
+field SubmitSM.SMDefaultMsgID uint8
+field SubmitSM.ScheduleDeliveryTime []byte
+field SubmitSM.ServiceType []byte
+field SubmitSM.ShortMessage []byte
+field SubmitSM.SourceAddr []byte
+field SubmitSM.SourceAddrNPI NPI
+field SubmitSM.SourceAddrTON TON
+field SubmitSM.ValidityPeriod []byte
+type SubmitSMResp struct
+field SubmitSMResp.MessageID []byte
+field SubmitSMResp.Optional []OptionalParameter
+const TLVTagAdditionalStatusInfoText uint16 = 29
+const TLVTagAlertOnMessageDelivery uint16 = 4876
+const TLVTagBillingIdentification uint16 = 1547
+const TLVTagBroadcastAreaIdentifier uint16 = 1542
+const TLVTagBroadcastAreaSuccess uint16 = 1544
+const TLVTagBroadcastChannelIndicator uint16 = 1536
+const TLVTagBroadcastContentType uint16 = 1537
+const TLVTagBroadcastContentTypeInfo uint16 = 1538
+const TLVTagBroadcastEndTime uint16 = 1545
+const TLVTagBroadcastErrorStatus uint16 = 1543
+const TLVTagBroadcastFrequencyInterval uint16 = 1541
+const TLVTagBroadcastMessageClass uint16 = 1539
+const TLVTagBroadcastRepNum uint16 = 1540
+const TLVTagBroadcastServiceGroup uint16 = 1546
+const TLVTagCallbackNum uint16 = 897
+const TLVTagCallbackNumAtag uint16 = 771
+const TLVTagCallbackNumPresInd uint16 = 770
+const TLVTagCongestionState uint16 = 1064
+const TLVTagDPFResult uint16 = 1056
+const TLVTagDeliveryFailureReason uint16 = 1061
+const TLVTagDestAddrNPCountry uint16 = 1555
+const TLVTagDestAddrNPInformation uint16 = 1554
+const TLVTagDestAddrNPResolution uint16 = 1553
+const TLVTagDestAddrSubunit uint16 = 5
+const TLVTagDestBearerType uint16 = 7
+const TLVTagDestNetworkID uint16 = 1550
+const TLVTagDestNetworkType uint16 = 6
+const TLVTagDestNodeID uint16 = 1552
+const TLVTagDestSubaddress uint16 = 515
+const TLVTagDestTelematicsID uint16 = 8
+const TLVTagDestinationPort uint16 = 523
+const TLVTagDisplayTime uint16 = 4609
+const TLVTagFailedBroadcastAreaIdentifier uint16 = 1542
+const TLVTagITSReplyType uint16 = 4992
+const TLVTagITSSessionInfo uint16 = 4995
+const TLVTagLanguageIndicator uint16 = 525
+const TLVTagMSAvailabilityStatus uint16 = 1058
+const TLVTagMSMsgWaitFacilities uint16 = 48
+const TLVTagMSValidity uint16 = 4612
+const TLVTagMessagePayload uint16 = 1060
+const TLVTagMessageState uint16 = 1063
+const TLVTagMoreMessagesToSend uint16 = 1062
+const TLVTagNetworkErrorCode uint16 = 1059
+const TLVTagNumberOfMessages uint16 = 772
+const TLVTagPayloadType uint16 = 25
+const TLVTagPrivacyIndicator uint16 = 513
+const TLVTagQOSTimeToLive uint16 = 23
+const TLVTagReceiptedMessageID uint16 = 30
+const TLVTagSARMsgRefNum uint16 = 524
+const TLVTagSARSegmentSeqnum uint16 = 527
+const TLVTagSARTotalSegments uint16 = 526
+const TLVTagSCInterfaceVersion uint16 = 528
+const TLVTagSMSSignal uint16 = 4611
+const TLVTagSetDPF uint16 = 1057
+const TLVTagSourceAddrSubunit uint16 = 13
+const TLVTagSourceBearerType uint16 = 15
+const TLVTagSourceNetworkID uint16 = 1549
+const TLVTagSourceNetworkType uint16 = 14
+const TLVTagSourceNodeID uint16 = 1551
+const TLVTagSourcePort uint16 = 522
+const TLVTagSourceSubaddress uint16 = 514
+const TLVTagSourceTelematicsID uint16 = 16
+const TLVTagUSSDServiceOp uint16 = 1281
+const TLVTagUserMessageReference uint16 = 516
+const TLVTagUserResponseCode uint16 = 517
+type TON uint8
+const TONAbbreviated TON = 6
+const TONAlphanumeric TON = 5
+const TONInternational TON = 1
+const TONNational TON = 2
+const TONNetworkSpecific TON = 3
+const TONSubscriberNumber TON = 4
+const TONUnknown TON = 0
+const Uint32Size untyped int = 4
+type UnsuccessfulSME struct
+field UnsuccessfulSME.DestAddrNPI NPI
+field UnsuccessfulSME.DestAddrTON TON
+field UnsuccessfulSME.DestinationAddr []byte
+field UnsuccessfulSME.ErrorStatusCode CommandStatus

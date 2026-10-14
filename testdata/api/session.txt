@@ -1,0 +1,226 @@
+# Exported API of github.com/majiddarvishan/go-smpp/session. Regenerate with: go test -run TestExportedAPISnapshot -update .
+type BindMode uint8
+method (BindMode).String() string
+const BindNone BindMode = 0
+const BindRX BindMode = 2
+const BindTRX BindMode = 3
+const BindTX BindMode = 1
+func CanIssue(state protocol.SessionState, role Role, command protocol.CommandID) bool
+type Config struct
+field Config.EnquireLinkInterval time.Duration
+field Config.EnquireLinkTimeout time.Duration
+field Config.FlowController FlowController
+field Config.Handler Handler
+field Config.InactivityTimeout time.Duration
+field Config.Logger *slog.Logger
+field Config.MaxPDUSize uint32
+field Config.MaxPending int
+field Config.Observer Observer
+field Config.PacketTracer PacketTracer
+field Config.Profile protocol.Profile
+field Config.ReadBufferSize int
+field Config.Registry *codec.Registry
+field Config.ResponseTimeout time.Duration
+field Config.Role Role
+field Config.SessionInitTimeout time.Duration
+field Config.TXBatchBytes int
+field Config.TXBatchItems int
+field Config.TXQueueSize int
+field Config.TraceRawPDU bool
+field Config.WindowObserver WindowObserver
+field Config.WindowSize int
+field Config.WriteTimeout time.Duration
+type CongestionEvent struct
+field CongestionEvent.At time.Time
+field CongestionEvent.Command protocol.CommandID
+field CongestionEvent.Sequence protocol.SequenceNumber
+field CongestionEvent.State protocol.CongestionState
+const DefaultEnquireLinkInterval time.Duration = 30000000000
+const DefaultEnquireLinkTimeout time.Duration = 10000000000
+const DefaultInactivityTimeout time.Duration = 120000000000
+const DefaultMaxPending untyped int = 1024
+const DefaultReadBufferSize untyped int = 65536
+const DefaultResponseTimeout time.Duration = 30000000000
+const DefaultSessionInitTimeout time.Duration = 30000000000
+const DefaultTXBatchBytes untyped int = 65536
+const DefaultTXBatchItems untyped int = 32
+const DefaultTXQueueSize untyped int = 1024
+const DefaultWindowSize untyped int = 1024
+const DefaultWriteTimeout time.Duration = 30000000000
+var ErrBindInProgress error
+var ErrInvalidConfig error
+var ErrPendingLimit error
+var ErrSequenceExhausted error
+var ErrSequenceInUse error
+var ErrSessionClosed error
+var ErrUnexpectedPDU error
+var ErrUnsupportedCapability error
+var ErrWindowFull error
+type Event struct
+field Event.At time.Time
+field Event.Command protocol.CommandID
+field Event.Congestion protocol.CongestionState
+field Event.Duration time.Duration
+field Event.FatalKind protocol.FatalErrorKind
+field Event.Kind EventKind
+field Event.Reason string
+field Event.Sequence protocol.SequenceNumber
+field Event.Status protocol.CommandStatus
+field Event.Timeout TimeoutKind
+const EventCongestionState EventKind = 13
+const EventDecodeFailure EventKind = 11
+const EventEnquireLinkReceived EventKind = 9
+const EventEnquireLinkSent EventKind = 8
+const EventEnquireLinkTimeout EventKind = 10
+const EventFatalProtocolError EventKind = 12
+const EventInactivityTimeout EventKind = 7
+type EventKind uint8
+method (EventKind).String() string
+const EventRequestReceived EventKind = 2
+const EventRequestSent EventKind = 1
+const EventResponseRTT EventKind = 14
+const EventResponseReceived EventKind = 4
+const EventResponseSent EventKind = 3
+const EventResponseTimeout EventKind = 5
+const EventSessionInitTimeout EventKind = 6
+const EventWindowUnderflow EventKind = 15
+type FlowController interface
+imethod FlowController.OnCongestion(CongestionEvent)
+type FlowControllerFunc func(CongestionEvent)
+method (FlowControllerFunc).OnCongestion(event CongestionEvent)
+type Handler interface
+imethod Handler.Handle(context.Context, *Session, InboundPDU) (Response, error)
+type HandlerFunc func(context.Context, *Session, InboundPDU) (Response, error)
+method (HandlerFunc).Handle(ctx context.Context, s *Session, pdu InboundPDU) (Response, error)
+type InboundPDU = InboundPDU
+func IsStandardCommand(command protocol.CommandID) bool
+type LossError struct
+field LossError.Cause error
+method (*LossError).Error() string
+method (*LossError).Unwrap() error
+type MetricsSnapshot struct
+field MetricsSnapshot.CongestionSamples uint64
+field MetricsSnapshot.DecodeFailures uint64
+field MetricsSnapshot.EnquireLinkReceived uint64
+field MetricsSnapshot.EnquireLinkResponses uint64
+field MetricsSnapshot.EnquireLinkSent uint64
+field MetricsSnapshot.EnquireLinkTimeouts uint64
+field MetricsSnapshot.FatalProtocolErrors uint64
+field MetricsSnapshot.InactivityTimeouts uint64
+field MetricsSnapshot.LastCongestionState protocol.CongestionState
+field MetricsSnapshot.RequestsReceived uint64
+field MetricsSnapshot.RequestsSent uint64
+field MetricsSnapshot.ResponseRTTLast time.Duration
+field MetricsSnapshot.ResponseRTTMax time.Duration
+field MetricsSnapshot.ResponseRTTSamples uint64
+field MetricsSnapshot.ResponseRTTTotal time.Duration
+field MetricsSnapshot.ResponseTimeouts uint64
+field MetricsSnapshot.ResponsesReceived uint64
+field MetricsSnapshot.ResponsesSent uint64
+field MetricsSnapshot.SessionInitTimeouts uint64
+field MetricsSnapshot.Window WindowSnapshot
+func New(conn net.Conn, config Config) (*Session, error)
+func NewStateMachine(role Role) (*StateMachine, error)
+type Observer interface
+imethod Observer.OnEvent(Event)
+type ObserverFunc func(Event)
+method (ObserverFunc).OnEvent(event Event)
+type PacketDirection uint8
+const PacketInbound PacketDirection = 1
+const PacketOutbound PacketDirection = 2
+type PacketTrace struct
+field PacketTrace.At time.Time
+field PacketTrace.Direction PacketDirection
+field PacketTrace.Header codec.Header
+field PacketTrace.Length int
+field PacketTrace.RawPDU []byte
+type PacketTracer interface
+imethod PacketTracer.TracePacket(PacketTrace)
+type PacketTracerFunc func(PacketTrace)
+method (PacketTracerFunc).TracePacket(trace PacketTrace)
+type Response struct
+field Response.Body any
+field Response.Status protocol.CommandStatus
+type ResponseError struct
+field ResponseError.Command protocol.CommandID
+field ResponseError.Sequence protocol.SequenceNumber
+field ResponseError.Status protocol.CommandStatus
+method (*ResponseError).Error() string
+type Role uint8
+method (Role).String() string
+const RoleESME Role = 1
+const RoleSMSC Role = 2
+type Session struct
+method (*Session).AlertNotification(ctx context.Context, notification protocol.AlertNotification) error
+method (*Session).BindMode() BindMode
+method (*Session).BindReceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Session).BindTransceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Session).BindTransmitter(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Session).BroadcastSM(ctx context.Context, request protocol.BroadcastSM) (protocol.BroadcastSMResp, error)
+method (*Session).CancelBroadcastSM(ctx context.Context, request protocol.CancelBroadcastSM) error
+method (*Session).CancelSM(ctx context.Context, request protocol.CancelSM) error
+method (*Session).Close() error
+method (*Session).DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error)
+method (*Session).DeliverSM(ctx context.Context, request protocol.DeliverSM) (protocol.DeliverSMResp, error)
+method (*Session).Done() <-chan struct{}
+method (*Session).EnquireLink(ctx context.Context) error
+method (*Session).Err() error
+method (*Session).LocalAddr() net.Addr
+method (*Session).Metrics() MetricsSnapshot
+method (*Session).Outbind(ctx context.Context, request protocol.Outbind) error
+method (*Session).PeerCapabilities() protocol.PeerCapabilities
+method (*Session).Pending() int
+method (*Session).Profile() protocol.Profile
+method (*Session).QueryBroadcastSM(ctx context.Context, request protocol.QueryBroadcastSM) (protocol.QueryBroadcastSMResp, error)
+method (*Session).QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error)
+method (*Session).RemoteAddr() net.Addr
+method (*Session).ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error
+method (*Session).Request(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error)
+method (*Session).Role() Role
+method (*Session).SendOneWay(ctx context.Context, command protocol.CommandID, body any) error
+method (*Session).State() protocol.SessionState
+method (*Session).SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error)
+method (*Session).SubmitSM(ctx context.Context, request protocol.SubmitSM) (protocol.SubmitSMResp, error)
+method (*Session).TryRequest(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error)
+method (*Session).Unbind(ctx context.Context) error
+method (*Session).Wait()
+method (*Session).Window() WindowSnapshot
+type StateError struct
+field StateError.Command protocol.CommandID
+field StateError.Role Role
+field StateError.State protocol.SessionState
+method (*StateError).Error() string
+type StateMachine struct
+method (*StateMachine).BeginInbound(command protocol.CommandID) error
+method (*StateMachine).BeginOutbound(command protocol.CommandID) error
+method (*StateMachine).BindMode() BindMode
+method (*StateMachine).CancelInbound(command protocol.CommandID)
+method (*StateMachine).CancelOutbound(command protocol.CommandID)
+method (*StateMachine).Close()
+method (*StateMachine).CompleteInbound(command protocol.CommandID, status protocol.CommandStatus)
+method (*StateMachine).CompleteOutbound(command protocol.CommandID, status protocol.CommandStatus)
+method (*StateMachine).MarkOutbound() error
+method (*StateMachine).Open() error
+method (*StateMachine).Role() Role
+method (*StateMachine).State() protocol.SessionState
+const TimeoutEnquireLink TimeoutKind = 3
+type TimeoutError struct
+field TimeoutError.After time.Duration
+field TimeoutError.Command protocol.CommandID
+field TimeoutError.Kind TimeoutKind
+field TimeoutError.Sequence protocol.SequenceNumber
+method (*TimeoutError).Error() string
+method (*TimeoutError).Timeout() bool
+const TimeoutInactivity TimeoutKind = 4
+type TimeoutKind uint8
+method (TimeoutKind).String() string
+const TimeoutResponse TimeoutKind = 1
+const TimeoutSessionInit TimeoutKind = 2
+type WindowObserver func(WindowSnapshot)
+type WindowSnapshot struct
+field WindowSnapshot.Acquired uint64
+field WindowSnapshot.Capacity uint32
+field WindowSnapshot.HighWater uint32
+field WindowSnapshot.InUse uint32
+field WindowSnapshot.Underflows uint64
+field WindowSnapshot.Waits uint64

@@ -1,0 +1,48 @@
+# Exported API of github.com/majiddarvishan/go-smpp/client. Regenerate with: go test -run TestExportedAPISnapshot -update .
+type Client struct
+method (*Client).BindReceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Client).BindTransceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Client).BindTransmitter(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
+method (*Client).BroadcastSM(ctx context.Context, request protocol.BroadcastSM) (protocol.BroadcastSMResp, error)
+method (*Client).CancelBroadcastSM(ctx context.Context, request protocol.CancelBroadcastSM) error
+method (*Client).CancelSM(ctx context.Context, request protocol.CancelSM) error
+method (*Client).Close() error
+method (*Client).DataSM(ctx context.Context, request protocol.DataSM) (protocol.DataSMResp, error)
+method (*Client).EnquireLink(ctx context.Context) error
+method (*Client).LastLoss() error
+method (*Client).Metrics() MetricsSnapshot
+method (*Client).QueryBroadcastSM(ctx context.Context, request protocol.QueryBroadcastSM) (protocol.QueryBroadcastSMResp, error)
+method (*Client).QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error)
+method (*Client).ReconnectCount() uint64
+method (*Client).ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error
+method (*Client).Session() *session.Session
+method (*Client).SubmitMulti(ctx context.Context, request protocol.SubmitMulti) (protocol.SubmitMultiResp, error)
+method (*Client).SubmitSM(ctx context.Context, request protocol.SubmitSM) (protocol.SubmitSMResp, error)
+method (*Client).Unbind(ctx context.Context) error
+method (*Client).Wait()
+method (*Client).WaitConnected(ctx context.Context) error
+type Config struct
+field Config.Address string
+field Config.Dialer *net.Dialer
+field Config.Network string
+field Config.Reconnect ReconnectPolicy
+field Config.SessionConfig session.Config
+field Config.TLSConfig *tls.Config
+func Dial(ctx context.Context, config Config) (*Client, error)
+var ErrUnavailable error
+type MetricsSnapshot struct
+field MetricsSnapshot.ReconnectFailures uint64
+field MetricsSnapshot.Reconnects uint64
+func New(conn net.Conn, config session.Config) (*Client, error)
+type ReconnectPolicy struct
+field ReconnectPolicy.BindTimeout time.Duration
+field ReconnectPolicy.Enabled bool
+field ReconnectPolicy.InitialBackoff time.Duration
+field ReconnectPolicy.MaxBackoff time.Duration
+field ReconnectPolicy.Multiplier float64
+type UnavailableError struct
+field UnavailableError.Cause error
+field UnavailableError.Reconnecting bool
+method (*UnavailableError).Error() string
+method (*UnavailableError).Is(target error) bool
+method (*UnavailableError).Unwrap() error
