@@ -75,9 +75,10 @@ jobs:
 
       - name: Phase 18 fuzz smoke
         run: |
-          go test ./codec -run '^$' -fuzz=FuzzFramer -fuzztime=2s
-          go test ./codec -run '^$' -fuzz=FuzzDecodePDU -fuzztime=2s
-          go test ./codec -run '^$' -fuzz=FuzzFramerChunked -fuzztime=2s
+          # Anchored: -fuzz is a regular expression, and FuzzFramer is a prefix of FuzzFramerChunked.
+          go test ./codec -run '^$' -fuzz='^FuzzFramer$' -fuzztime=2s
+          go test ./codec -run '^$' -fuzz='^FuzzDecodePDU$' -fuzztime=2s
+          go test ./codec -run '^$' -fuzz='^FuzzFramerChunked$' -fuzztime=2s
 
       - name: Protocol and codec benchmarks
         run: go test -run '^$' -bench=. -benchmem ./protocol ./codec

@@ -18,3 +18,5 @@ Refreshing: run a target for a while, then copy new files from the cache into th
 go test ./codec -run '^$' -fuzz=FuzzDecodePDU -fuzztime=120s
 cp "$(go env GOCACHE)"/fuzz/github.com/majiddarvishan/go-smpp/codec/FuzzDecodePDU/* codec/testdata/fuzz/FuzzDecodePDU/
 ```
+
+Note for anyone adding a target: `-fuzz` takes a regular expression, so a name that is a prefix of another (FuzzFramer, FuzzFramerChunked) matches both and Go refuses to fuzz ("matches more than one fuzz test"). Anchor it: `-fuzz='^FuzzFramer$'`.
