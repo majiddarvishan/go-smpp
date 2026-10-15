@@ -1,6 +1,6 @@
 # Fuzz corpus
 
-Seed corpus for `FuzzFramer` and `FuzzDecodePDU` (see `../../fuzz_test.go`) and `FuzzFramerChunked` (see `../../fuzz_chunked_test.go`). Go runs every file here as a
+Seed corpus for `FuzzFramer` and `FuzzDecodePDU` (see `../../fuzz_test.go`) `FuzzFramerChunked` (see `../../fuzz_chunked_test.go`) and `FuzzDecodePDU50` (see `../../fuzz_decode50_test.go`). Go runs every file here as a
 subtest under a plain `go test`, so these inputs are a regression suite, and `go test -fuzz` starts from
 them instead of from the three inline seeds, so the CI smoke is not cold.
 
@@ -10,7 +10,8 @@ them instead of from the three inline seeds, so the CI smoke is not cold.
   one is found, the engine writes it into the matching directory; commit it with the fix.
 - Files are named by content hash, in the engine's `go test fuzz v1` format.
 - `FuzzFramerChunked` (added 2026-10-13): fuzzed 100 s / 2.49 M executions from a cold cache, one CPU, no crashing input; its inputs are two byte strings, the stream and a plan for how to cut it into reads, and the property is that cutting changes nothing.
-- `FuzzDecodePDU` uses the SMPP 3.4 registry in compatible mode only; the SMPP 5.0 registry is not fuzzed.
+- `FuzzDecodePDU50` (added 2026-10-13): the SMPP 5.0 registry in both modes, first input byte picks the mode. 120 s / 3.54 M executions from a cold cache, no crashing input left after the property was corrected. Two findings on the way, both recorded in the test file: a decoder/encoder asymmetry for responses with a non-zero command_status (pinned as a known gap, skipped by the target) and a property that wrongly treated a nil slice and an empty one as different (fixed; it now compares encoded bytes).
+- `FuzzDecodePDU` uses the SMPP 3.4 registry in compatible mode only; SMPP 5.0 is covered by `FuzzDecodePDU50`.
 
 Refreshing: run a target for a while, then copy new files from the cache into the matching directory.
 

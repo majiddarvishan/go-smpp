@@ -946,7 +946,24 @@ Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-sna
   the test pins `gotypesalias=1`. Whether the files read the same on Go 1.25 and 1.27 is what the CI matrix decides.
   `docs/API_COMPATIBILITY.md` is updated: the snapshot is now the first row of "How it is checked", and the sentence saying reviewers are
   the only control for the rest of the API is replaced by the update workflow.
-- [ ] **F5** SMPP 5.0 decoder fuzz target (was "4b"). After F4.
+- [x] **F5** `FuzzDecodePDU50`, the SMPP 5.0 decoder (was "4b"), **with two findings**. Properties: no panic; a frame that decodes was exactly its
+  declared length; and the library's own output is stable (decode a successful response, encode it, decode that, encode again: identical bytes).
+  The first mode byte picks strict or compatible. Seeded with eight well-formed bodies carrying two TLVs; 222 corpus files (21 KB) committed after
+  120 s / 3.54 M executions with no crashing input left; 2 s smoke in CI (anchored); corpus guard extended.
+  **Finding 1, real, undecided:** for a response with a **non-zero command_status** the decoder turns a header-only error response into a typed
+  zero body (e.g. `protocol.SubmitMultiResp{}`), the encoder then writes that body's mandatory fields (two octets for submit_multi_resp) whatever the
+  status, and the decoder reads any body after a non-zero status as TLVs only, so it rejects what the library just wrote ("truncated TLV header").
+  So the library can write a PDU its own decoder refuses. Reproduced in both registry modes. `session.Response` paths use `EmptyBody` for errors and are
+  not affected; a caller returning a typed body with an error status is. Which side should change, the encoder (write nothing for an error status) or
+  the decoder (return `EmptyBody`), is a behaviour decision and I made no production change. Pinned by `TestErrorResponseBodyIsNotRoundTripSafe`, which
+  fails on purpose when it is fixed; the fuzz target skips non-zero status because of it.
+  **Finding 2, my own property was wrong:** it compared Go values, so a nil slice and an empty one (the same thing on the wire) failed; it now compares
+  encoded bytes.
+  **Limit found by mutation testing:** that property starts from what the decoder produced, so a decoder that silently drops TLVs is invisible to it.
+  A mutant that made the broadcast_sm decoder discard its TLVs survived both seeds and corpus. `TestDecode50SeedsAreLossless` closes it by starting
+  from known-good bodies; the mutant is now caught. 4 mutants in all: a dropped mandatory field and TLVs written in reverse order and a stray byte
+  before TLVs were missed by the seeds alone and caught with the corpus (which is what the corpus is for); the dropped-TLVs decoder is caught by the
+  lossless test.
 
 ---
 

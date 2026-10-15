@@ -6,6 +6,7 @@
 #
 # client was LOWERED from 59 to 57 on 2026-10-11, deliberately: the CI runner measures 59.9 for client where development
 # machines measure 61.1-62.2 (timing-dependent branches), so a floor of 59 left under a point of margin there.
+# codec and total were raised on 2026-10-13 when the SMPP 5.0 fuzz corpus landed (codec 76.2 -> 79.8, total 77.2 -> 78.4).
 # server and total were raised on 2026-10-11 when the unbound-connection cap and its tests landed (server 75.9 -> 78.3).
 # Set 2 points below the values measured on 2026-10-05 (Go 1.22 toolchain, linux/amd64); codec and total
 # were raised the same day when the committed fuzz corpus (Task 6.2) lifted codec from 64.8 to 76.0. Measured
@@ -13,14 +14,14 @@
 # room for a small refactor. Raise a floor whenever coverage has risen; lower one only deliberately, in
 # a commit that says why.
 client     57
-codec      74
+codec      77
 encoding   72
 message    73
 protocol   54
 server     76
 session    80
 transport  78
-total      75
+total      76
 
 exclude .                        root package: only architecture/API/posture tests, no statements of its own
 exclude cmd/smpp-sim             program, exercised by scripts/acceptance.sh and the examples rather than unit tests
