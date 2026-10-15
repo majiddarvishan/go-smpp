@@ -16,13 +16,17 @@ import (
 // Properties checked:
 //   - nothing panics, whatever the bytes;
 //   - a frame that decodes was exactly the length its header declared;
-//   - the library's own output is stable. A decoded successful response is encoded, the
-//     result must decode, and encoding that must give the same bytes. This catches a
+//   - the library's own output is stable. A decoded frame is encoded, the result must
+//     decode, and encoding that must give the same bytes, for every command_status. This catches a
 //     decoder accepting something the encoder would write differently, or reading one
 //     frame two ways.
 //
 // An encode failure on a decoded body is not counted as a failure: a decoder may accept
 // a form the encoder refuses to write (an unknown command kept as RawBody, say).
+//
+// Until 2026-10-13 this skipped responses with a non-zero command_status, because the
+// encoder wrote mandatory fields the decoder then refused (see error_response.go). That
+// is fixed, and the target now covers every status.
 func FuzzDecodePDU50(f *testing.F) {
 	strict, err := NewSMPP50Registry(RegistryStrict)
 	if err != nil {
@@ -59,9 +63,6 @@ func FuzzDecodePDU50(f *testing.F) {
 		}
 		if int(pdu.Header.CommandLength) != len(frame) {
 			t.Fatalf("decoded a %d-byte frame whose header declares %d", len(frame), pdu.Header.CommandLength)
-		}
-		if pdu.Header.CommandStatus != 0 {
-			return // see TestErrorResponseBodyIsNotRoundTripSafe: a known, undecided gap
 		}
 		encoded, err := EncodePDU(nil, pdu.Header, pdu.Body, registry)
 		if err != nil {
@@ -139,47 +140,6 @@ func TestDecode50SeedsAreLossless(t *testing.T) {
 			if !bytes.Equal(first, second) {
 				t.Fatalf("%v: decode lost or changed something:\n first  % x\n second % x", sd.command, first, second)
 			}
-		}
-	}
-}
-
-// KNOWN GAP, pinned so it cannot change unnoticed; the fuzz target skips non-zero command_status
-// because of it. Fuzzing found that for a response with a non-zero status:
-//   - the decoder turns a header-only error response into a typed, zero-valued body
-//     (here protocol.SubmitMultiResp{}), not protocol.EmptyBody;
-//   - the encoder writes that body's mandatory fields (message_id and no_unsuccess, two
-//     octets) whatever the status; and
-//   - the decoder reads any body after a non-zero status as TLVs only, so it then rejects
-//     what the library just wrote ("truncated TLV header").
-//
-// The library can therefore write a PDU its own decoder refuses. session.Response paths use
-// EmptyBody for errors and are not affected; a caller who returns a typed body with an error
-// status is. Which side should change (the encoder to write nothing for an error status, or the
-// decoder to return EmptyBody) is a decision, not a fix made here. When it is made, this test
-// should change with it.
-func TestErrorResponseBodyIsNotRoundTripSafe(t *testing.T) {
-	frame := []byte{0, 0, 0, 16, 0x80, 0, 0, 0x21, 0, 0, 0, 8, 0, 0, 0, 1} // submit_multi_resp, status 8, no body
-	for _, mode := range []RegistryMode{RegistryCompatible, RegistryStrict} {
-		registry, err := NewSMPP50Registry(mode)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pdu, err := DecodePDU(frame, registry)
-		if err != nil {
-			t.Fatalf("mode %v: a header-only error response should decode: %v", mode, err)
-		}
-		if _, ok := pdu.Body.(protocol.SubmitMultiResp); !ok {
-			t.Fatalf("mode %v: body is %T; the pinned gap expects a typed zero SubmitMultiResp (if it is now EmptyBody, the gap was fixed: update this test)", mode, pdu.Body)
-		}
-		encoded, err := EncodePDU(nil, pdu.Header, pdu.Body, registry)
-		if err != nil {
-			t.Fatalf("mode %v: encode: %v", mode, err)
-		}
-		if len(encoded) == HeaderSize {
-			t.Fatalf("mode %v: the encoder now writes no body for an error status; the gap was fixed, update this test", mode)
-		}
-		if _, err := DecodePDU(encoded, registry); err == nil {
-			t.Fatalf("mode %v: the decoder now accepts what the encoder writes for an error status; the gap was fixed, update this test", mode)
 		}
 	}
 }

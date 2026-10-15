@@ -950,13 +950,18 @@ Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-sna
   declared length; and the library's own output is stable (decode a successful response, encode it, decode that, encode again: identical bytes).
   The first mode byte picks strict or compatible. Seeded with eight well-formed bodies carrying two TLVs; 222 corpus files (21 KB) committed after
   120 s / 3.54 M executions with no crashing input left; 2 s smoke in CI (anchored); corpus guard extended.
-  **Finding 1, real, undecided:** for a response with a **non-zero command_status** the decoder turns a header-only error response into a typed
+  **Finding 1, real; resolved by the maintainer's choice of option A (2026-10-13), see D4 and the next paragraph:** for a response with a **non-zero command_status** the decoder turns a header-only error response into a typed
   zero body (e.g. `protocol.SubmitMultiResp{}`), the encoder then writes that body's mandatory fields (two octets for submit_multi_resp) whatever the
   status, and the decoder reads any body after a non-zero status as TLVs only, so it rejects what the library just wrote ("truncated TLV header").
   So the library can write a PDU its own decoder refuses. Reproduced in both registry modes. `session.Response` paths use `EmptyBody` for errors and are
-  not affected; a caller returning a typed body with an error status is. Which side should change, the encoder (write nothing for an error status) or
-  the decoder (return `EmptyBody`), is a behaviour decision and I made no production change. Pinned by `TestErrorResponseBodyIsNotRoundTripSafe`, which
-  fails on purpose when it is fixed; the fuzz target skips non-zero status because of it.
+  not affected; a caller returning a typed body with an error status is. First reported with no production change and pinned as a known gap.
+  **Fixed 2026-10-13 (option A, chosen by the maintainer):** `EncodePDU` now writes a response with a non-zero status as the header plus its optional
+  TLVs only (`codec/error_response.go`, D4); the body is still validated first; requests and success responses are byte-for-byte unchanged. Tests:
+  `TestErrorResponseIsWrittenAsHeaderAndOptionalsOnly`, `TestSuccessResponseIsUnchanged`, `TestRequestWithANonZeroStatusKeepsItsBody`,
+  `TestErrorResponseStillValidatesItsBody`, and `TestEveryRegisteredResponseSurvivesAnErrorStatus` (every registered response, 3.4 and 5.0, both modes,
+  three error statuses). The pinned-gap test was replaced by these and the fuzz target no longer skips non-zero status; a second run of 130 s / 3.67 M
+  executions found nothing; 23 more corpus files committed (245 in all). 5 mutants, all caught. Cost: a typed body returned with an error status now
+  has its mandatory fields left out of the frame; nothing in this repo did that.
   **Finding 2, my own property was wrong:** it compared Go values, so a nil slice and an empty one (the same thing on the wire) failed; it now compares
   encoded bytes.
   **Limit found by mutation testing:** that property starts from what the decoder produced, so a decoder that silently drops TLVs is invisible to it.

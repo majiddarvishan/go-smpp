@@ -22,14 +22,14 @@ total, which also credits cross-package coverage (a `session` test exercising `c
 | Package | Floor | Measured (2026-10-05) |
 | --- | ---: | ---: |
 | `client` | 57 | 61.1 (CI runner: 59.9) |
-| `codec` | 77 | 79.8 |
+| `codec` | 79 | 81.1 |
 | `encoding` | 72 | 74.5 |
 | `message` | 73 | 75.8 |
 | `protocol` | 54 | 56.8 |
 | `server` | 76 | 78.3 |
 | `session` | 80 | 82.3 |
 | `transport` | 78 | 80.4 |
-| module total | 76 | 78.4 |
+| module total | 76 | 78.6 |
 
 `codec` rose from 64.8 to 76.0 when the fuzz corpus was committed (`codec/testdata/fuzz/`, Task 6.2), because
 plain `go test` replays every corpus file; its floor was raised the same day.

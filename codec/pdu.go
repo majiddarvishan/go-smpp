@@ -90,7 +90,11 @@ func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte,
 	dst = reservePDUCapacity(dst, header.CommandID, body)
 	start := len(dst)
 	dst = slices.Grow(dst, HeaderSize)[:len(dst)+HeaderSize]
-	dst, err = def.Encode(dst, body)
+	if header.CommandID.IsResponse() && !header.CommandStatus.OK() {
+		dst, err = appendErrorResponseBody(dst, def, body)
+	} else {
+		dst, err = def.Encode(dst, body)
+	}
 	if err != nil {
 		return dst[:start], err
 	}
