@@ -1030,6 +1030,21 @@ item 1 was worked out is kept below.
 
 ---
 
+## Release readiness against `docs/RELEASE_CHECKLIST.md` (assessed 2026-10-13, not a tag)
+
+| Checklist item | Status | Evidence, and what is missing |
+| --- | --- | --- |
+| Public API freeze and compatibility policy reviewed | **Partly** | The policy exists and an exhaustive snapshot test enforces it, but only in PR #2 (not on `main` yet). The interface-compatibility bullet in `docs/API_COMPATIBILITY.md` was written by me on the maintainer's behalf and has **not been reviewed by him**. |
+| Concurrency, timeout/liveness, malformed-PDU, vendor-extension, interoperability docs match the implementation | **Mostly** | `TIMEOUTS_AND_LIVENESS.md` was updated for the inbound-only inactivity rule and the stall behaviour. `INTEROPERABILITY.md` describes semantic-error replies (generic_nack); it says nothing about the error-response encoding change (D4), which is internal to what is written on the wire and recorded in `DECISIONS.md`. A deliberate read of the other docs after the Phase 5/6 changes has not been done. |
+| ESME and SMSC examples compile with the minimum Go version | **Yes** | `go build ./...` (examples and commands included) passes on real Go 1.21 to 1.24 toolchains; the CI Go 1.25.x leg and the maintainer's `GOTOOLCHAIN=go1.25.0 go test ./...` pass. |
+| `go test ./...` and `go test -race ./...` pass on Linux/amd64 | **Yes** | CI on both legs, including after the merge to `main` (`05b45ff`, success), and PR #2 (`eb3cbfe`, success). |
+| Phase 18 reliability, fuzz and chaos gates remain green | **Yes, as far as CI runs them** | The fuzz smoke (now four targets) and the race and performance-smoke steps are green. The soak/chaos steps only run on request and were not run. |
+| Phase 17 reference acceptance completed on the documented host | **Yes, on an older commit** | PASS on 2026-10-06 at `c0f699c`, go1.27.0, a 12-thread host (the script requires at least 8 logical CPUs and 10 GiB). **Production code on the hot path has changed since**: one atomic store per inbound PDU in `session/rx.go`, and a status check per encode in `codec/pdu.go`. Both are cheap, but the evidence does not cover them. |
+| Exact environment, minimum session count, request-PDU/s, memory bounds and commit are published | **Yes, for `c0f699c`** | `docs/PERFORMANCE.md`. It names a commit that is not the release candidate. |
+| The tag is created only after the evidence is published | **Not yet** | Recommended: merge PR #2, then re-run `scripts/acceptance.sh` on the final commit and update `docs/PERFORMANCE.md`, so the published evidence names the commit that gets tagged. The maintainer has said to hold the tag. |
+
+---
+
 ## Explicitly deferred
 
 | Item | Reason |
