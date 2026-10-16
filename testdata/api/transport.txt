@@ -1,0 +1,11 @@
+# Exported API of github.com/majiddarvishan/go-smpp/transport. Regenerate with: go test -run TestExportedAPISnapshot -update .
+func DialTCP(ctx context.Context, network string, address string, dialer *net.Dialer) (net.Conn, error)
+func DialTLS(ctx context.Context, network string, address string, dialer *net.Dialer, config *tls.Config) (net.Conn, error)
+var ErrNoProgress error
+func ListenTCP(ctx context.Context, network string, address string, config *net.ListenConfig) (net.Listener, error)
+func ListenTLS(ctx context.Context, network string, address string, listenConfig *net.ListenConfig, tlsConfig *tls.Config) (net.Listener, error)
+func ReadFull(conn net.Conn, p []byte) error
+func TLSClient(conn net.Conn, config *tls.Config) *tls.Conn
+func TLSServer(conn net.Conn, config *tls.Config) *tls.Conn
+func WriteBuffers(conn *net.TCPConn, buffers net.Buffers) error
+func WriteFull(conn net.Conn, p []byte) error

@@ -202,3 +202,32 @@ A well-behaved peer holds one unbound connection at a time (it connects, binds, 
 ### Revisit when
 
 IPv6 clients are a real share of traffic (add a prefix key), or a flood from many addresses becomes a problem (consider an admission hook or global admission rate).
+
+---
+
+## D4 — A response with a non-zero command_status is written as a header plus optional TLVs
+
+- **Status:** decided and implemented 2026-10-13 (option "A" of the F5 finding; the maintainer chose it).
+- **Applies to:** `codec.EncodePDU`, in `codec/error_response.go`.
+
+### Context
+
+`FuzzDecodePDU50` found that the library could write a PDU its own decoder refused. For a response with a non-zero `command_status`, the decoder reads the body as optional TLVs only (SMPP 3.4 sends error responses as a bare header; SMPP 5.0 allows TLVs on them), and returns a typed, zero-valued body for a bare header. The encoder, though, wrote the typed body's mandatory fields whatever the status, so decode, encode, decode failed with "truncated TLV header". Reproduced in both registry modes. `session.Response` paths used `EmptyBody` for errors and were not affected; a caller returning a typed body with an error status was.
+
+### Decision
+
+When the command is a response and `command_status` is non-zero, `EncodePDU` writes the header plus the body's optional TLVs, and nothing else. The mandatory fields are not written. Requests, and responses with a zero status, are encoded exactly as before.
+
+The body is still validated by the command's own encoder first, so a body of the wrong type, or with an invalid field, is an error as before. Only what reaches the wire changes.
+
+### Why this option
+
+The other options were: change the decoder to return `EmptyBody` (makes decode agree but leaves the encoder able to write a frame that no conforming peer expects); change both; or make the encoder fail on a typed body with an error status (the clearest, but breaking for anyone doing it today). Writing what the decoder reads removes the possibility of emitting an invalid frame at the source, and it is what the 3.4 text expects of an error response.
+
+### What it costs
+
+A caller who deliberately returned a typed body with an error status (say a `message_id` alongside an error) now has those mandatory fields silently left out of the frame. Nothing in this repository did that. If a peer needs them, send the response with a zero status or add a dedicated path; do not rely on the old behaviour, which this package's own decoder could not read back.
+
+### Verified
+
+`TestEveryRegisteredResponseSurvivesAnErrorStatus` runs every registered response command, in SMPP 3.4 and 5.0 and in both modes, with three error statuses: what is written decodes and re-encodes to the same bytes. The fuzz target no longer skips non-zero statuses, and a second 130-second run with that property (3.67 M executions) found nothing. Mutation-checked: removing the fix, applying it to success responses, applying it to requests with a stray status, dropping the TLVs, and dropping the validation are each caught.

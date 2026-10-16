@@ -915,6 +915,63 @@ interface-compatibility wording added in 6.5; fix CI (the local `golangci-lint r
 
 ---
 
+## Follow-ups after Phase 6 (maintainer's list, 2026-10-11)
+
+Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-snapshot`, merged by him.
+
+- [x] **F1** InactivityTimeout disconnects a stalled peer (measured from inbound PDUs only). Done and merged in PR #1; see the
+  6.3 correction above and `docs/TIMEOUTS_AND_LIVENESS.md`.
+- [x] **F2** Configurable per-IP cap on unbound connections (`MaxUnboundPerIP`, off by default). Done and merged in PR #1; D3.
+- [x] **F3** `FuzzFramerChunked` (was "4a"). A differential fuzz target for the framer's state between `Feed` calls: delivering a
+  stream in arbitrary pieces must equal delivering it whole (same frames, same outcome, same leftover, a failed framer stays
+  failed). Inputs are the stream and a plan of read sizes. Fuzzed 100 s / 2.49 M executions from a cold cache with no crashing
+  input; 38 corpus files (4 KB) committed, guarded by `TestFuzzCorpusIsCommitted`; 2 s smoke added to CI. A first version used
+  70 KiB seeds so as to reach the buffer-release path and managed about 30 executions per second, so the large inputs moved
+  into a deterministic test, `TestFramerChunkedLargePDUs` (70 KiB to 1 MiB streams, six read shapes, plus the "holding nothing
+  means holding no large buffer" check), and the fuzz target runs at 27 000 per second. Mutation-checked, 5 framer bugs all
+  caught by the seeds and the large test alone (length word needing 5 bytes; stale `expected` after an emit; the Task 3.4
+  buffer release removed; a failed framer that is not sticky; a frame emitted one byte short).
+- [x] **F4** Exhaustive exported-API snapshot test (was "3"). `api_snapshot_test.go` type-checks each public package from source with the
+  standard library only (`go/types` and the `source` importer; about 3 s for all eight), writes one line per exported thing, and compares with
+  `testdata/api/<pkg>.txt` (987 lines in total). Constants include their values, structs list their exported fields, interfaces list their
+  methods and whether they are sealed, every named type lists its methods. A diff prints REMOVED or CHANGED (breaking) apart from ADDED
+  (allowed but acknowledged); `go test -run TestExportedAPISnapshot -update .` accepts a deliberate change. Public packages are found by
+  scanning directories, so a new one without a snapshot fails, as does a snapshot of a package that is gone.
+  Checked with 11 API changes it must catch, all caught (function removed, added, signature changed; constant value changed; struct field
+  type changed or removed; method added to an exported interface; interface method signature changed; interface becoming sealed; method
+  receiver value to pointer; exported type removed) and 4 harmless changes it must ignore, none failed (unexported function, struct field
+  and method added; a function body changed). A first version printed interface methods as `imethod Zz.(Zz).B()`; the catch case still
+  fired but with the wrong text, which is how the format was found and fixed.
+  One Go-version risk was found and handled: `go/types` keeps type aliases as aliases from Go 1.23, and `session.InboundPDU` is an alias, so
+  the test pins `gotypesalias=1`. Whether the files read the same on Go 1.25 and 1.27 is what the CI matrix decides.
+  `docs/API_COMPATIBILITY.md` is updated: the snapshot is now the first row of "How it is checked", and the sentence saying reviewers are
+  the only control for the rest of the API is replaced by the update workflow.
+- [x] **F5** `FuzzDecodePDU50`, the SMPP 5.0 decoder (was "4b"), **with two findings**. Properties: no panic; a frame that decodes was exactly its
+  declared length; and the library's own output is stable (decode a successful response, encode it, decode that, encode again: identical bytes).
+  The first mode byte picks strict or compatible. Seeded with eight well-formed bodies carrying two TLVs; 222 corpus files (21 KB) committed after
+  120 s / 3.54 M executions with no crashing input left; 2 s smoke in CI (anchored); corpus guard extended.
+  **Finding 1, real; resolved by the maintainer's choice of option A (2026-10-13), see D4 and the next paragraph:** for a response with a **non-zero command_status** the decoder turns a header-only error response into a typed
+  zero body (e.g. `protocol.SubmitMultiResp{}`), the encoder then writes that body's mandatory fields (two octets for submit_multi_resp) whatever the
+  status, and the decoder reads any body after a non-zero status as TLVs only, so it rejects what the library just wrote ("truncated TLV header").
+  So the library can write a PDU its own decoder refuses. Reproduced in both registry modes. `session.Response` paths use `EmptyBody` for errors and are
+  not affected; a caller returning a typed body with an error status is. First reported with no production change and pinned as a known gap.
+  **Fixed 2026-10-13 (option A, chosen by the maintainer):** `EncodePDU` now writes a response with a non-zero status as the header plus its optional
+  TLVs only (`codec/error_response.go`, D4); the body is still validated first; requests and success responses are byte-for-byte unchanged. Tests:
+  `TestErrorResponseIsWrittenAsHeaderAndOptionalsOnly`, `TestSuccessResponseIsUnchanged`, `TestRequestWithANonZeroStatusKeepsItsBody`,
+  `TestErrorResponseStillValidatesItsBody`, and `TestEveryRegisteredResponseSurvivesAnErrorStatus` (every registered response, 3.4 and 5.0, both modes,
+  three error statuses). The pinned-gap test was replaced by these and the fuzz target no longer skips non-zero status; a second run of 130 s / 3.67 M
+  executions found nothing; 23 more corpus files committed (245 in all). 5 mutants, all caught. Cost: a typed body returned with an error status now
+  has its mandatory fields left out of the frame; nothing in this repo did that.
+  **Finding 2, my own property was wrong:** it compared Go values, so a nil slice and an empty one (the same thing on the wire) failed; it now compares
+  encoded bytes.
+  **Limit found by mutation testing:** that property starts from what the decoder produced, so a decoder that silently drops TLVs is invisible to it.
+  A mutant that made the broadcast_sm decoder discard its TLVs survived both seeds and corpus. `TestDecode50SeedsAreLossless` closes it by starting
+  from known-good bodies; the mutant is now caught. 4 mutants in all: a dropped mandatory field and TLVs written in reverse order and a stray byte
+  before TLVs were missed by the seeds alone and caught with the corpus (which is what the corpus is for); the dropped-TLVs decoder is caught by the
+  lossless test.
+
+---
+
 ## CI stage checklist (implemented in PR #1; not merged, by the maintainer's choice)
 
 **Status 2026-10-11.** All five items below are implemented on branch `ci/lint-v2-go-matrix`, open as PR #1 against `main`;
@@ -970,6 +1027,21 @@ item 1 was worked out is kept below.
    10 GiB, **Go 1.27.x**); its `go-version` must change from `1.26.x` to `1.27.x`, because `scripts/acceptance.sh` now
    rejects 1.26. Its output feeds `docs/PERFORMANCE.md`. **Changed to 1.27.x in PR #1; not exercised by the PR's CI run.**
 5. **Fuzz smoke:** needs no edit; it now starts from the committed corpus (6.2).
+
+---
+
+## Release readiness against `docs/RELEASE_CHECKLIST.md` (assessed 2026-10-13, not a tag)
+
+| Checklist item | Status | Evidence, and what is missing |
+| --- | --- | --- |
+| Public API freeze and compatibility policy reviewed | **Partly** | The policy exists and an exhaustive snapshot test enforces it, but only in PR #2 (not on `main` yet). The interface-compatibility bullet in `docs/API_COMPATIBILITY.md` was written by me on the maintainer's behalf and has **not been reviewed by him**. |
+| Concurrency, timeout/liveness, malformed-PDU, vendor-extension, interoperability docs match the implementation | **Mostly** | `TIMEOUTS_AND_LIVENESS.md` was updated for the inbound-only inactivity rule and the stall behaviour. `INTEROPERABILITY.md` describes semantic-error replies (generic_nack); it says nothing about the error-response encoding change (D4), which is internal to what is written on the wire and recorded in `DECISIONS.md`. A deliberate read of the other docs after the Phase 5/6 changes has not been done. |
+| ESME and SMSC examples compile with the minimum Go version | **Yes** | `go build ./...` (examples and commands included) passes on real Go 1.21 to 1.24 toolchains; the CI Go 1.25.x leg and the maintainer's `GOTOOLCHAIN=go1.25.0 go test ./...` pass. |
+| `go test ./...` and `go test -race ./...` pass on Linux/amd64 | **Yes** | CI on both legs, including after the merge to `main` (`05b45ff`, success), and PR #2 (`eb3cbfe`, success). |
+| Phase 18 reliability, fuzz and chaos gates remain green | **Yes, as far as CI runs them** | The fuzz smoke (now four targets) and the race and performance-smoke steps are green. The soak/chaos steps only run on request and were not run. |
+| Phase 17 reference acceptance completed on the documented host | **Yes, on an older commit** | PASS on 2026-10-06 at `c0f699c`, go1.27.0, a 12-thread host (the script requires at least 8 logical CPUs and 10 GiB). **Production code on the hot path has changed since**: one atomic store per inbound PDU in `session/rx.go`, and a status check per encode in `codec/pdu.go`. Both are cheap, but the evidence does not cover them. |
+| Exact environment, minimum session count, request-PDU/s, memory bounds and commit are published | **Yes, for `c0f699c`** | `docs/PERFORMANCE.md`. It names a commit that is not the release candidate. |
+| The tag is created only after the evidence is published | **Not yet** | Recommended: merge PR #2, then re-run `scripts/acceptance.sh` on the final commit and update `docs/PERFORMANCE.md`, so the published evidence names the commit that gets tagged. The maintainer has said to hold the tag. |
 
 ---
 

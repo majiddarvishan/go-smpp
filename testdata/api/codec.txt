@@ -1,0 +1,101 @@
+# Exported API of github.com/majiddarvishan/go-smpp/codec. Regenerate with: go test -run TestExportedAPISnapshot -update .
+const ActorAny CommandActor = 0
+const ActorESME CommandActor = 1
+const ActorSMSC CommandActor = 2
+func AppendCString(dst []byte, value []byte, maxEncodedLen int) ([]byte, error)
+func AppendOctets(dst []byte, value []byte) []byte
+func AppendTLV(dst []byte, tag uint16, value []byte) ([]byte, error)
+type CommandActor uint8
+method (CommandActor).String() string
+type CommandDecoder func(header Header, body []byte) (any, error)
+type CommandDefinition struct
+field CommandDefinition.Actor CommandActor
+field CommandDefinition.AllowedStates []protocol.SessionState
+field CommandDefinition.Decode CommandDecoder
+field CommandDefinition.Encode CommandEncoder
+field CommandDefinition.ID protocol.CommandID
+field CommandDefinition.Name string
+method (CommandDefinition).AllowsState(state protocol.SessionState) bool
+type CommandEncoder func(dst []byte, value any) ([]byte, error)
+func DecodeHeader(src []byte) (Header, error)
+func DecodePDU(frame []byte, registry *Registry) (DecodedPDU, error)
+type DecodedPDU struct
+field DecodedPDU.Body any
+field DecodedPDU.Header Header
+const DefaultMaxPDUSize uint32 = 1048576
+func EncodeHeader(dst []byte, h Header) error
+func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte, error)
+func EncodedPDUSizeHint(command protocol.CommandID, body any) (int, bool)
+var ErrConflictingMessageData error
+var ErrDuplicateCommand error
+var ErrDuplicateTLV error
+var ErrEmbeddedNUL error
+var ErrFieldTooLong error
+var ErrInvalidCommandLength error
+var ErrInvalidMaxPDUSize error
+var ErrInvalidPDUValue error
+var ErrInvalidRegistryDefinition error
+var ErrInvalidRegistryMode error
+var ErrPDUFrameLengthMismatch error
+var ErrRegistryFrozen error
+var ErrShortBuffer error
+var ErrTLVValueTooLong error
+var ErrUnknownCommand error
+var ErrUnknownTLV error
+type Framer struct
+method (*Framer).Buffered() int
+method (*Framer).Failed() bool
+method (*Framer).Feed(data []byte, emit func([]byte) error) error
+method (*Framer).Finalize() error
+method (*Framer).MaxPDUSize() uint32
+type Header struct
+field Header.CommandID protocol.CommandID
+field Header.CommandLength uint32
+field Header.CommandStatus protocol.CommandStatus
+field Header.SequenceNumber protocol.SequenceNumber
+const HeaderSize untyped int = 16
+func NewFramer(maxPDUSize uint32) (*Framer, error)
+func NewRegistryBuilder(mode RegistryMode) *RegistryBuilder
+func NewSMPP34Registry(mode RegistryMode) (*Registry, error)
+func NewSMPP34RegistryBuilder(mode RegistryMode) (*RegistryBuilder, error)
+func NewSMPP50Registry(mode RegistryMode) (*Registry, error)
+func NewSMPP50RegistryBuilder(mode RegistryMode) (*RegistryBuilder, error)
+func ParseTLVs(src []byte) ([]TLV, error)
+func PutUint16(dst []byte, value uint16) error
+func PutUint32(dst []byte, value uint32) error
+func PutUint8(dst []byte, value uint8) error
+type RawBody []byte
+func ReadCString(src []byte, maxEncodedLen int) ([]byte, int, error)
+func ReadOctets(src []byte, n int) ([]byte, int, error)
+func ReadUint16(src []byte) (uint16, int, error)
+func ReadUint32(src []byte) (uint32, int, error)
+func ReadUint8(src []byte) (uint8, int, error)
+type Registry struct
+method (*Registry).Command(id protocol.CommandID) (CommandDefinition, bool)
+method (*Registry).CommandCount() int
+method (*Registry).Mode() RegistryMode
+method (*Registry).ResolveCommand(id protocol.CommandID) (CommandDefinition, bool, error)
+method (*Registry).ResolveTLV(tag uint16) (TLVDefinition, bool, error)
+method (*Registry).TLV(tag uint16) (TLVDefinition, bool)
+method (*Registry).TLVCount() int
+type RegistryBuilder struct
+method (*RegistryBuilder).Freeze() (*Registry, error)
+method (*RegistryBuilder).RegisterCommand(def CommandDefinition) error
+method (*RegistryBuilder).RegisterTLV(def TLVDefinition) error
+const RegistryCompatible RegistryMode = 0
+type RegistryMode uint8
+method (RegistryMode).Valid() bool
+const RegistryStrict RegistryMode = 1
+func ResponseHeader(request Header, responseID protocol.CommandID, status protocol.CommandStatus) Header
+func ScanTLVs(src []byte, visit func(TLV) bool) error
+type TLV struct
+field TLV.Tag uint16
+field TLV.Value []byte
+type TLVDecoder func(value []byte) (any, error)
+type TLVDefinition struct
+field TLVDefinition.Decode TLVDecoder
+field TLVDefinition.Encode TLVEncoder
+field TLVDefinition.Name string
+field TLVDefinition.Tag uint16
+type TLVEncoder func(dst []byte, value any) ([]byte, error)
+const TLVHeaderSize untyped int = 4

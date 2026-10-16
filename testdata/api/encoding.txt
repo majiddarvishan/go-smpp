@@ -1,0 +1,30 @@
+# Exported API of github.com/majiddarvishan/go-smpp/encoding. Regenerate with: go test -run TestExportedAPISnapshot -update .
+func CanEncodeGSM7(text string) bool
+func CloneBinary(data []byte) EncodedText
+func DecodeGSM7(septets []byte) (string, error)
+func DecodeUCS2(data []byte) (string, error)
+func DecodeUTF16BE(data []byte) (string, error)
+func EncodeGSM7(text string) ([]byte, error)
+func EncodeUCS2(text string) ([]byte, error)
+func EncodeUTF16BE(text string) ([]byte, error)
+type EncodedText struct
+field EncodedText.Data []byte
+field EncodedText.Kind Kind
+field EncodedText.Units int
+var ErrInvalidGSM7 error
+var ErrInvalidUnicode error
+var ErrUnrepresentableRune error
+const GSM7Kind Kind = 1
+func GSM7SeptetCount(text string) (int, error)
+type Kind uint8
+method (Kind).String() string
+const KindBinary Kind = 4
+const KindGSM7 Kind = 1
+const KindUCS2 Kind = 2
+const KindUTF16BE Kind = 3
+const KindUnknown Kind = 0
+func PackSeptets(septets []byte) ([]byte, error)
+func PackSeptetsWithFill(septets []byte, fillBits uint8) ([]byte, error)
+func SelectText(text string, allowSurrogates bool) (EncodedText, error)
+func UTF16CodeUnitCount(text string) (int, error)
+func UnpackSeptets(data []byte, count int, fillBits uint8) ([]byte, error)
