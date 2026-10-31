@@ -703,11 +703,11 @@ default, and not against a flood spread over many addresses or an IPv6 /64.
 ## Phase 6 — Test coverage & release
 Goal: measurable quality floor, then `v1.0.0`.
 
-- [x] **6.1** Coverage measurement and floor (T1) — *CI step added in PR #1, pending merge*
+- [x] **6.1** Coverage measurement and floor (T1) — *CI step on `main` since PR #1 was merged (2026-10-12)*
   - Acceptance: `go test -coverprofile` in CI with a documented minimum that cannot silently
     regress.
   - Done. The CI step was held by the working rule that CI changes wait for the final stage, and has now been added in
-    PR #1 (see the CI stage checklist); it applies to `main` only once the maintainer merges that PR. Delivered: `scripts/coverage.sh` (check and `--suggest`
+    PR #1 (see the CI stage checklist), which is merged, so `main` enforces it. Delivered: `scripts/coverage.sh` (check and `--suggest`
     modes; honours `GOFLAGS`, so `-race` works), `.coverage-floor` (versioned, so lowering a floor is a
     visible diff), and `docs/COVERAGE.md` (floors, rules, and the exact one-line CI step to add later).
     Measured on 2026-10-05, Go 1.22, linux/amd64: client 61.1, codec 64.8, encoding 74.5, message 75.8,
@@ -723,9 +723,8 @@ Goal: measurable quality floor, then `v1.0.0`.
     Honest limit: statement coverage shows a line ran, not that anything asserted on it. `protocol` is the
     lowest (56.8) and is mostly large encoder/decoder tables covered by round-trip and fuzz tests. This is a
     regression guard, not a correctness claim; the mutation checks in this file are what tested the tests.
-    Until PR #1 is merged, nothing on `main` *enforces* the floor automatically: run `scripts/coverage.sh`
-    before merging. You have not run it yet on your toolchain (Go 1.26); the numbers there may differ
-    slightly.
+    Before PR #1 was merged, nothing on `main` *enforced* the floor automatically. It does now (newest-Go CI leg).
+    Re-measured 2026-11-01 on `main` (`dc6ce65`, go1.27.1, linux/amd64): every floor passes, total 78.5.
 - [x] **6.2** Commit the fuzz corpus (T4)
   - Acceptance: `codec/testdata/fuzz/` holds the crashers and interesting inputs found so far, so
     the CI smoke does not start cold each run.
@@ -875,7 +874,7 @@ Goal: measurable quality floor, then `v1.0.0`.
     `go` line says. **That check has now been done:** the maintainer ran `GOTOOLCHAIN=go1.25.0 go test -count=1 ./...`
     against `go 1.25` on 2026-10-06 and every package passed, so the floor holds on a real 1.25.0 compiler (the first
     release of that line; later 1.25.x patch releases were not run). In CI: PR #1 adds a `1.25.x` / `1.27.x` matrix, and both legs passed
-    on the PR, so once merged the 1.25 floor and 1.27 are tested automatically. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
+    on the PR; it was merged on 2026-10-12, so the 1.25 floor and 1.27 are now tested automatically. `scripts/acceptance.sh` requires `go1.27*` (changed from `go1.26*` the same day): it names the reference
     environment, not the module's minimum.
     Earlier text, kept for the record: D2 was first written as "proposed, not applied": the table, three options,
     a recommendation, and the exact change. Recommendation: lower to `go 1.21` **only together with a CI job
@@ -897,27 +896,46 @@ Goal: measurable quality floor, then `v1.0.0`.
     2. A tag is not undoable in practice. The Go module proxy caches a published version permanently; deleting or
        moving the git tag afterwards does not retract it for anyone who has already fetched it. `v1.0.0` also
        starts the SemVer promise in `docs/API_COMPATIBILITY.md`.
-    3. The commits are on `chore/phase0-hygiene`, not on `main` (`origin/main` is still at `00c80cd`). A first
-       release tag belongs on a reviewed, merged commit.
-    4. Decisions that shape what v1 promises are still open: the minimum Go version (6.6, D2), whether to
-       add an exhaustive exported-API snapshot first (6.5 follow-up), the `EnquireLinkInterval`-disabled
-       limitation (6.3), and the unbound-connection cap, now implemented but off by default (D3).
+    3. ~~The commits are on `chore/phase0-hygiene`, not on `main`.~~ **Resolved 2026-11-01:** everything is on `main`
+       (PR #1, PR #2 and every other branch merged; see "Repository state" below). A first release tag belongs on a
+       reviewed, merged commit, which `main` now is.
+    4. Decisions that shape what v1 promises: the minimum Go version (6.6, D2: settled, Go 1.25), the exhaustive
+       exported-API snapshot (6.5 follow-up: done as F4, on `main`), the `EnquireLinkInterval`-disabled limitation
+       (6.3: fixed as F1, inactivity counts inbound PDUs only), and the unbound-connection cap (D3: implemented, off by
+       default). Still open: the maintainer's review of the interface-compatibility bullet (6.5), and a reference
+       acceptance run on the commit to be tagged (see "Release readiness").
     There are no tags in the repository today (`git ls-remote --tags origin` is empty).
-    When you are ready, after the reference result is published and the branch is merged:
+    When you are ready, after the reference result for the final commit is published:
     `git checkout main && git pull && git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
     I will do it on request, but I would want an explicit instruction naming the commit.
 
-**Phase 6 status: 6.1 to 6.6 done (6.6 applied but not yet compiled on a 1.25 toolchain); 6.7 not done on purpose.**
-Done does not mean enforced everywhere: the coverage floor (6.1) is not wired into CI because CI changes are held for the
-final stage, and the lint gate had never run on this branch before 2026-10-06 (see the CI checklist). Open items that need a person:
-(the `go 1.25` floor is confirmed on a real 1.25.0 compiler); decide the enquire_link-disabled policy (6.3) and the unbound-connection cap (backlog); review the
-interface-compatibility wording added in 6.5; fix CI (the local `golangci-lint run ./...` is now clean: 0 issues with v2.14.0; only the stale v1 earlier on `PATH` remains to tidy); then tag (6.7), which the maintainer has said to hold for now. `main` was merged (fast-forward to `853fd38`) on 2026-10-06.
+**Phase 6 status: 6.1 to 6.6 done; 6.7 not done on purpose.** (Rewritten 2026-11-01; the earlier wording said the coverage
+floor and lint were not in CI and that `main` lagged the branch. Both are no longer true.) The coverage floor, lint v2 and the Go
+1.25/1.27 matrix are in CI on `main` (PR #1). The `go 1.25` floor is confirmed on a real 1.25.0 compiler. The enquire_link-disabled
+stall (6.3) and the unbound-connection cap are resolved by F1 and F2. Open items that need a person: review the
+interface-compatibility wording added in 6.5; re-run the Phase 17 acceptance on the commit to be tagged; then tag (6.7), which
+the maintainer has said to hold for now.
+
+### Repository state (2026-11-01)
+
+- `main` = `1ad865b`, the only branch, local and on GitHub. Its tree is identical to `dc6ce65` (PR #2's head), which passed on
+  this date, on go1.27.1 linux/amd64: build, vet, `gofmt -l .` (empty), `go test -race -count=1 ./...`, `golangci-lint run ./...`
+  (v2.14.0, 0 issues), `scripts/coverage.sh` (all floors), and both fuzz smokes.
+- Merged: PR #1 (`ci/lint-v2-go-matrix`, at `05b45ff`) and PR #2 (`test/fuzz-and-api-snapshot`, fast-forward to `dc6ce65`).
+- The eight `codex/*` branches (`phase8-work`, `phase-runner`, `export-source`, `export-current`, `export-current-2`,
+  `export-phase13`, `export-phase15`, `export-phase16`) were checked file by file. None holds Go code that is missing from `main`:
+  `phase8-work` is byte-identical to `31ded89` apart from one workflow, and `phase-runner`'s patches are Phases 9-16, already on
+  `main` as `08eef61`..`e393900`. The rest is temporary workflows (two of them with `contents: write`, pushing to `main`) and
+  `.codex/phase-patch/*`. By the maintainer's choice, each branch was merged with `-s ours` (merge commits `cbf62a1`..`1ad865b`).
+  Every commit is in `main`'s history while `main`'s files stay unchanged; the conflicts (`export-current.yml` in two versions,
+  `export-source`'s `ci.yml` edit) were resolved to `main`. To recover a file: `git show <merge>^2:<path>`.
+- All 11 merged branches were then deleted, local and remote, after checking that each one was an ancestor of `main`. No tags exist.
 
 ---
 
 ## Follow-ups after Phase 6 (maintainer's list, 2026-10-11)
 
-Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-snapshot`, merged by him.
+Chosen by the maintainer after Phase 6. F1 and F2 landed in PR #1, F3 to F5 and D4 in PR #2 (`test/fuzz-and-api-snapshot`); both are merged into `main`.
 
 - [x] **F1** InactivityTimeout disconnects a stalled peer (measured from inbound PDUs only). Done and merged in PR #1; see the
   6.3 correction above and `docs/TIMEOUTS_AND_LIVENESS.md`.
@@ -972,7 +990,7 @@ Chosen by the maintainer after Phase 6; each is on branch `test/fuzz-and-api-sna
 
 ---
 
-## CI stage checklist (implemented in PR #1; not merged, by the maintainer's choice)
+## CI stage checklist (implemented in PR #1; merged into `main` 2026-10-12)
 
 **Status 2026-10-11.** All five items below are implemented on branch `ci/lint-v2-go-matrix`, open as PR #1 against `main`;
 `main` itself still has the old, red workflows until the maintainer merges. CI ran on the PR and **both matrix legs passed**:
@@ -1034,14 +1052,14 @@ item 1 was worked out is kept below.
 
 | Checklist item | Status | Evidence, and what is missing |
 | --- | --- | --- |
-| Public API freeze and compatibility policy reviewed | **Partly** | The policy exists and an exhaustive snapshot test enforces it, but only in PR #2 (not on `main` yet). The interface-compatibility bullet in `docs/API_COMPATIBILITY.md` was written by me on the maintainer's behalf and has **not been reviewed by him**. |
+| Public API freeze and compatibility policy reviewed | **Partly** | The policy exists and an exhaustive snapshot test (`api_snapshot_test.go`, `testdata/api/`) enforces it on `main` since PR #2 was merged (2026-11-01). The interface-compatibility bullet in `docs/API_COMPATIBILITY.md` was written by me on the maintainer's behalf and has **not been reviewed by him**. |
 | Concurrency, timeout/liveness, malformed-PDU, vendor-extension, interoperability docs match the implementation | **Mostly** | `TIMEOUTS_AND_LIVENESS.md` was updated for the inbound-only inactivity rule and the stall behaviour. `INTEROPERABILITY.md` describes semantic-error replies (generic_nack); it says nothing about the error-response encoding change (D4), which is internal to what is written on the wire and recorded in `DECISIONS.md`. A deliberate read of the other docs after the Phase 5/6 changes has not been done. |
 | ESME and SMSC examples compile with the minimum Go version | **Yes** | `go build ./...` (examples and commands included) passes on real Go 1.21 to 1.24 toolchains; the CI Go 1.25.x leg and the maintainer's `GOTOOLCHAIN=go1.25.0 go test ./...` pass. |
-| `go test ./...` and `go test -race ./...` pass on Linux/amd64 | **Yes** | CI on both legs, including after the merge to `main` (`05b45ff`, success), and PR #2 (`eb3cbfe`, success). |
+| `go test ./...` and `go test -race ./...` pass on Linux/amd64 | **Yes** | CI on both legs, including after the merge to `main` (`05b45ff`, success), and PR #2 (`eb3cbfe`, success). Also run locally on 2026-11-01 on `main` (`dc6ce65`, go1.27.1, linux/amd64): `go test -race -count=1 ./...` all pass. |
 | Phase 18 reliability, fuzz and chaos gates remain green | **Yes, as far as CI runs them** | The fuzz smoke (now four targets) and the race and performance-smoke steps are green. The soak/chaos steps only run on request and were not run. |
 | Phase 17 reference acceptance completed on the documented host | **Yes, on an older commit** | PASS on 2026-10-06 at `c0f699c`, go1.27.0, a 12-thread host (the script requires at least 8 logical CPUs and 10 GiB). **Production code on the hot path has changed since**: one atomic store per inbound PDU in `session/rx.go`, and a status check per encode in `codec/pdu.go`. Both are cheap, but the evidence does not cover them. |
 | Exact environment, minimum session count, request-PDU/s, memory bounds and commit are published | **Yes, for `c0f699c`** | `docs/PERFORMANCE.md`. It names a commit that is not the release candidate. |
-| The tag is created only after the evidence is published | **Not yet** | Recommended: merge PR #2, then re-run `scripts/acceptance.sh` on the final commit and update `docs/PERFORMANCE.md`, so the published evidence names the commit that gets tagged. The maintainer has said to hold the tag. |
+| The tag is created only after the evidence is published | **Not yet** | PR #2 is merged (2026-11-01). Recommended: re-run `scripts/acceptance.sh` on the final commit and update `docs/PERFORMANCE.md`, so the published evidence names the commit that gets tagged. The maintainer has said to hold the tag. |
 
 ---
 
@@ -1061,3 +1079,6 @@ item 1 was worked out is kept below.
 (`-race requires cgo`, `gcc` not found). Findings B1–B4 are derived from reading the code. CI
 runs the race detector on ubuntu-latest. **Task 1.5 must be resolved under `-race`, and any
 concurrency claim in this plan must be re-confirmed on Linux before Phase 1 is closed.**
+
+**Update 2026-11-01:** the limit above no longer holds. The maintainer's Linux host (WSL2, gcc, go1.27.1) runs the race detector,
+and `go test -race -count=1 ./...` passes on `main` (`dc6ce65`). CI has run it on every push since Phase 1.

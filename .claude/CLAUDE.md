@@ -45,26 +45,29 @@ go run ./cmd/smpp-sim -listen :2775 -window 4096 -tx-queue 4096
 
 ---
 
-## Verification status on this host (go1.26.5 windows/amd64)
+## Verification status
+
+Current host: WSL2 Linux, go1.27.1 linux/amd64, `CGO_ENABLED=1`, gcc present, golangci-lint v2.14.0
+(`~/golib/bin`). Last full run 2026-11-01, on `main` at `dc6ce65` (tree identical to `1ad865b`):
 
 | Check | Result |
 | --- | --- |
 | `go build ./...` | clean |
 | `go vet ./...` | clean |
-| `go test ./...` | **all packages pass** |
-| `gofmt -l .` | **12 files non-compliant** (see CODE_REVIEW.md §4) |
-| `go test -race ./...` | **NOT RUN — could not run here** |
+| `gofmt -l .` | clean (prints nothing) |
+| `go test -race -count=1 ./...` | **all packages pass** |
+| `golangci-lint run ./...` | 0 issues |
+| `scripts/coverage.sh` | every floor passes; total 78.5 |
+| fuzz smokes (2 s each) | pass |
 
-The race detector requires cgo and a C compiler. This host has neither:
+The race detector runs on this host, so check concurrency claims with `-race` rather than calling
+them unverifiable. The host has 4 CPUs and 7 GiB, below the Phase 17 reference contract (8 CPUs,
+10 GiB), so `scripts/acceptance.sh` refuses to run here. Throughput evidence must come from the
+reference machine.
 
-```
-go: -race requires cgo; enable cgo by setting CGO_ENABLED=1
-cgo: C compiler "gcc" not found: exec: "gcc": executable file not found in %PATH%
-```
-
-Race-freedom is therefore **unverified locally**. CI (`.github/workflows/ci.yml`,
-ubuntu-latest) does run `go test -race ./...`. Do not claim race cleanliness from a
-Windows-only run.
+History: the original review ran on go1.26.5 windows/amd64 with no cgo, so `-race` could not run and
+12 files failed `gofmt`. Both have been fixed since. CI (`.github/workflows/ci.yml`) runs `-race`,
+lint and the coverage floor on a Go 1.25.x / 1.27.x matrix.
 
 ---
 
@@ -124,8 +127,12 @@ Adding an import outside this table fails the test. Keep it that way.
 ## Known local gaps
 
 - No git tags yet. (`LICENSE`, `.gitignore`, and `.golangci.yml` landed in Phase 0.)
-- README claims phases 0–18 complete, Phase 19 in progress; the outstanding blockers are the
-  Phase 17 reference-machine throughput result, publishing that evidence, and the first tag.
+- `main` is the only branch (2026-11-01). Every earlier branch was merged into its history and then
+  deleted; `TASKS.md` → "Repository state" records how, including the `codex/*` branches merged
+  with `-s ours`. Fetch before reporting status.
+- Left before `v1.0.0`: the maintainer reviews the interface-compatibility bullet in
+  `docs/API_COMPATIBILITY.md`; Phase 17 acceptance is re-run on the commit to be tagged (the
+  published run is from `c0f699c`); then the tag, which the maintainer is holding.
 
 ---
 
