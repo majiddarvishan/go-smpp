@@ -157,20 +157,26 @@ func TestOwnDecodedPDURawBodyClones(t *testing.T) {
 	}
 }
 
-// TestResponseArenaTakePanicsWhenUndersized proves the internal consistency
-// guard actually fires. This state is never reachable through ownDecodedPDU
-// itself (its size pass and take pass always agree), but the guard exists
-// specifically to turn that class of future bug into an immediate test
-// failure instead of a silently truncated clone, so it needs its own direct
-// test rather than relying on never observing it.
-func TestResponseArenaTakePanicsWhenUndersized(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("take() did not panic when asked for more bytes than the arena has")
-		}
-	}()
+// TestResponseArenaTakeFallsBackWhenUndersized pins what replaced the old
+// panic: an arena asked for more than it holds returns a correct, independent
+// copy from a separate allocation, and the arena keeps serving later fields.
+// ownDecodedPDU never reaches this (TestEveryResponseBodyTypeIsOwnedAndExposesItsOptionals
+// checks that every body's bytes share one arena), but if it ever did, the
+// library must not take the host process down with it.
+func TestResponseArenaTakeFallsBackWhenUndersized(t *testing.T) {
 	a := newResponseArena(2)
-	a.take([]byte("way too long for a 2-byte arena"))
+	src := []byte("way too long for a 2-byte arena")
+	got := a.take(src)
+	if string(got) != string(src) {
+		t.Fatalf("take() = %q, want %q", got, src)
+	}
+	src[0] = 'X'
+	if got[0] == 'X' {
+		t.Fatal("take() fallback aliases its source")
+	}
+	if next := a.take([]byte("ok")); string(next) != "ok" {
+		t.Fatalf("arena unusable after a fallback: take() = %q", next)
+	}
 }
 
 // BenchmarkOwnDecodedPDUWithOptionalTLVs targets the case Finding P4 actually

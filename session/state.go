@@ -170,6 +170,10 @@ func IsStandardCommand(command protocol.CommandID) bool {
 
 // StateMachine is shared by ESME and SMSC sessions. Normal state reads are
 // atomic; the mutex protects multi-step bind/unbind lifecycle transitions.
+//
+// Methods are safe on a nil *StateMachine: the transitions that return an
+// error return ErrNotInitialized, the others do nothing, and State reports
+// StateClosed.
 type StateMachine struct {
 	role  Role
 	state atomic.Uint32
@@ -190,9 +194,17 @@ func NewStateMachine(role Role) (*StateMachine, error) {
 	return m, nil
 }
 
-func (m *StateMachine) Role() Role { return m.role }
+func (m *StateMachine) Role() Role {
+	if m == nil {
+		return 0
+	}
+	return m.role
+}
 
 func (m *StateMachine) State() protocol.SessionState {
+	if m == nil {
+		return protocol.StateClosed
+	}
 	return protocol.SessionState(m.state.Load())
 }
 
@@ -211,6 +223,9 @@ func (m *StateMachine) BindMode() BindMode {
 
 // Open marks an established transport as connected and awaiting session bind.
 func (m *StateMachine) Open() error {
+	if m == nil {
+		return ErrNotInitialized
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.State() != protocol.StateClosed {
@@ -222,6 +237,9 @@ func (m *StateMachine) Open() error {
 
 // MarkOutbound records the v5-aware Outbound state used by later outbind work.
 func (m *StateMachine) MarkOutbound() error {
+	if m == nil {
+		return ErrNotInitialized
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.State() != protocol.StateOpen {
@@ -233,6 +251,9 @@ func (m *StateMachine) MarkOutbound() error {
 
 // BeginOutbound validates and reserves state-sensitive local operations.
 func (m *StateMachine) BeginOutbound(command protocol.CommandID) error {
+	if m == nil {
+		return ErrNotInitialized
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state := m.State()
@@ -257,6 +278,9 @@ func (m *StateMachine) BeginOutbound(command protocol.CommandID) error {
 
 // CancelOutbound rolls back only lifecycle reservations that did not complete.
 func (m *StateMachine) CancelOutbound(command protocol.CommandID) {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isBindRequest(command) && m.pendingLocalBind == command {
@@ -273,6 +297,9 @@ func (m *StateMachine) CancelOutbound(command protocol.CommandID) {
 
 // CompleteOutbound applies the response to a locally originated lifecycle PDU.
 func (m *StateMachine) CompleteOutbound(command protocol.CommandID, status protocol.CommandStatus) {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isBindRequest(command) {
@@ -298,6 +325,9 @@ func (m *StateMachine) CompleteOutbound(command protocol.CommandID, status proto
 // BeginInbound validates a peer-originated request and reserves state-sensitive
 // bind/unbind transitions until the response is actually written.
 func (m *StateMachine) BeginInbound(command protocol.CommandID) error {
+	if m == nil {
+		return ErrNotInitialized
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state := m.State()
@@ -324,6 +354,9 @@ func (m *StateMachine) BeginInbound(command protocol.CommandID) error {
 // CompleteInbound is called only after the response to a peer lifecycle request
 // has been fully dispatched to the transport.
 func (m *StateMachine) CompleteInbound(command protocol.CommandID, status protocol.CommandStatus) {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isBindRequest(command) {
@@ -347,6 +380,9 @@ func (m *StateMachine) CompleteInbound(command protocol.CommandID, status protoc
 }
 
 func (m *StateMachine) Close() {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
 	m.pendingLocalBind = 0
 	m.pendingPeerBind = 0

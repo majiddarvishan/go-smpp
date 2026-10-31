@@ -36,6 +36,7 @@ var ErrInvalidMaxPDUSize error
 var ErrInvalidPDUValue error
 var ErrInvalidRegistryDefinition error
 var ErrInvalidRegistryMode error
+var ErrNotInitialized error
 var ErrPDUFrameLengthMismatch error
 var ErrRegistryFrozen error
 var ErrShortBuffer error

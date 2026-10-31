@@ -17,7 +17,7 @@ import (
 // wrong type, or one with an invalid field, is an error as before. What changes is
 // only what reaches the wire.
 func appendErrorResponseBody(dst []byte, def CommandDefinition, body any) ([]byte, error) {
-	if _, err := def.Encode(nil, body); err != nil {
+	if _, err := encodeBody(def, nil, body); err != nil {
 		return dst, err
 	}
 	return appendOptional(dst, optionalParametersOf(body))

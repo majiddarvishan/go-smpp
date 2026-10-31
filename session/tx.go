@@ -26,6 +26,7 @@ type txItem struct {
 
 func (s *Session) txLoop() {
 	defer s.wg.Done()
+	defer s.recoverLoop(sourceTXLoop)
 
 	// Opportunistically coalesce only work that is already queued. The TX loop
 	// never waits to form a batch, so an isolated PDU keeps the same latency
@@ -222,6 +223,7 @@ func (s *Session) queueResponse(request codec.Header, responseID protocol.Comman
 	framePtr := s.frames.get(hint)
 	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.reportIfPanic(err)
 		s.frames.put(framePtr)
 		return err
 	}

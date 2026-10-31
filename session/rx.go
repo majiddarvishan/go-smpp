@@ -16,6 +16,7 @@ func isBoundState(state protocol.SessionState) bool {
 
 func (s *Session) rxLoop() {
 	defer s.wg.Done()
+	defer s.recoverLoop(sourceRXLoop)
 	buffer := make([]byte, s.config.ReadBufferSize)
 	for {
 		n, readErr := s.conn.Read(buffer)
@@ -53,6 +54,7 @@ func (s *Session) processFrame(frame []byte) error {
 			return err
 		}
 		s.metrics.decodeFailures.Add(1)
+		s.reportIfPanic(err)
 		s.emitEvent(Event{Kind: EventDecodeFailure, Reason: err.Error()})
 		header, headerErr := codec.DecodeHeader(frame)
 		if headerErr != nil {
@@ -153,7 +155,8 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 	}
 	if isOneWayCommand(pdu.Header.CommandID) {
 		if s.config.Handler != nil {
-			if _, err := s.config.Handler.Handle(s.ctx, s, pdu); err != nil {
+			if _, err := s.callHandler(pdu); err != nil {
+				s.reportIfPanic(err)
 				s.logger.Error("SMPP one-way handler failed",
 					"event", "smpp_one_way_handler_error",
 					"command_id", fmt.Sprintf("0x%08x", uint32(pdu.Header.CommandID)),
@@ -172,14 +175,11 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 		response = Response{Status: protocol.StatusOK, Body: protocol.EmptyBody{}}
 	default:
 		if s.config.Handler == nil {
-			if isBindRequest(pdu.Header.CommandID) {
-				response = Response{Status: protocol.StatusBindFailed, Body: protocol.EmptyBody{}}
-			} else {
-				response = Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}
-			}
+			response = noHandlerResponse(pdu.Header.CommandID)
 		} else {
-			response, handlerErr = s.config.Handler.Handle(s.ctx, s, pdu)
+			response, handlerErr = s.callHandler(pdu)
 			if handlerErr != nil {
+				s.reportIfPanic(handlerErr)
 				response = Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}
 			}
 		}
@@ -192,7 +192,15 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 			}
 		}
 	}
-	if err := s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), response.Status, response.Body); err != nil {
+	err := s.queueResponse(pdu.Header, pdu.Header.CommandID.ResponseID(), response.Status, response.Body)
+	if err != nil && isPanic(err) {
+		// The response's encoder panicked (already reported by queueResponse).
+		// Answer the PDU anyway so the peer is not left waiting and the session
+		// stays up. It has to be a generic_nack: an error response of the
+		// request's own type is still checked by that same encoder.
+		err = s.queueGenericNACK(pdu.Header, protocol.StatusSystemError)
+	}
+	if err != nil {
 		if lifecycleReserved {
 			s.machine.CancelInbound(pdu.Header.CommandID)
 		}
@@ -263,8 +271,13 @@ func (s *Session) observeCongestion(pdu codec.DecodedPDU) {
 	s.metrics.noteCongestion(state)
 	s.emitEvent(Event{Kind: EventCongestionState, At: now, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, Congestion: state})
 	if s.config.FlowController != nil {
-		s.config.FlowController.OnCongestion(CongestionEvent{
+		s.notifyCongestion(CongestionEvent{
 			State: state, Command: pdu.Header.CommandID, Sequence: pdu.Header.SequenceNumber, At: now,
 		})
 	}
+}
+
+func (s *Session) notifyCongestion(event CongestionEvent) {
+	defer s.recoverCallback(sourceFlowController)
+	s.config.FlowController.OnCongestion(event)
 }

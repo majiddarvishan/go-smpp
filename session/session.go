@@ -51,8 +51,22 @@ type Handler interface {
 
 type HandlerFunc func(context.Context, *Session, InboundPDU) (Response, error)
 
+// Handle calls f. A nil HandlerFunc answers like a nil Config.Handler does:
+// bind requests are refused with ESME_RBINDFAIL and other requests with
+// ESME_RSYSERR.
 func (f HandlerFunc) Handle(ctx context.Context, s *Session, pdu InboundPDU) (Response, error) {
+	if f == nil {
+		return noHandlerResponse(pdu.Header.CommandID), nil
+	}
 	return f(ctx, s, pdu)
+}
+
+// noHandlerResponse is the answer to a request when no Handler is configured.
+func noHandlerResponse(command protocol.CommandID) Response {
+	if isBindRequest(command) {
+		return Response{Status: protocol.StatusBindFailed, Body: protocol.EmptyBody{}}
+	}
+	return Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}
 }
 
 // Config configures one active SMPP session. The registry is immutable while a
@@ -206,9 +220,11 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	var s *Session
+	logger = newPanicSafeLogger(logger, func(p *protocol.PanicError) { s.reportPanic(p) })
 	ctx, cancel := context.WithCancel(context.Background())
 	now := time.Now()
-	s := &Session{
+	s = &Session{
 		conn: conn, registry: config.Registry, framer: framer, machine: machine,
 		config: config, logger: logger, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), tx: make(chan txItem, config.TXQueueSize),
@@ -220,40 +236,105 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	s.lastActivity.Store(now.UnixNano())
 	s.lastInbound.Store(now.UnixNano())
 	s.window.onUnderflow = s.reportWindowUnderflow
+	s.window.onPanic = s.reportPanic
 	s.peerCaps.Store(protocol.PeerCapabilities{})
 	s.deadlines = newDeadlineManager(s.done, s.expireDeadline)
 	s.scheduleLivenessDeadlines(now)
 	s.wg.Add(3)
 	go s.rxLoop()
 	go s.txLoop()
-	go func() { defer s.wg.Done(); s.deadlines.run() }()
+	go func() {
+		defer s.wg.Done()
+		defer s.recoverLoop(sourceDeadlines)
+		s.deadlines.run()
+	}()
 	return s, nil
 }
 
-func (s *Session) Role() Role                   { return s.machine.Role() }
-func (s *Session) State() protocol.SessionState { return s.machine.State() }
-func (s *Session) BindMode() BindMode           { return s.machine.BindMode() }
-func (s *Session) Done() <-chan struct{}        { return s.done }
-func (s *Session) Pending() int                 { return s.pending.len() }
-func (s *Session) Profile() protocol.Profile    { return s.config.Profile }
+// Every exported method is safe on a nil or zero-value Session (one not
+// created by New): operations return ErrNotInitialized, Done returns a closed
+// channel, Wait returns at once, and the other getters return zero values.
+
+func (s *Session) Role() Role {
+	if !s.initialized() {
+		return 0
+	}
+	return s.machine.Role()
+}
+
+func (s *Session) State() protocol.SessionState {
+	if !s.initialized() {
+		return protocol.StateClosed
+	}
+	return s.machine.State()
+}
+
+func (s *Session) BindMode() BindMode {
+	if !s.initialized() {
+		return BindNone
+	}
+	return s.machine.BindMode()
+}
+
+func (s *Session) Done() <-chan struct{} {
+	if !s.initialized() {
+		return closedDone
+	}
+	return s.done
+}
+
+func (s *Session) Pending() int {
+	if !s.initialized() {
+		return 0
+	}
+	return s.pending.len()
+}
+
+func (s *Session) Profile() protocol.Profile {
+	if !s.initialized() {
+		return protocol.Profile{}
+	}
+	return s.config.Profile
+}
 
 // PeerCapabilities returns the current negotiated remote-peer capabilities.
 // Before a successful bind it returns the zero value.
 func (s *Session) PeerCapabilities() protocol.PeerCapabilities {
-	v := s.peerCaps.Load()
-	if v == nil {
+	if s == nil {
 		return protocol.PeerCapabilities{}
 	}
-	return v.(protocol.PeerCapabilities)
+	caps, _ := s.peerCaps.Load().(protocol.PeerCapabilities)
+	return caps
 }
 
 // Window returns current bounded-outstanding-request utilization.
-func (s *Session) Window() WindowSnapshot { return s.window.snapshot() }
-func (s *Session) LocalAddr() net.Addr    { return s.conn.LocalAddr() }
-func (s *Session) RemoteAddr() net.Addr   { return s.conn.RemoteAddr() }
+func (s *Session) Window() WindowSnapshot {
+	if !s.initialized() {
+		return WindowSnapshot{}
+	}
+	return s.window.snapshot()
+}
 
-// Err returns the terminal session error after Done is closed.
+func (s *Session) LocalAddr() net.Addr {
+	if !s.initialized() {
+		return nil
+	}
+	return s.conn.LocalAddr()
+}
+
+func (s *Session) RemoteAddr() net.Addr {
+	if !s.initialized() {
+		return nil
+	}
+	return s.conn.RemoteAddr()
+}
+
+// Err returns the terminal session error after Done is closed. For a Session
+// not created by New it returns ErrNotInitialized.
 func (s *Session) Err() error {
+	if !s.initialized() {
+		return ErrNotInitialized
+	}
 	s.errMu.RLock()
 	err := s.closeErr
 	s.errMu.RUnlock()
@@ -261,12 +342,20 @@ func (s *Session) Err() error {
 }
 
 // Wait blocks until both long-lived transport loops have exited.
-func (s *Session) Wait() { s.wg.Wait() }
+func (s *Session) Wait() {
+	if !s.initialized() {
+		return
+	}
+	s.wg.Wait()
+}
 
 // Close is idempotent and safe to call concurrently, including from a Handler.
 // It initiates shutdown without waiting for the RX/TX goroutines; use Wait when
 // a caller needs to join them.
 func (s *Session) Close() error {
+	if !s.initialized() {
+		return ErrNotInitialized
+	}
 	s.terminate(ErrSessionClosed)
 	return nil
 }
@@ -286,6 +375,9 @@ func (s *Session) TryRequest(ctx context.Context, command protocol.CommandID, bo
 }
 
 func (s *Session) request(ctx context.Context, command protocol.CommandID, body any, waitWindow bool) (codec.DecodedPDU, error) {
+	if !s.initialized() {
+		return codec.DecodedPDU{}, ErrNotInitialized
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -372,6 +464,7 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 	framePtr := s.frames.get(hint)
 	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.reportIfPanic(err)
 		s.frames.put(framePtr)
 		_, _ = s.pending.completeError(sequence, err)
 		return codec.DecodedPDU{}, err
@@ -413,6 +506,9 @@ func (s *Session) request(ctx context.Context, command protocol.CommandID, body 
 // callers never receive context cancellation while the library is still
 // ambiguously deciding whether to put a one-way lifecycle PDU on the wire.
 func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, body any) error {
+	if !s.initialized() {
+		return ErrNotInitialized
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -440,6 +536,7 @@ func (s *Session) SendOneWay(ctx context.Context, command protocol.CommandID, bo
 	framePtr := s.frames.get(hint)
 	frame, err := codec.EncodePDU(*framePtr, header, body, s.registry)
 	if err != nil {
+		s.reportIfPanic(err)
 		s.frames.put(framePtr)
 		return err
 	}
@@ -501,7 +598,7 @@ func (s *Session) terminate(cause error) {
 			s.metrics.fatalProtocolErrors.Add(1)
 			s.emitEvent(Event{Kind: EventDecodeFailure, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
 			s.emitEvent(Event{Kind: EventFatalProtocolError, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
-			s.logFatal(fatal)
+			s.guard(sourceConn, func() { s.logFatal(fatal) })
 		}
 		s.errMu.Lock()
 		s.closeErr = cause
@@ -509,7 +606,7 @@ func (s *Session) terminate(cause error) {
 		s.machine.Close()
 		s.cancel()
 		close(s.done)
-		_ = s.conn.Close()
+		s.guard(sourceConn, func() { _ = s.conn.Close() })
 		pendingErr := error(&LossError{Cause: cause})
 		if errors.Is(cause, ErrSessionClosed) {
 			pendingErr = ErrSessionClosed

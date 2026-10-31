@@ -52,6 +52,7 @@ func TestEveryResponseBodyTypeIsOwnedAndExposesItsOptionals(t *testing.T) {
 			if !reflect.DeepEqual(owned.Body, expected.Interface()) {
 				t.Errorf("ownDecodedPDU left %s aliasing the borrowed source buffer:\n got  %#v\n want %#v", typ, owned.Body, expected.Interface())
 			}
+			assertOneArena(t, reflect.ValueOf(owned.Body))
 
 			var wantOptional []protocol.OptionalParameter
 			if typ.Kind() == reflect.Struct {
@@ -220,4 +221,48 @@ func countByteSlices(v reflect.Value) int {
 		return n
 	}
 	return 0
+}
+
+// assertOneArena checks that every non-empty byte slice in an owned body lies
+// inside one contiguous block exactly as long as their total, i.e. that
+// ownDecodedPDU's size pass reserved the same bytes its take pass used. If
+// the two passes ever disagree, responseArena.take falls back to a separate
+// allocation instead of panicking; the clone stays correct, so only this test
+// notices.
+func assertOneArena(t *testing.T, body reflect.Value) {
+	t.Helper()
+	var slices []reflect.Value
+	collectByteSlices(body, &slices)
+	if len(slices) < 2 {
+		return
+	}
+	lo, hi, total := ^uintptr(0), uintptr(0), uintptr(0)
+	for _, b := range slices {
+		start := b.Pointer()
+		end := start + uintptr(b.Len())
+		lo, hi = min(lo, start), max(hi, end)
+		total += uintptr(b.Len())
+	}
+	if hi-lo != total {
+		t.Errorf("%s: %d byte fields (%d bytes) span %d bytes, so not one arena: the size pass and the take pass in ownDecodedPDU disagree", body.Type(), len(slices), total, hi-lo)
+	}
+}
+
+func collectByteSlices(v reflect.Value, out *[]reflect.Value) {
+	switch v.Kind() {
+	case reflect.Slice:
+		if v.Type().Elem().Kind() == reflect.Uint8 {
+			if v.Len() > 0 {
+				*out = append(*out, v)
+			}
+			return
+		}
+		for i := 0; i < v.Len(); i++ {
+			collectByteSlices(v.Index(i), out)
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			collectByteSlices(v.Field(i), out)
+		}
+	}
 }

@@ -42,15 +42,35 @@ func NewFramer(maxPDUSize uint32) (*Framer, error) {
 	return &Framer{maxPDUSize: maxPDUSize}, nil
 }
 
-func (f *Framer) MaxPDUSize() uint32 { return f.maxPDUSize }
-func (f *Framer) Buffered() int      { return len(f.pending) }
-func (f *Framer) Failed() bool       { return f.failed != nil }
+// initialized reports whether f was created by NewFramer. A nil or zero-value
+// Framer is unusable: Feed and Finalize return ErrNotInitialized and Failed
+// reports true, rather than the framer panicking or silently accepting bytes.
+func (f *Framer) initialized() bool { return f != nil && f.maxPDUSize != 0 }
+
+func (f *Framer) MaxPDUSize() uint32 {
+	if f == nil {
+		return 0
+	}
+	return f.maxPDUSize
+}
+
+func (f *Framer) Buffered() int {
+	if f == nil {
+		return 0
+	}
+	return len(f.pending)
+}
+
+func (f *Framer) Failed() bool { return !f.initialized() || f.failed != nil }
 
 // Feed consumes bytes in TCP stream order and emits zero or more complete PDUs.
 // Once a fatal framing/decode error occurs the framer is permanently failed for
 // that connection and rejects all later bytes; callers must close the owning
 // connection rather than trying to resynchronize.
 func (f *Framer) Feed(data []byte, emit func([]byte) error) error {
+	if !f.initialized() {
+		return ErrNotInitialized
+	}
 	if f.failed != nil {
 		return f.failed
 	}
@@ -137,6 +157,9 @@ func (f *Framer) Feed(data []byte, emit func([]byte) error) error {
 // Finalize must be called when the TCP stream ends. A partially buffered PDU
 // is a fatal truncated-frame condition for the connection.
 func (f *Framer) Finalize() error {
+	if !f.initialized() {
+		return ErrNotInitialized
+	}
 	if f.failed != nil {
 		return f.failed
 	}

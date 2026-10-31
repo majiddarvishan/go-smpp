@@ -152,6 +152,7 @@ func (s *Session) fireEnquireLinkDeadline(now time.Time) {
 		return
 	}
 	go func() {
+		defer s.recoverLoop(sourceEnquireLink)
 		if err := s.tryEnquireLink(s.ctx); err != nil && !errors.Is(err, ErrWindowFull) {
 			select {
 			case <-s.done:

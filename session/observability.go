@@ -33,6 +33,11 @@ const (
 	// should be alarmed on; window occupancy accounting is unreliable from that
 	// point on, though the session keeps running.
 	EventWindowUnderflow
+	// EventPanicRecovered is emitted when the session recovered a panic instead
+	// of letting it crash the process. Reason holds the *protocol.PanicError
+	// text, which names the source; the stack is in the session's log. An
+	// Observer that itself panicked is not told about its own panic.
+	EventPanicRecovered
 )
 
 func (k EventKind) String() string {
@@ -67,6 +72,8 @@ func (k EventKind) String() string {
 		return "response_rtt"
 	case EventWindowUnderflow:
 		return "window_underflow"
+	case EventPanicRecovered:
+		return "panic_recovered"
 	default:
 		return "unknown"
 	}
@@ -179,7 +186,11 @@ type MetricsSnapshot struct {
 	ResponseRTTMax       time.Duration
 	CongestionSamples    uint64
 	LastCongestionState  protocol.CongestionState
-	Window               WindowSnapshot
+	// PanicsRecovered counts panics the session recovered instead of letting
+	// them crash the process; see EventPanicRecovered. Any non-zero value is
+	// worth an alarm: it is a bug in a callback, a net.Conn or this library.
+	PanicsRecovered uint64
+	Window          WindowSnapshot
 }
 
 type sessionMetrics struct {
@@ -202,6 +213,7 @@ type sessionMetrics struct {
 	rttMaxNS             atomic.Int64
 	congestionSamples    atomic.Uint64
 	lastCongestion       atomic.Uint32
+	panicsRecovered      atomic.Uint64
 }
 
 func (m *sessionMetrics) noteRTT(duration time.Duration) {
@@ -226,6 +238,9 @@ func (m *sessionMetrics) noteCongestion(state protocol.CongestionState) {
 }
 
 func (s *Session) Metrics() MetricsSnapshot {
+	if !s.initialized() {
+		return MetricsSnapshot{}
+	}
 	return MetricsSnapshot{
 		RequestsSent:         s.metrics.requestsSent.Load(),
 		RequestsReceived:     s.metrics.requestsReceived.Load(),
@@ -246,6 +261,7 @@ func (s *Session) Metrics() MetricsSnapshot {
 		ResponseRTTMax:       time.Duration(s.metrics.rttMaxNS.Load()),
 		CongestionSamples:    s.metrics.congestionSamples.Load(),
 		LastCongestionState:  protocol.CongestionState(s.metrics.lastCongestion.Load()),
+		PanicsRecovered:      s.metrics.panicsRecovered.Load(),
 		Window:               s.window.snapshot(),
 	}
 }
@@ -257,6 +273,7 @@ func (s *Session) emitEvent(event Event) {
 	if event.At.IsZero() {
 		event.At = time.Now()
 	}
+	defer s.recoverCallback(sourceObserver)
 	s.config.Observer.OnEvent(event)
 }
 
@@ -268,6 +285,7 @@ func (s *Session) tracePacket(direction PacketDirection, header codec.Header, fr
 	if s.config.TraceRawPDU {
 		trace.RawPDU = append([]byte(nil), frame...)
 	}
+	defer s.recoverCallback(sourcePacketTracer)
 	s.config.PacketTracer.TracePacket(trace)
 }
 

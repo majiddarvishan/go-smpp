@@ -18,6 +18,7 @@ var (
 	ErrBindInProgress        = errors.New("smpp session: bind already in progress")
 	ErrUnexpectedPDU         = errors.New("smpp session: unexpected PDU")
 	ErrUnsupportedCapability = errors.New("smpp session: peer did not negotiate required capability")
+	ErrNotInitialized        = errors.New("smpp session: not initialized; create sessions with New")
 )
 
 // TimeoutKind distinguishes independent SMPP timeout/liveness mechanisms.

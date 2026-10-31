@@ -29,6 +29,7 @@ field Config.Reconnect ReconnectPolicy
 field Config.SessionConfig session.Config
 field Config.TLSConfig *tls.Config
 func Dial(ctx context.Context, config Config) (*Client, error)
+var ErrNotInitialized error
 var ErrUnavailable error
 type MetricsSnapshot struct
 field MetricsSnapshot.ReconnectFailures uint64

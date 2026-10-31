@@ -2,7 +2,10 @@ package session
 
 import (
 	"context"
+	"runtime/debug"
 	"sync/atomic"
+
+	"github.com/majiddarvishan/go-smpp/protocol"
 )
 
 const DefaultWindowSize = 1024
@@ -27,7 +30,8 @@ type WindowSnapshot struct {
 
 // WindowObserver is called after successful acquire/release operations when
 // configured. It must return quickly and must not call back into a blocking
-// session operation.
+// session operation. A panic in it is recovered and drops only that one
+// snapshot.
 type WindowObserver func(WindowSnapshot)
 
 type requestWindow struct {
@@ -40,6 +44,7 @@ type requestWindow struct {
 	underflows  atomic.Uint64
 	observer    WindowObserver
 	onUnderflow func()
+	onPanic     func(*protocol.PanicError)
 }
 
 func newRequestWindow(size int, observer WindowObserver) *requestWindow {
@@ -120,6 +125,18 @@ func (w *requestWindow) snapshot() WindowSnapshot {
 
 func (w *requestWindow) notify() {
 	if w.observer != nil {
-		w.observer(w.snapshot())
+		w.callObserver()
 	}
+}
+
+// callObserver runs the observer, which is caller-supplied and runs on
+// whichever goroutine acquired or released the slot, including the session's
+// own. A panic in it costs that one snapshot, never the window's accounting.
+func (w *requestWindow) callObserver() {
+	defer func() {
+		if r := recover(); r != nil && w.onPanic != nil {
+			w.onPanic(&protocol.PanicError{Source: sourceWindowObserver, Value: r, Stack: debug.Stack()})
+		}
+	}()
+	w.observer(w.snapshot())
 }

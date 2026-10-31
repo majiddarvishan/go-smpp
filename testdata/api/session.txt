@@ -49,6 +49,7 @@ const DefaultWindowSize untyped int = 1024
 const DefaultWriteTimeout time.Duration = 30000000000
 var ErrBindInProgress error
 var ErrInvalidConfig error
+var ErrNotInitialized error
 var ErrPendingLimit error
 var ErrSequenceExhausted error
 var ErrSequenceInUse error
@@ -76,6 +77,7 @@ const EventFatalProtocolError EventKind = 12
 const EventInactivityTimeout EventKind = 7
 type EventKind uint8
 method (EventKind).String() string
+const EventPanicRecovered EventKind = 16
 const EventRequestReceived EventKind = 2
 const EventRequestSent EventKind = 1
 const EventResponseRTT EventKind = 14
@@ -108,6 +110,7 @@ field MetricsSnapshot.EnquireLinkTimeouts uint64
 field MetricsSnapshot.FatalProtocolErrors uint64
 field MetricsSnapshot.InactivityTimeouts uint64
 field MetricsSnapshot.LastCongestionState protocol.CongestionState
+field MetricsSnapshot.PanicsRecovered uint64
 field MetricsSnapshot.RequestsReceived uint64
 field MetricsSnapshot.RequestsSent uint64
 field MetricsSnapshot.ResponseRTTLast time.Duration

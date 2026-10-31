@@ -9,4 +9,5 @@ var (
 	ErrFieldTooLong         = errors.New("smpp codec: field exceeds configured maximum")
 	ErrEmbeddedNUL          = errors.New("smpp codec: C-Octet String contains embedded NUL")
 	ErrTLVValueTooLong      = errors.New("smpp codec: TLV value exceeds 65535 octets")
+	ErrNotInitialized       = errors.New("smpp codec: not initialized; create framers with NewFramer")
 )

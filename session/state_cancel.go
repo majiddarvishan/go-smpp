@@ -7,6 +7,9 @@ import (
 // CancelInbound rolls back a state-sensitive peer request when its response
 // could not be encoded/queued. Session shutdown still wins independently.
 func (m *StateMachine) CancelInbound(command protocol.CommandID) {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isBindRequest(command) && m.pendingPeerBind == command {

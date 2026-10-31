@@ -231,3 +231,54 @@ A caller who deliberately returned a typed body with an error status (say a `mes
 ### Verified
 
 `TestEveryRegisteredResponseSurvivesAnErrorStatus` runs every registered response command, in SMPP 3.4 and 5.0 and in both modes, with three error statuses: what is written decodes and re-encodes to the same bytes. The fuzz target no longer skips non-zero statuses, and a second 130-second run with that property (3.67 M executions) found nothing. Mutation-checked: removing the fix, applying it to success responses, applying it to requests with a stray status, dropping the TLVs, and dropping the validation are each caught.
+
+---
+
+## D5 — The library never panics; recovered panics cost the smallest unit
+
+- **Status:** decided and implemented 2026-11-01. The maintainer required that the library not panic under any circumstances, and chose both policy options below.
+- **Applies to:** every public package; the mechanism is in `session/panic.go`, `server/panic.go` and `codec/recover.go`.
+
+### Context
+
+An audit found 103 panicking entry points out of 316 exported functions and methods when called with zero values: nil and zero-value receivers on `Session`, `Client`, `Framer` and `StateMachine`, nil function adapters, and a nil `context` in `transport.DialTCP`/`DialTLS`. Live objects were already robust. There was also one deliberate `panic` in `session/own.go`, and no `recover` anywhere. So a panic in any application callback, in a vendor command decoder, or in a caller-supplied `net.Conn` ran on a session goroutine and crashed the whole process, taking every other session with it.
+
+### Decision
+
+1. **Callback panics are recovered and fail only that PDU or notification**, rather than closing the session, and are not left to crash the process. The details are in `docs/CONCURRENCY.md`, "Panics".
+2. **Nil and zero-value receivers return a new `ErrNotInitialized`** (one each in `session`, `client` and `codec`), rather than reusing an existing error that would misdescribe the fault.
+3. Anything else that panics on a session goroutine ends only that session, with a `*protocol.PanicError` as its error.
+4. `own.go`'s size-mismatch panic becomes a fallback allocation. The invariant it guarded is now checked by a test (`assertOneArena`), not at run time.
+
+### Why
+
+An SMSC carries many sessions in one process, so one buggy callback or one malformed vendor PDU must not take them all down. Failing only the PDU keeps the peer answered and keeps the session's correlation state intact. That state is owned by the library, not the callback, so the library can keep it consistent across a callback panic. A distinct sentinel tells the caller what is actually wrong.
+
+### What it costs
+
+- A recover hides a bug that would otherwise be loud. This is mitigated by the metric, the event and the stack in the log, and the docs say to alarm on it.
+- A panicking callback may have left its own state half-updated. The library cannot know, and still serves the next PDU. Callers who prefer to stop can close the session from an Observer on `EventPanicRecovered`.
+- One open-coded `defer` per decode, encode and callback. Measured: no added allocations on the session hot path (9 allocs/op and 885 B/op before and after, `BenchmarkInMemorySessionBidirectional`). ns/op was within this host's noise, about ±12%. An `errors.As` that first cost one allocation per request was found by profiling and moved off the hot path.
+- The API grows by additions only: `protocol.PanicError`, three `ErrNotInitialized`, `session.EventPanicRecovered` and `MetricsSnapshot.PanicsRecovered`.
+
+### Not covered
+
+- A callback that runs synchronously on the caller's own goroutine, such as `Framer.Feed`'s `emit` and `ScanTLVs`' `visit`, panics back to that caller, as `sort.Slice` does with its `less`. No library goroutine is involved.
+- `transport.TLSClient`/`TLSServer` with a nil `net.Conn` return a `*tls.Conn` whose methods panic inside `crypto/tls`.
+- A stuck callback (one that blocks rather than panics) still stalls its session. A recover cannot help with that.
+
+### Verified
+
+On go1.27.1 linux/amd64, `go test -race ./...`, lint and coverage all pass. These tests pin the behaviour:
+
+- `session/panic_test.go`: Handler, one-way handler, bind, Observer, PacketTracer, WindowObserver, FlowController, Logger, decoder, response encoder and `net.Conn` panics;
+- `server/panic_test.go`: Authenticator (bind delay kept), both `BindRateLimiter` methods (fail closed) and SubmitHandler;
+- `codec/recover_test.go`;
+- `nopanic_test.go`: 316 entry points, tied to the API snapshot.
+
+Mutation-checked: removing one nil guard, dropping an API entry from the probe, or breaking `own.go`'s size pass each fails a test.
+
+### Revisit when
+
+Someone needs a callback panic to close the session instead. That would be a per-session option, not a change of default.
+

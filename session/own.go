@@ -1,8 +1,6 @@
 package session
 
 import (
-	"fmt"
-
 	"github.com/majiddarvishan/go-smpp/codec"
 	"github.com/majiddarvishan/go-smpp/protocol"
 )
@@ -86,14 +84,14 @@ func ownDecodedPDU(pdu codec.DecodedPDU) codec.DecodedPDU {
 // responseArena backs every byte-slice field ownDecodedPDU clones for one
 // response body with a single shared allocation. Construct it with the exact
 // total byte count every take() call below it will request, computed by a
-// first pass over the same (immutable, local) body value — take() panics if
-// that promise is broken. That can only happen from a bug in this file's own
-// two passes disagreeing with each other; a decoded PDU's field lengths are
-// fixed once decoded; peer-controlled content therefore cannot make a
-// correctly sized arena run short. Panicking here trades a silent, corrupted,
-// undersized clone (a real allocation win landing as a real data-loss bug)
-// for an immediate, loud test failure — this is not the "no panic on
-// peer-influenced input" class of panic Phase 1 removed from the window path.
+// first pass over the same (immutable, local) body value. Only a bug in this
+// file's two passes disagreeing could break that promise: a decoded PDU's
+// field lengths are fixed once decoded, so peer-controlled content cannot make
+// a correctly sized arena run short. If it ever does run short, take() falls
+// back to a separate allocation for that field. The clone stays complete and
+// correct, and costs one extra allocation, rather than being corrupted or the
+// library panicking the host process. arena_test.go pins the size pass so the
+// fallback stays unused in practice.
 type responseArena struct {
 	buf []byte
 }
@@ -113,7 +111,7 @@ func (a *responseArena) take(src []byte) []byte {
 		return nil
 	}
 	if len(a.buf) < len(src) {
-		panic(fmt.Sprintf("session: response arena undersized: need %d more bytes, have %d — ownDecodedPDU's size pass and take pass disagree", len(src), len(a.buf)))
+		return cloneBytes(src)
 	}
 	n := copy(a.buf, src)
 	dst := a.buf[:n:n]

@@ -987,6 +987,20 @@ Chosen by the maintainer after Phase 6. F1 and F2 landed in PR #1, F3 to F5 and 
   from known-good bodies; the mutant is now caught. 4 mutants in all: a dropped mandatory field and TLVs written in reverse order and a stray byte
   before TLVs were missed by the seeds alone and caught with the corpus (which is what the corpus is for); the dropped-TLVs decoder is caught by the
   lossless test.
+- [x] **F6** The library never panics (maintainer's requirement, 2026-11-01; `docs/DECISIONS.md` D5). Audit first: a reflection probe
+  over all 316 exported functions and methods, with zero values and nil and zero receivers, found **103 panics**: nil or zero `Session`,
+  `Client`, `Framer` and `StateMachine` receivers, nil `HandlerFunc`/`AuthenticatorFunc`/`SubmitHandlerFunc`, and a nil ctx in
+  `transport.DialTCP`/`DialTLS`. On top of those were the deliberate `panic` in `session/own.go` and **no `recover` anywhere**, so a panicking
+  callback, vendor decoder or `net.Conn` on a session goroutine crashed the process. Live objects with nil ctx and zero requests were already
+  clean. The maintainer chose the policy: a recovered callback panic fails only that PDU or notification, and nil receivers return a new
+  `ErrNotInitialized`. Implemented: `protocol.PanicError`; recovery in every callback, in the registry codecs and in each session goroutine;
+  `PanicsRecovered` metric, `EventPanicRecovered` event and a logged stack; server bind delay kept, and the rate limiter fails closed; `own.go`
+  falls back to an allocation, its invariant now tested by `assertOneArena`. Tests: `session/panic_test.go`, `server/panic_test.go`,
+  `codec/recover_test.go`, and `nopanic_test.go`, which is tied to the API snapshot so new API cannot skip it. Mutation-checked (a removed guard,
+  a dropped probe entry, a broken size pass). Performance: allocs/op unchanged (9, 885 B/op) after profiling found and removed one extra
+  allocation per request from `errors.As`; ns/op within this host's ±12% noise. The API changed by additions only. Not covered, and recorded in
+  D5: callbacks that run on the caller's own goroutine (`Framer.Feed` emit, `ScanTLVs` visit), and `TLSClient`/`TLSServer` with a nil conn
+  (which panic in `crypto/tls`).
 
 ---
 

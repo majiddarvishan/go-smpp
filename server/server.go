@@ -38,7 +38,12 @@ type Authenticator interface {
 
 type AuthenticatorFunc func(context.Context, *session.Session, session.BindMode, protocol.BindRequest) (BindResult, error)
 
+// Authenticate calls f. A nil AuthenticatorFunc refuses every bind with
+// ESME_RBINDFAIL.
 func (f AuthenticatorFunc) Authenticate(ctx context.Context, s *session.Session, mode session.BindMode, request protocol.BindRequest) (BindResult, error) {
+	if f == nil {
+		return BindResult{Status: protocol.StatusBindFailed}, nil
+	}
 	return f(ctx, s, mode, request)
 }
 
@@ -56,7 +61,12 @@ type SubmitHandler interface {
 
 type SubmitHandlerFunc func(context.Context, *session.Session, protocol.SubmitSM) (SubmitResult, error)
 
+// SubmitSM calls f. A nil SubmitHandlerFunc refuses every submit_sm with
+// ESME_RSYSERR.
 func (f SubmitHandlerFunc) SubmitSM(ctx context.Context, s *session.Session, request protocol.SubmitSM) (SubmitResult, error) {
+	if f == nil {
+		return SubmitResult{Status: protocol.StatusSystemError}, nil
+	}
 	return f(ctx, s, request)
 }
 
@@ -246,6 +256,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	stop := make(chan struct{})
 	go func() {
+		// Close calls the listener's Close, which may be caller-supplied; a
+		// panic in it must not escape on this library-owned goroutine.
+		defer func() { _ = recover() }()
 		select {
 		case <-ctx.Done():
 			_ = s.Close()
@@ -380,6 +393,9 @@ func (s *Server) Outbind(ctx context.Context, sess *session.Session, request pro
 }
 
 func (s *Server) owns(sess *session.Session) bool {
+	if s == nil {
+		return false
+	}
 	s.mu.Lock()
 	_, ok := s.sessions[sess]
 	s.mu.Unlock()
@@ -436,26 +452,38 @@ func (h *dispatchHandler) Handle(ctx context.Context, sess *session.Session, pdu
 		mode := bindMode(pdu.Header.CommandID)
 		attempt := attemptFor(sess, mode, request)
 		h.bind.attempts.Add(1)
-		if h.bind.limiter != nil && !h.bind.limiter.AllowBind(ctx, attempt) {
-			h.bind.throttled.Add(1)
-			h.bind.wait(ctx)
-			return session.Response{Status: protocol.StatusThrottled, Body: protocol.EmptyBody{}}, nil
+		if h.bind.limiter != nil {
+			allowed, err := allowBind(ctx, h.bind.limiter, attempt)
+			if err != nil {
+				h.bind.wait(ctx)
+				return session.Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, err
+			}
+			if !allowed {
+				h.bind.throttled.Add(1)
+				h.bind.wait(ctx)
+				return session.Response{Status: protocol.StatusThrottled, Body: protocol.EmptyBody{}}, nil
+			}
 		}
-		result, err := h.authenticator.Authenticate(ctx, sess, mode, request)
+		result, err := authenticate(ctx, h.authenticator, sess, mode, request)
 		if err != nil {
 			if result.Status.OK() {
 				result.Status = protocol.StatusSystemError
 			}
 		}
 		if err == nil && h.bind.limiter != nil {
-			h.bind.limiter.RecordBind(attempt, result.Status.OK())
+			if recordErr := recordBind(h.bind.limiter, attempt, result.Status.OK()); recordErr != nil {
+				// The bind's outcome could not be recorded, so do not grant it:
+				// a limiter that missed a success or failure is not trustworthy.
+				h.bind.wait(ctx)
+				return session.Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, recordErr
+			}
 		}
 		if !result.Status.OK() {
 			if err == nil {
 				h.bind.failures.Add(1)
 			}
 			h.bind.wait(ctx)
-			return session.Response{Status: result.Status, Body: protocol.EmptyBody{}}, nil
+			return session.Response{Status: result.Status, Body: protocol.EmptyBody{}}, panicOnly(err)
 		}
 		return session.Response{Status: protocol.StatusOK, Body: protocol.BindResponse{SystemID: result.SystemID, Optional: result.Optional}}, nil
 
@@ -470,12 +498,12 @@ func (h *dispatchHandler) Handle(ctx context.Context, sess *session.Session, pdu
 			}
 			return session.Response{Status: protocol.StatusSystemError, Body: protocol.EmptyBody{}}, nil
 		}
-		result, err := h.submit.SubmitSM(ctx, sess, request)
+		result, err := submit(ctx, h.submit, sess, request)
 		if err != nil && result.Status.OK() {
 			result.Status = protocol.StatusSystemError
 		}
 		if !result.Status.OK() {
-			return session.Response{Status: result.Status, Body: protocol.EmptyBody{}}, nil
+			return session.Response{Status: result.Status, Body: protocol.EmptyBody{}}, panicOnly(err)
 		}
 		return session.Response{Status: protocol.StatusOK, Body: protocol.SubmitSMResp{MessageID: result.MessageID}}, nil
 	default:

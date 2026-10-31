@@ -58,7 +58,7 @@ func DecodePDU(frame []byte, registry *Registry) (DecodedPDU, error) {
 	if !known || def.Decode == nil {
 		return DecodedPDU{Header: header, Body: RawBody(bodyBytes)}, nil
 	}
-	body, err := def.Decode(header, bodyBytes)
+	body, err := decodeBody(def, header, bodyBytes)
 	if err != nil {
 		return DecodedPDU{}, err
 	}
@@ -93,7 +93,7 @@ func EncodePDU(dst []byte, header Header, body any, registry *Registry) ([]byte,
 	if header.CommandID.IsResponse() && !header.CommandStatus.OK() {
 		dst, err = appendErrorResponseBody(dst, def, body)
 	} else {
-		dst, err = def.Encode(dst, body)
+		dst, err = encodeBody(def, dst, body)
 	}
 	if err != nil {
 		return dst[:start], err

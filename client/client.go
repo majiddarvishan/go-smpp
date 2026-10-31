@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,7 +15,10 @@ import (
 	"github.com/majiddarvishan/go-smpp/transport"
 )
 
-var ErrUnavailable = errors.New("smpp client: no active session")
+var (
+	ErrUnavailable    = errors.New("smpp client: no active session")
+	ErrNotInitialized = errors.New("smpp client: not initialized; create clients with Dial or New")
+)
 
 // ReconnectPolicy controls transport reconnect/rebind after session loss.
 // Reconnect never replays an application request from the lost session.
@@ -68,6 +72,10 @@ type bindProfile struct {
 // Client is a concurrent-safe ESME facade over replaceable Session instances.
 // A request always binds to exactly one session snapshot and is never silently
 // retried on a replacement connection.
+//
+// Every exported method is safe on a nil or zero-value Client (one not created
+// by Dial or New): operations return ErrNotInitialized, Wait returns at once,
+// and the other getters return zero values.
 type Client struct {
 	mu       sync.RWMutex
 	config   Config
@@ -109,6 +117,8 @@ func Dial(ctx context.Context, config Config) (*Client, error) {
 func New(conn net.Conn, config session.Config) (*Client, error) {
 	return newClient(conn, Config{SessionConfig: config}, false)
 }
+
+func (c *Client) initialized() bool { return c != nil && c.ctx != nil }
 
 func newClient(conn net.Conn, config Config, dialable bool) (*Client, error) {
 	config.SessionConfig.Role = session.RoleESME
@@ -158,6 +168,9 @@ func dialTransport(ctx context.Context, config Config) (net.Conn, error) {
 // disconnected or closed, it returns the most recently owned session so callers
 // can inspect its terminal error/state. Do not cache this value across reconnects.
 func (c *Client) Session() *session.Session {
+	if !c.initialized() {
+		return nil
+	}
 	c.mu.RLock()
 	sess := c.current
 	if sess == nil {
@@ -167,11 +180,19 @@ func (c *Client) Session() *session.Session {
 	return sess
 }
 
-func (c *Client) ReconnectCount() uint64 { return c.reconnects.Load() }
+func (c *Client) ReconnectCount() uint64 {
+	if c == nil {
+		return 0
+	}
+	return c.reconnects.Load()
+}
 
 // Metrics returns a lock-free snapshot of client lifecycle counters. Session
 // traffic metrics remain available from the current Session.
 func (c *Client) Metrics() MetricsSnapshot {
+	if c == nil {
+		return MetricsSnapshot{}
+	}
 	return MetricsSnapshot{
 		Reconnects:        c.reconnects.Load(),
 		ReconnectFailures: c.reconnectFailures.Load(),
@@ -182,6 +203,9 @@ func (c *Client) Metrics() MetricsSnapshot {
 // session. It remains available after a successful reconnect so applications
 // can distinguish transport loss from fatal protocol corruption.
 func (c *Client) LastLoss() error {
+	if !c.initialized() {
+		return nil
+	}
 	c.mu.RLock()
 	err := c.lastLoss
 	c.mu.RUnlock()
@@ -190,6 +214,9 @@ func (c *Client) LastLoss() error {
 
 // WaitConnected waits until a current session exists or ctx/client closure wins.
 func (c *Client) WaitConnected(ctx context.Context) error {
+	if !c.initialized() {
+		return ErrNotInitialized
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -216,6 +243,9 @@ func (c *Client) WaitConnected(ctx context.Context) error {
 }
 
 func (c *Client) Close() error {
+	if !c.initialized() {
+		return ErrNotInitialized
+	}
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -232,7 +262,12 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) Wait() { c.wg.Wait() }
+func (c *Client) Wait() {
+	if !c.initialized() {
+		return
+	}
+	c.wg.Wait()
+}
 
 func (c *Client) BindTransmitter(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error) {
 	return c.bind(ctx, session.BindTX, request)
@@ -358,6 +393,9 @@ func (c *Client) Unbind(ctx context.Context) error {
 }
 
 func (c *Client) activeSession() (*session.Session, error) {
+	if !c.initialized() {
+		return nil, ErrNotInitialized
+	}
 	c.mu.RLock()
 	sess := c.current
 	cause := c.lastErr
@@ -372,6 +410,15 @@ func (c *Client) activeSession() (*session.Session, error) {
 
 func (c *Client) lifecycle(initial *session.Session) {
 	defer c.wg.Done()
+	// Last resort: nothing here calls caller code directly (session callbacks
+	// are recovered inside the session), so a panic would be a library defect.
+	// It stops reconnecting and is kept as the client's last error rather than
+	// crashing the process.
+	defer func() {
+		if r := recover(); r != nil {
+			c.recordReconnectError(&protocol.PanicError{Source: "client.lifecycle", Value: r, Stack: debug.Stack()})
+		}
+	}()
 	sess := initial
 	for {
 		select {

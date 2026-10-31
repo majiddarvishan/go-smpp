@@ -200,6 +200,12 @@ field OptionalResponse.Optional []OptionalParameter
 type Outbind struct
 field Outbind.Password []byte
 field Outbind.SystemID []byte
+type PanicError struct
+field PanicError.Source string
+field PanicError.Stack []byte
+field PanicError.Value any
+method (*PanicError).Error() string
+method (*PanicError).Unwrap() error
 type PeerCapabilities struct
 field PeerCapabilities.NegotiatedVersion InterfaceVersion
 field PeerCapabilities.PeerVersion InterfaceVersion

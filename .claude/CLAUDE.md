@@ -86,6 +86,9 @@ lint and the coverage floor on a Go 1.25.x / 1.27.x matrix.
 - Per-PDU logging off by default.
 - Performance work must be profile-driven.
 - `unsafe` is banned; CI enforces it.
+- **The library never panics** (D5, maintainer's requirement). Call user code on a session goroutine through a
+  `recover` (`session/panic.go`), guard nil/zero receivers with `ErrNotInitialized`, and add new exported API to
+  `nopanic_test.go`, which fails until you do. Keep `errors.As` targets off the hot path: each one is a heap allocation.
 
 Performance contract: **100,000 aggregate bidirectional request PDUs/s** on the reference
 machine (Linux/amd64, 8 cores, 10 GB) using the minimum practical session count.

@@ -11,8 +11,11 @@ import (
 var ErrNoProgress = errors.New("smpp transport: write made no progress")
 
 // DialTCP establishes a plain TCP connection using the supplied dialer. A nil
-// dialer uses net.Dialer defaults.
+// dialer uses net.Dialer defaults, and a nil ctx means context.Background().
 func DialTCP(ctx context.Context, network, address string, dialer *net.Dialer) (net.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if network == "" {
 		network = "tcp"
 	}
@@ -23,8 +26,12 @@ func DialTCP(ctx context.Context, network, address string, dialer *net.Dialer) (
 }
 
 // ListenTCP creates a plain TCP listener using the supplied ListenConfig. A nil
-// config uses net.ListenConfig defaults.
+// config uses net.ListenConfig defaults, and a nil ctx means
+// context.Background().
 func ListenTCP(ctx context.Context, network, address string, config *net.ListenConfig) (net.Listener, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if network == "" {
 		network = "tcp"
 	}
@@ -46,8 +53,12 @@ func TLSServer(conn net.Conn, config *tls.Config) *tls.Conn {
 }
 
 // DialTLS establishes TCP first and then performs a TLS client handshake. The
-// underlying TCP connection is closed if the handshake fails.
+// underlying TCP connection is closed if the handshake fails. A nil ctx means
+// context.Background().
 func DialTLS(ctx context.Context, network, address string, dialer *net.Dialer, config *tls.Config) (net.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	conn, err := DialTCP(ctx, network, address, dialer)
 	if err != nil {
 		return nil, err

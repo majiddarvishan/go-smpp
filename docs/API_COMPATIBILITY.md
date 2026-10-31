@@ -57,6 +57,7 @@ The following are part of the public compatibility contract:
 - request APIs are context-aware while the wire engine remains asynchronous and may have multiple requests in flight;
 - requests are never silently replayed after a lost connection;
 - fatal structural/framing corruption is fail-closed: emit a safe diagnostic, poison parsing state, and close only the offending session;
+- no exported entry point and no library goroutine lets a panic reach the host process; a recovered panic costs at most the PDU, notification or session it occurred in (`docs/CONCURRENCY.md`, "Panics");
 - the default maximum PDU size is bounded and remains configurable;
 - strict/compatible registry handling never weakens framing validation;
 - GSM 7-bit, strict UCS-2, and UTF-16BE-with-surrogates remain distinct encoding choices.

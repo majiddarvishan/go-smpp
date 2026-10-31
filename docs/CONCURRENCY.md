@@ -19,6 +19,22 @@ session.Handler, server.Authenticator, server.SubmitHandler, session.Observer, s
 
 A callback instance shared by multiple sessions can be invoked concurrently and must provide its own synchronization if it mutates shared state. Callbacks on the session hot path should return promptly. The library does not spawn a goroutine per callback to hide slow application code.
 
+## Panics
+
+The library never lets a panic reach the host process (decision D5). Every callback above, the `slog.Handler` behind `Config.Logger`, and a registry's `CommandDecoder`/`CommandEncoder` are called through a `recover`. `rxLoop`, `txLoop`, `deadlines.run` and the enquire_link probe goroutine each have a last-resort `recover` as well, which catches a panicking caller-supplied `net.Conn` or a library defect. A recovered panic is a `*protocol.PanicError` (source, value, stack). It is counted in `MetricsSnapshot.PanicsRecovered`, logged with its stack, and emitted as `EventPanicRecovered`. Its cost is kept to the smallest unit:
+
+| What panicked | Effect |
+| --- | --- |
+| `session.Handler`, `server.Authenticator`, `server.SubmitHandler`, `server.BindRateLimiter` | That PDU only: answered with `ESME_RSYSERR`, so a bind is refused. The server's bind failure delay still applies, and a panicking rate limiter fails closed. The session stays up. |
+| A registry `CommandDecoder` (inbound) | That PDU only: `generic_nack` with `ESME_RSYSERR`. |
+| A registry `CommandEncoder` | Outbound: the caller gets the `*protocol.PanicError`. Response: the peer gets `generic_nack` with `ESME_RSYSERR`. |
+| `Observer`, `PacketTracer`, `WindowObserver`, `FlowController`, `Logger` | That one notification is dropped. |
+| Anything else on a session goroutine | That session ends, with the `*protocol.PanicError` as `Err()` (pending requests get a `LossError` wrapping it). Other sessions are unaffected. |
+
+Exported methods are also safe on nil and zero-value receivers. `Session`, `Client`, `Framer` and `StateMachine` operations return `ErrNotInitialized`, `Done()` is a closed channel, `Wait()` returns at once, and getters return zero values. Nil `HandlerFunc`, `AuthenticatorFunc` and `SubmitHandlerFunc` values answer like an absent handler, and a nil `context.Context` means `context.Background()`. `TestNoExportedEntryPointPanicsOnZeroValues` (repository root) calls every exported function and method with zero values. It is tied to the API snapshot, so new API cannot skip it.
+
+A recover is not a fix. A non-zero `PanicsRecovered` means a bug, and is worth an alarm.
+
 ## Exactly-once request completion
 
 A request can race among response arrival, protocol response timeout, caller cancellation, fatal protocol failure, and session loss. Exactly one path removes the pending entry and releases the window slot. Late or duplicate responses do not complete a newer unrelated request.
