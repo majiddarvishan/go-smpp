@@ -54,16 +54,7 @@ func TestParseDeliveryReceiptTLVOnlyAndDuplicates(t *testing.T) {
 }
 
 func TestParseDeliveryReceiptTextStatusMapping(t *testing.T) {
-	states := map[string]uint8{
-		"ENROUTE": 1,
-		"DELIVRD": 2,
-		"EXPIRED": 3,
-		"DELETED": 4,
-		"UNDELIV": 5,
-		"ACCEPTD": 6,
-		"UNKNOWN": 7,
-		"REJECTD": 8,
-	}
+	states := map[string]uint8{"ENROUTE": 1, "DELIVRD": 2, "EXPIRED": 3, "DELETED": 4, "UNDELIV": 5, "ACCEPTD": 6, "UNKNOWN": 7, "REJECTD": 8}
 	for name, want := range states {
 		t.Run(name, func(t *testing.T) {
 			got, err := ParseDeliveryReceipt(protocol.DeliverSM{
@@ -111,25 +102,24 @@ func TestParseDeliveryReceiptPayloadAndUCS2(t *testing.T) {
 }
 
 func TestParseDeliveryReceiptRejectsAmbiguousTLVs(t *testing.T) {
-	tags := map[string][]protocol.OptionalParameter{
-		"empty ID":        {receiptTLV(protocol.TLVTagReceiptedMessageID, nil)},
-		"only NUL ID":     {receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{0})},
-		"embedded NUL ID": {receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{'A', 0, 'B', 0})},
-		"conflicting IDs": {
-			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("a")),
-			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("b")),
-		},
-		"state length": {receiptTLV(protocol.TLVTagMessageState, []byte{1, 2})},
-		"state zero":   {receiptTLV(protocol.TLVTagMessageState, []byte{0})},
-		"state nine":   {receiptTLV(protocol.TLVTagMessageState, []byte{9})},
-		"state conflict": {
-			receiptTLV(protocol.TLVTagMessageState, []byte{2}),
-			receiptTLV(protocol.TLVTagMessageState, []byte{5}),
-		},
-		"payload conflict": {
-			receiptTLV(protocol.TLVTagMessagePayload, []byte("id:a")),
-			receiptTLV(protocol.TLVTagMessagePayload, []byte("id:b")),
-		},
+	tags := make(map[string][]protocol.OptionalParameter)
+	tags["empty ID"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagReceiptedMessageID, nil)}
+	tags["only NUL ID"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{0})}
+	tags["embedded NUL ID"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{'A', 0, 'B', 0})}
+	tags["conflicting IDs"] = []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("a")),
+		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("b")),
+	}
+	tags["state length"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagMessageState, []byte{1, 2})}
+	tags["state zero"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagMessageState, []byte{0})}
+	tags["state nine"] = []protocol.OptionalParameter{receiptTLV(protocol.TLVTagMessageState, []byte{9})}
+	tags["state conflict"] = []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagMessageState, []byte{2}),
+		receiptTLV(protocol.TLVTagMessageState, []byte{5}),
+	}
+	tags["payload conflict"] = []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagMessagePayload, []byte("id:a")),
+		receiptTLV(protocol.TLVTagMessagePayload, []byte("id:b")),
 	}
 	for name, tlvs := range tags {
 		t.Run(name, func(t *testing.T) {
