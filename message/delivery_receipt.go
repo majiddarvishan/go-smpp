@@ -154,6 +154,15 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	}
 	receipt.StateConflict = receipt.HasTextState && receipt.HasTLVState && receipt.TextState != receipt.TLVState
 
+	// An ordinary SMS may happen to contain "id:123"; do not report it
+	// as a delivery receipt unless the message is marked as an SMSC receipt,
+	// a recognized stat: field is present, or a standard receipt TLV exists.
+	markedReceipt := deliver.ESMClass&0x3c == 0x04
+	hasTLVReceipt := receipt.TLVMessageID != "" || receipt.HasTLVState
+	textReceipt := receipt.TextStatus != "" && (receipt.TextMessageID != "" || receipt.HasTextState)
+	if !markedReceipt && !hasTLVReceipt && !textReceipt {
+		return DeliveryReceipt{}, ErrNotDeliveryReceipt
+	}
 	if receipt.MessageID == "" && receipt.TextStatus == "" && !receipt.HasTLVState {
 		return DeliveryReceipt{}, ErrNotDeliveryReceipt
 	}
