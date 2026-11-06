@@ -30,10 +30,12 @@ const (
 
 // Response is returned by an inbound request Handler. The response command ID
 // and sequence number are derived from the request so handlers cannot
-// accidentally break correlation.
+// accidentally break correlation. Action defaults to ResponseImmediate.
+// Non-immediate actions are supported only for inbound deliver_sm.
 type Response struct {
 	Status protocol.CommandStatus
 	Body   any
+	Action ResponseAction
 }
 
 // InboundPDU is the session-layer view of one decoded inbound PDU. It aliases
@@ -83,6 +85,7 @@ type Config struct {
 	Registry            *codec.Registry
 	MaxPDUSize          uint32
 	MaxPending          int
+	MaxDeferredResponses int
 	WindowSize          int
 	WindowObserver      WindowObserver
 	FlowController      FlowController
@@ -125,6 +128,8 @@ type Session struct {
 	tx     chan txItem
 
 	pending   *pendingTable
+	deferredMu sync.Mutex
+	deferredReplies map[protocol.SequenceNumber]bool
 	window    *requestWindow
 	deadlines *deadlineManager
 	seq       sequenceGenerator
@@ -186,6 +191,9 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	}
 	if config.MaxPending < config.WindowSize {
 		config.MaxPending = config.WindowSize
+	}
+	if config.MaxDeferredResponses <= 0 {
+		config.MaxDeferredResponses = DefaultMaxDeferredResponses
 	}
 	config.ResponseTimeout = defaultDuration(config.ResponseTimeout, DefaultResponseTimeout)
 	config.SessionInitTimeout = defaultDuration(config.SessionInitTimeout, DefaultSessionInitTimeout)
@@ -612,6 +620,9 @@ func (s *Session) terminate(cause error) {
 			pendingErr = ErrSessionClosed
 		}
 		s.pending.failAll(pendingErr)
+		s.deferredMu.Lock()
+		clear(s.deferredReplies)
+		s.deferredMu.Unlock()
 	})
 }
 
