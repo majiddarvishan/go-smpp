@@ -30,10 +30,12 @@ const (
 
 // Response is returned by an inbound request Handler. The response command ID
 // and sequence number are derived from the request so handlers cannot
-// accidentally break correlation.
+// accidentally break correlation. Action defaults to ResponseImmediate.
+// Non-immediate actions are supported only for inbound deliver_sm.
 type Response struct {
 	Status protocol.CommandStatus
 	Body   any
+	Action ResponseAction
 }
 
 // InboundPDU is the session-layer view of one decoded inbound PDU. It aliases
@@ -78,29 +80,30 @@ func noHandlerResponse(command protocol.CommandID) Response {
 // bind passwords in clear text; read the SECURITY note on PacketTracer before
 // enabling it.
 type Config struct {
-	Role                Role
-	Profile             protocol.Profile
-	Registry            *codec.Registry
-	MaxPDUSize          uint32
-	MaxPending          int
-	WindowSize          int
-	WindowObserver      WindowObserver
-	FlowController      FlowController
-	Observer            Observer
-	PacketTracer        PacketTracer
-	TraceRawPDU         bool
-	ResponseTimeout     time.Duration
-	SessionInitTimeout  time.Duration
-	EnquireLinkInterval time.Duration
-	EnquireLinkTimeout  time.Duration
-	InactivityTimeout   time.Duration
-	WriteTimeout        time.Duration
-	TXQueueSize         int
-	TXBatchItems        int
-	TXBatchBytes        int
-	ReadBufferSize      int
-	Handler             Handler
-	Logger              *slog.Logger
+	Role                 Role
+	Profile              protocol.Profile
+	Registry             *codec.Registry
+	MaxPDUSize           uint32
+	MaxPending           int
+	MaxDeferredResponses int
+	WindowSize           int
+	WindowObserver       WindowObserver
+	FlowController       FlowController
+	Observer             Observer
+	PacketTracer         PacketTracer
+	TraceRawPDU          bool
+	ResponseTimeout      time.Duration
+	SessionInitTimeout   time.Duration
+	EnquireLinkInterval  time.Duration
+	EnquireLinkTimeout   time.Duration
+	InactivityTimeout    time.Duration
+	WriteTimeout         time.Duration
+	TXQueueSize          int
+	TXBatchItems         int
+	TXBatchBytes         int
+	ReadBufferSize       int
+	Handler              Handler
+	Logger               *slog.Logger
 }
 
 const (
@@ -124,11 +127,13 @@ type Session struct {
 	done   chan struct{}
 	tx     chan txItem
 
-	pending   *pendingTable
-	window    *requestWindow
-	deadlines *deadlineManager
-	seq       sequenceGenerator
-	frames    *framePool
+	pending         *pendingTable
+	deferredMu      sync.Mutex
+	deferredReplies map[protocol.SequenceNumber]bool
+	window          *requestWindow
+	deadlines       *deadlineManager
+	seq             sequenceGenerator
+	frames          *framePool
 
 	// Caller-owned deadline slots for the three liveness checks (Task 2.4,
 	// Finding P5), each rescheduled in place via deadlineManager.scheduleItemAt
@@ -186,6 +191,9 @@ func New(conn net.Conn, config Config) (*Session, error) {
 	}
 	if config.MaxPending < config.WindowSize {
 		config.MaxPending = config.WindowSize
+	}
+	if config.MaxDeferredResponses <= 0 {
+		config.MaxDeferredResponses = DefaultMaxDeferredResponses
 	}
 	config.ResponseTimeout = defaultDuration(config.ResponseTimeout, DefaultResponseTimeout)
 	config.SessionInitTimeout = defaultDuration(config.SessionInitTimeout, DefaultSessionInitTimeout)
@@ -612,6 +620,9 @@ func (s *Session) terminate(cause error) {
 			pendingErr = ErrSessionClosed
 		}
 		s.pending.failAll(pendingErr)
+		s.deferredMu.Lock()
+		clear(s.deferredReplies)
+		s.deferredMu.Unlock()
 	})
 }
 

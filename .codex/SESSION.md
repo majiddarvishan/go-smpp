@@ -184,3 +184,12 @@ The first eight Phase 19 checklist items are complete. The final two remain bloc
 ## Exact next task
 
 Phase 17 implementation and development validation are complete. The remaining gate is external execution only: bring a Linux/amd64 self-hosted GitHub Actions runner online with label `smpp-reference`, at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.26.x support. The queued/reference workflow runs `scripts/acceptance.sh`, tests one TCP session first, and increases to 2/4 only if required. Do not mark the final two Phase 17 checkboxes complete from a 4-core hosted runner or from extrapolation.
+
+## 2026-11-07 — SMPP Test Studio library adoption review
+
+- **Scope:** go-smpp library review and compatible improvements only. Explicitly **no smpp_sim implementation**.
+- **Base:** main at `28c44d3f9aac1c2a68896994e26ba7625ab25939`; working branch `feature/deferred-deliver-response`.
+- **Finding:** existing session Handler always replied to inbound deliver_sm; sleeping in Handler would stall the RX stream. This branch proposes additive `Response.Action` modes Immediate/Suppress/Deferred, session-bounded one-shot `RespondDeferred`/`AbandonDeferredResponse`, and no application goroutine or timer inside the library.
+- **Tests added:** suppression with live RX, deferred response exactly once, bounded capacity/abandon, public API snapshot updated. **No tests or gofmt/race results have been executed in this environment**; run Go 1.25 and Go 1.27 CI before merging.
+- **Review notes:** `docs/SMPP_SIM_INTEGRATION_REVIEW.md` describes the required 16-bit UDH/unpacked GSM7 adapter, reconnect jitter/permanent credential handling, strict SMPP 3.4 profile, fixed library window vs application Adaptive controller, receipt mapping and trace redaction.
+- **Next:** inspect PR CI, fix any compile/gofmt/api-snapshot/coverage failures, then separately address message interop and reconnect policy without breaking the current default public API. No performance regression claim without measured evidence.

@@ -184,6 +184,22 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 			}
 		}
 	}
+	// Only deliver_sm may suppress or defer its acknowledgment. All bind,
+	// enquire_link, unbind and other commands preserve the original response
+	// lifecycle; this avoids a deferred bind leaving the state machine stuck.
+	if response.Action != ResponseImmediate {
+		if pdu.Header.CommandID != protocol.CommandDeliverSM {
+			return ErrInvalidResponseAction
+		}
+		switch response.Action {
+		case ResponseSuppress:
+			return nil // no response, timer or retained reply token
+		case ResponseDeferred:
+			return s.registerDeferredReply(pdu.Header)
+		default:
+			return ErrInvalidResponseAction
+		}
+	}
 	if response.Status.OK() && isBindRequest(pdu.Header.CommandID) {
 		if bind, ok := pdu.Body.(protocol.BindRequest); ok {
 			s.peerCaps.Store(protocol.NegotiatePeerCapabilities(s.config.Profile, bind.InterfaceVersion, true))
