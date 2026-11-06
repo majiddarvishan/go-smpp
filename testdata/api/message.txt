@@ -34,7 +34,9 @@ field Segment.Units int
 field Segment.UserData []byte
 func SegmentBinarySAR(data []byte, reference uint16) ([]Segment, error)
 func SegmentBinaryUDH(data []byte, reference byte) ([]Segment, error)
+func SegmentBinaryUDH16(data []byte, reference uint16) ([]Segment, error)
 func SegmentTextSAR(text string, allowSurrogates bool, reference uint16) ([]Segment, error)
 func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segment, error)
+func SegmentTextUDH16Unpacked(text string, allowSurrogates bool, reference uint16) ([]Segment, error)
 const UCS2MultipartUnits untyped int = 67
 const UCS2SingleUnits untyped int = 70
