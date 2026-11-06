@@ -24,6 +24,16 @@ A structural/framing error is fail-closed (see above): the session closes, no re
 
 Compatible registry mode preserves structurally valid unknown/duplicate TLVs and leaves unknown commands unresolved for protocol-level handling. Strict mode reports unknown command/TLV errors. Neither mode makes invalid framing recoverable.
 
+## Delivery receipt parsing (optional)
+
+`message.ParseDeliveryReceipt` accepts one decoded `protocol.DeliverSM` and returns receipt metadata without interacting with Session, ACK or message-correlation state. For GSM7-default DLR templates, it reads conventional ASCII `id:` and `stat:` fields from `short_message` (or `message_payload` when exclusive). Strict UCS2/BMP `data_coding=0x08` is also decoded. It stops reading metadata at `text:` to avoid matching strings in echoed SMS content.
+
+**Identifier policy:** text `id:` wins over `receipted_message_id` TLV; IDs are opaque and case/leading-zero sensitive. Both values remain available with a conflict flag. **Status policy:** valid `message_state` TLV (1..8) wins independently over recognized text `stat:`; both statuses and a conflict flag remain available. Unknown vendor statuses stay as literal text without pretending to be a standard numeric state.
+
+Malformed/contradictory duplicate TLVs and text fields return a typed error; identical repeated TLVs are accepted. An ordinary `deliver_sm` without recognizable receipt evidence returns a separate typed not-receipt error. Receipt parser output is **not** an SMS delivery guarantee or a correlation map: reassembly, late/duplicate tracking and missing-DLR accounting belong to the application.
+
+This parser is intentionally conservative. Vendor-specific decimal/hex ID conversions, packed-GSM7 DLR templates and nonstandard status labels need separate opt-in adapters and real interoperability fixtures. It does not change `deliver_sm_resp` selection or delay behavior.
+
 ## deliver_sm_resp
 
 The encoder emits the standard empty C-Octet message_id. The decoder also accepts a header-only form for interoperability with deployed peers that omit that empty field.
