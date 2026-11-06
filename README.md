@@ -36,6 +36,7 @@ See `PLAN.md` for detailed implementation progress and `.codex/` for architectur
 - [Timeout and liveness semantics](docs/TIMEOUTS_AND_LIVENESS.md)
 - [Interoperability, GSM7 and Unicode/emoji](docs/INTEROPERABILITY.md)
 - [Vendor extensions](docs/VENDOR_EXTENSIONS.md)
+- [SMPP Test Studio integration review and compatible library additions](docs/SMPP_SIM_INTEGRATION_REVIEW.md)
 - [Performance evidence (Phase 17 reference result)](docs/PERFORMANCE.md)
 - [Test coverage floor](docs/COVERAGE.md)
 - [Project decisions](docs/DECISIONS.md)
