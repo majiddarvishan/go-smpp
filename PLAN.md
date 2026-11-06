@@ -276,6 +276,18 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Publish reproducible performance results for the reference machine.
 - [ ] Tag the first production-ready release.
 
+## Phase 20 — Optional delivery-receipt parsing and Test Studio library readiness
+
+> Owner authorized **go-smpp library improvements only**, not `smpp_sim` implementation. Task details live in `.codex/TASKS.md`. This additive parser must preserve the SMPP 3.4 wire/session core and existing API.
+
+- [ ] **DLR-01:** Publish a pure `message`-package receipt parser for `protocol.DeliverSM`, with explicit no-receipt handling.
+- [ ] **DLR-02:** Apply text-first `id:`, TLV-fallback identifier precedence; independently apply TLV-first `message_state`, text `stat:` fallback; preserve conflict evidence and opaque IDs.
+- [ ] **DLR-03:** Reject malformed/ambiguous receipt TLVs and invalid states; remain panic-free and avoid guessing or vendor-only normalization.
+- [ ] **DLR-04:** Add receipt examples, mismatch/duplicate/malformed/ordinary message fixtures and tests.
+- [ ] **DLR-05:** Update additive public API snapshot and exhaustive no-panic coverage.
+- [ ] **DLR-06:** Document limitations and synchronize `.codex` handoff/backlog.
+- [ ] **DLR-07:** Verify Go 1.25/1.27 CI (format, unit, race, API, fuzz/coverage) and merge only after evidence.
+
 ## Backlog policy
 
 Items intentionally deferred from the first submit/deliver milestone are tracked in `.codex/BACKLOG.md`. Moving an item out of backlog requires adding it to the appropriate phase here; completion is still recorded only by changing its checkbox to `[x]`.
