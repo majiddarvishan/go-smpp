@@ -39,8 +39,10 @@ type ReconnectPolicy struct
 field ReconnectPolicy.BindTimeout time.Duration
 field ReconnectPolicy.Enabled bool
 field ReconnectPolicy.InitialBackoff time.Duration
+field ReconnectPolicy.JitterFraction float64
 field ReconnectPolicy.MaxBackoff time.Duration
 field ReconnectPolicy.Multiplier float64
+field ReconnectPolicy.StopOnPermanentBindFailure bool
 type UnavailableError struct
 field UnavailableError.Cause error
 field UnavailableError.Reconnecting bool
