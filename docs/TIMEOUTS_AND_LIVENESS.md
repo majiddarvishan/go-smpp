@@ -46,7 +46,9 @@ Default: 30 seconds.
 
 ## Reconnect interaction
 
-For a dialed client.Client with reconnect enabled, a timeout that terminates the current session may lead to reconnect/rebind according to client.ReconnectPolicy. Requests that belonged to the lost session are not replayed automatically.
+For a dialed client.Client with reconnect enabled, a timeout that terminates the current session may lead to reconnect/rebind according to client.ReconnectPolicy. Requests that belonged to the lost session are not replayed automatically. Reconnect attempts continue to use one bounded timer per dialed client. Optional `ReconnectPolicy.JitterFraction` (default 0) subtracts up to that fraction from each retry wait, which keeps the delay below its configured cap. The simulator integration can explicitly choose a 1s-to-30s exponential policy without changing the library defaults.
+
+`ReconnectPolicy.StopOnPermanentBindFailure` (default false for compatibility) causes the reconnect lifecycle to stop after explicit `ESME_RINVPASWD`, `ESME_RINVSYSID`, or `ESME_RINVSYSTYP` bind rejection. A generic bind failure or temporary system error is **not** classified as permanent. `WaitConnected` then returns an `UnavailableError` preserving the actual response cause rather than waiting indefinitely, and future requests do not report that reconnect is still in progress.
 
 ## Peers that stall while sending
 
