@@ -14,13 +14,13 @@ func receiptTLV(tag uint16, value []byte) protocol.OptionalParameter {
 
 func TestParseDeliveryReceiptPrecedenceAndConflicts(t *testing.T) {
 	pdu := protocol.DeliverSM{
-		ESMClass: 0x04,
-		ShortMessage: []byte("id:000AbC sub:001 dlvrd:001 stat:DELIVRD err:000 text:hi id:FAKE stat:REJECTD"),
 		Optional: []protocol.OptionalParameter{
 			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("000abc\x00")),
 			receiptTLV(protocol.TLVTagMessageState, []byte{5}),
 		},
 	}
+	pdu.ESMClass = 0x04
+	pdu.ShortMessage = []byte("id:000AbC sub:001 dlvrd:001 stat:DELIVRD err:000 text:hi id:FAKE stat:REJECTD")
 	got, err := ParseDeliveryReceipt(pdu)
 	if err != nil {
 		t.Fatal(err)
@@ -141,12 +141,11 @@ func TestParseDeliveryReceiptRejectsInvalidTextAndMixedCarriers(t *testing.T) {
 			t.Fatalf("body %q: %v", body, err)
 		}
 	}
-	_, err := ParseDeliveryReceipt(protocol.DeliverSM{
-		ShortMessage: []byte("id:a stat:DELIVRD"),
-		Optional: []protocol.OptionalParameter{
-			receiptTLV(protocol.TLVTagMessagePayload, []byte("id:b stat:REJECTD")),
-		},
-	})
+	dlr := protocol.DeliverSM{ShortMessage: []byte("id:a stat:DELIVRD")}
+	dlr.Optional = []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagMessagePayload, []byte("id:b stat:REJECTD")),
+	}
+	_, err := ParseDeliveryReceipt(dlr)
 	if !errors.Is(err, ErrInvalidDeliveryReceipt) {
 		t.Fatalf("mixed carriers: %v", err)
 	}
