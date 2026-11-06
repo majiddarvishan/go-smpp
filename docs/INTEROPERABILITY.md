@@ -36,7 +36,7 @@ congestion_state feedback is separate from the hard in-flight window. Applicatio
 
 ## GSM 7-bit
 
-The encoding package implements the GSM 03.38 default alphabet and extension table. Extension characters consume two septets. Multipart sizing is based on encoded septets, not UTF-8 bytes or Go rune count.
+The encoding package implements the GSM 03.38 default alphabet and extension table. Extension characters consume two septets. Multipart sizing is based on encoded septets, not UTF-8 bytes or Go rune count. GSM 03.38 extension-table characters have an ESC septet followed by the extension-table code; UDH and SAR multipart splitters must move both to the same segment instead of splitting at the nominal septet boundary. This may leave one unused septet in an earlier segment and is required to preserve exact content.
 
 encoding.PackSeptets and PackSeptetsWithFill provide septet packing. UDH-bearing GSM7 parts account for fill bits.
 
