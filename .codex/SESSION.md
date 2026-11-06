@@ -211,3 +211,12 @@ Four isolated PRs were tested via their GitHub Actions Go 1.25/1.27 matrices and
 
 **Next technical work:** optional DLR parser/vendor fixtures if chosen; explicit compatibility/interop tests against representative SMSC peers; release readiness/tag review; simulator use only on separately authorized implementation.
 
+## 2026-11-07 — Phase 20 DLR Parser library implementation (PR #7)
+
+- **Authorized scope:** only `go-smpp` library improvements. The separate `smpp_sim` remains design-frozen and **unmodified**, with no simulator implementation authorization.
+- **Task-first workflow:** registered `.codex/TASKS.md` and unchecked `PLAN.md` Phase 20 before the first Go source change; contract documented in `.codex/DLR_PARSER_CONTRACT.md`.
+- **Branch:** `feature/dlr-receipt-parser-v1`, based on `b8eaa68ffda24836aa38bef913f26bcbe2a454ef`; [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7).
+- **Implemented (DLR-01..06):** opt-in `message.ParseDeliveryReceipt(protocol.DeliverSM)`; text-first opaque `id:` plus TLV fallback, independently TLV-first numeric `message_state` plus text `stat:`; conflict flags preserving original source fields; strict malformed/duplicate TLV handling, ordinary non-receipt detection; message_payload fallback and UCS2 text support. Tests and API/no-panic snapshots updated; docs added without changing `Session` or ACK behavior.
+- **Actual verification:** [GitHub Actions run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) **PASS** on **Go 1.25 and 1.27**: gofmt, unit, Lint, API/no-panic, race, coverage floor, fuzz and existing performance smoke. Initial iterations failed format or a tagged-switch Staticcheck finding; fixes were made and the cited run succeeded.
+- **Not claimed:** no formal Phase 17 reference-machine acceptance, no production interop test against an external SMSC, no `smpp_sim` end-to-end run and no 50k physical `submit_sm` PDU/s benchmark.
+- **Next exact step:** verify CI on the documentation-complete PR head, mark PR ready and merge, then close DLR-07 on `main` with recorded merge SHA. Later: optional vendor interop fixtures, raw trace review, formal reference performance. Keep binary/ID handling conservative and vendor normalization opt-in.

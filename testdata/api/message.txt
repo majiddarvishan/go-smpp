@@ -4,6 +4,21 @@ const BinarySingleOctets untyped int = 140
 func BuildConcatUDH16(reference uint16, total byte, sequence byte) []byte
 func BuildConcatUDH8(reference byte, total byte, sequence byte) []byte
 func DecodeTextSegments(segments []Segment) (string, error)
+type DeliveryReceipt struct
+field DeliveryReceipt.HasState bool
+field DeliveryReceipt.HasTLVState bool
+field DeliveryReceipt.HasTextState bool
+field DeliveryReceipt.MessageID string
+field DeliveryReceipt.MessageIDConflict bool
+field DeliveryReceipt.MessageIDSource ReceiptFieldSource
+field DeliveryReceipt.State uint8
+field DeliveryReceipt.StateConflict bool
+field DeliveryReceipt.StateSource ReceiptFieldSource
+field DeliveryReceipt.TLVMessageID string
+field DeliveryReceipt.TLVState uint8
+field DeliveryReceipt.TextMessageID string
+field DeliveryReceipt.TextState uint8
+field DeliveryReceipt.TextStatus string
 const ESMClassUDHI uint8 = 64
 func EncodeText(text string, allowSurrogates bool) (EncodedText, error)
 type EncodedText struct
@@ -11,15 +26,22 @@ field EncodedText.Data []byte
 field EncodedText.DataCoding protocol.DataCoding
 field EncodedText.Kind encoding.Kind
 field EncodedText.Units int
+var ErrInvalidDeliveryReceipt error
 var ErrInvalidSAR error
 var ErrInvalidSegments error
 var ErrInvalidUDH error
+var ErrNotDeliveryReceipt error
 const GSM7MultipartSeptets untyped int = 153
 const GSM7SingleSeptets untyped int = 160
 func GSM7UDHFillBits(headerOctets int) uint8
 func ParseConcatUDH(userData []byte) (reference uint16, total uint8, sequence uint8, headerLen int, err error)
+func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error)
 func ParseSAR(optional []protocol.OptionalParameter) (reference uint16, total uint8, sequence uint8, err error)
 func Reassemble(segments []Segment) ([]byte, error)
+type ReceiptFieldSource string
+const ReceiptSourceNone ReceiptFieldSource = ""
+const ReceiptSourceTLV ReceiptFieldSource = "tlv"
+const ReceiptSourceText ReceiptFieldSource = "text"
 func SARTLVs(reference uint16, total uint8, sequence uint8) []protocol.OptionalParameter
 type Segment struct
 field Segment.Data []byte

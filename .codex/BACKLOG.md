@@ -29,7 +29,8 @@ These are mandatory for the SMPP 3.4 completeness phase even though they are def
 - [ ] UDH concatenation/segmentation using encoded septet/code-unit length rather than Go rune count
 - [ ] SAR TLV segmentation
 - [ ] multipart reassembly
-- [ ] delivery-receipt convenience parsing/format helpers
+- [x] delivery-receipt convenience parsing via `message.ParseDeliveryReceipt` (Phase 20; CI evidence in `.codex/SESSION.md`)
+- [ ] delivery-receipt formatting helpers (deferred unless a concrete interoperability requirement warrants them)
 - [ ] conformance tests for GSM extension characters, Unicode BMP text, surrogate pairs/emoji, and multipart boundaries
 
 Encoding/message logic belongs in separate packages in this repository and must not be required by the low-level PDU codec.

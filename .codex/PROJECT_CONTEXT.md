@@ -110,3 +110,13 @@ Phase 16 is complete. Phase 17 is now the active phase: profile-guided optimizat
 ## Phase 18 reliability coverage
 
 The repository now has explicit end-to-end reliability/chaos coverage for real TCP fragmentation/coalescing, fail-closed malformed/oversized/truncated frames, invalid mandatory/TLV lengths, no byte-stream resynchronization, safe fatal diagnostics, unexpected/duplicate responses, receive-side sequence values through 0xffffffff, disconnects across bind/idle/full-window states, late response storms, liveness timers, close/timeout/reconnect races, slow handlers/peers, fuzz-smoke runs, race-detector runs, and sustained concurrent-caller soak behavior.
+
+## External consumer: SMPP Test Studio (library-only integration readiness)
+
+The owner intends to reuse this Go module in `majiddarvishan/smpp_sim`, whose V1 design is frozen under D-001–D-040. **Authorization currently covers go-smpp library improvements, not building or editing the simulator.** The simulator uses SMPP 3.4 TX/RX/TRX, up to 50k physical `submit_sm` PDUs/s as a future unverified benchmark, and a headless/Go API, but no duplicate SMPP wire/session stack should be created.
+
+Four earlier library PRs (#3/#4/#5/#6) added optional deferred/suppressed inbound ACK, GSM7 extension-safe multipart splitting, UDH16/unpacked GSM7 helpers and optional reconnect jitter/terminal authentication handling; these are merged on `main`. The application-specific Adaptive Window controller and 8,192-run-wide pending limit belong **above** this module, not in the SMPP response/window core.
+
+Phase 20 adds the optional `message.ParseDeliveryReceipt` helper for DLR parsing. **ID is text `id:` first, TLV `receipted_message_id` second**; independently, **state is TLV `message_state` first, recognized text `stat:` second**. Preserve original conflicting values, exact case and leading zeros. Never auto-resend ambiguous submits or treat `submit_sm_resp` as delivered. The simulator owns DLR aggregation, missing/late/duplicate policy, configurable retention and the ACK delay scheduler.
+
+See `.codex/TASKS.md`, `.codex/DLR_PARSER_CONTRACT.md`, and `docs/SMPP_SIM_INTEGRATION_REVIEW.md`. Keep vendor-specific ID normalization explicitly opt-in. Library CI does not prove the simulator's 50k physical submit-PDU/s objective or the library's separate Phase 17 reference-machine 100k request-PDU/s release gate.

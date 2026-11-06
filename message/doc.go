@@ -6,4 +6,10 @@
 // binary payload segmentation. Message decoding is opt-in and is not performed
 // on the SMPP protocol hot path. Multipart sizing uses encoded septets or code
 // units rather than UTF-8 byte length or Go rune count.
+//
+// ParseDeliveryReceipt is an optional pure helper for extracting status reports
+// from decoded protocol.DeliverSM values. It preserves opaque message IDs and
+// both text/TLV sources, reports conflicts and never acknowledges or correlates
+// network requests. Ordinary SMS and malformed receipt metadata are distinct
+// error cases. See .codex/DLR_PARSER_CONTRACT.md for precedence and limitations.
 package message
