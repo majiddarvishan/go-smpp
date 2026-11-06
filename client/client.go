@@ -84,17 +84,17 @@ type bindProfile struct {
 // by Dial or New): operations return ErrNotInitialized, Wait returns at once,
 // and the other getters return zero values.
 type Client struct {
-	mu       sync.RWMutex
-	config   Config
-	current  *session.Session
-	last     *session.Session
-	profile  *bindProfile
-	lastErr  error
-	lastLoss error
+	mu                   sync.RWMutex
+	config               Config
+	current              *session.Session
+	last                 *session.Session
+	profile              *bindProfile
+	lastErr              error
+	lastLoss             error
 	terminalReconnectErr error
-	dialable bool
-	closed   bool
-	notify   chan struct{}
+	dialable             bool
+	closed               bool
+	notify               chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
