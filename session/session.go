@@ -80,30 +80,30 @@ func noHandlerResponse(command protocol.CommandID) Response {
 // bind passwords in clear text; read the SECURITY note on PacketTracer before
 // enabling it.
 type Config struct {
-	Role                Role
-	Profile             protocol.Profile
-	Registry            *codec.Registry
-	MaxPDUSize          uint32
-	MaxPending          int
+	Role                 Role
+	Profile              protocol.Profile
+	Registry             *codec.Registry
+	MaxPDUSize           uint32
+	MaxPending           int
 	MaxDeferredResponses int
-	WindowSize          int
-	WindowObserver      WindowObserver
-	FlowController      FlowController
-	Observer            Observer
-	PacketTracer        PacketTracer
-	TraceRawPDU         bool
-	ResponseTimeout     time.Duration
-	SessionInitTimeout  time.Duration
-	EnquireLinkInterval time.Duration
-	EnquireLinkTimeout  time.Duration
-	InactivityTimeout   time.Duration
-	WriteTimeout        time.Duration
-	TXQueueSize         int
-	TXBatchItems        int
-	TXBatchBytes        int
-	ReadBufferSize      int
-	Handler             Handler
-	Logger              *slog.Logger
+	WindowSize           int
+	WindowObserver       WindowObserver
+	FlowController       FlowController
+	Observer             Observer
+	PacketTracer         PacketTracer
+	TraceRawPDU          bool
+	ResponseTimeout      time.Duration
+	SessionInitTimeout   time.Duration
+	EnquireLinkInterval  time.Duration
+	EnquireLinkTimeout   time.Duration
+	InactivityTimeout    time.Duration
+	WriteTimeout         time.Duration
+	TXQueueSize          int
+	TXBatchItems         int
+	TXBatchBytes         int
+	ReadBufferSize       int
+	Handler              Handler
+	Logger               *slog.Logger
 }
 
 const (
@@ -127,13 +127,13 @@ type Session struct {
 	done   chan struct{}
 	tx     chan txItem
 
-	pending   *pendingTable
-	deferredMu sync.Mutex
+	pending         *pendingTable
+	deferredMu      sync.Mutex
 	deferredReplies map[protocol.SequenceNumber]bool
-	window    *requestWindow
-	deadlines *deadlineManager
-	seq       sequenceGenerator
-	frames    *framePool
+	window          *requestWindow
+	deadlines       *deadlineManager
+	seq             sequenceGenerator
+	frames          *framePool
 
 	// Caller-owned deadline slots for the three liveness checks (Task 2.4,
 	// Finding P5), each rescheduled in place via deadlineManager.scheduleItemAt
