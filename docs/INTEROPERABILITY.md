@@ -40,6 +40,8 @@ The encoding package implements the GSM 03.38 default alphabet and extension tab
 
 encoding.PackSeptets and PackSeptetsWithFill provide septet packing. UDH-bearing GSM7 parts account for fill bits.
 
+A second explicit helper, `message.SegmentTextUDH16Unpacked`, builds **16-bit concatenation UDH** with **unpacked GSM7 septet octets** and strict UCS2/optional surrogate-preserving UTF16-BE. Its multipart capacities are 152 GSM7 septets or 66 UCS2 code units per part; `message.SegmentBinaryUDH16` uses 133 binary content octets per part. Both retain at most 255 parts and never split GSM7 escape pairs or UTF-16 surrogate pairs. The existing `SegmentTextUDH` remains unchanged (8-bit reference, packed GSM7); callers must select the representation accepted by their SMSC.
+
 Some SMPP peers expect data_coding=0 text in an unpacked local character convention rather than TP-UD-style packed septets. Encoding/segmentation is separate from the low-level PDU codec so the application can choose the representation required by its SMSC.
 
 ## Unicode and emoji
