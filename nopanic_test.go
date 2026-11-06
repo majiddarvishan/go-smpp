@@ -218,7 +218,7 @@ var noPanicFuncs = map[string]any{
 	"message.EncodeText":                   message.EncodeText,
 	"message.GSM7UDHFillBits":              message.GSM7UDHFillBits,
 	"message.ParseConcatUDH":               message.ParseConcatUDH,
-	"message.ParseDeliveryReceipt":          message.ParseDeliveryReceipt,
+	"message.ParseDeliveryReceipt":         message.ParseDeliveryReceipt,
 	"message.ParseSAR":                     message.ParseSAR,
 	"message.Reassemble":                   message.Reassemble,
 	"message.SARTLVs":                      message.SARTLVs,
