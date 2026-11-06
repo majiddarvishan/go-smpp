@@ -220,3 +220,13 @@ Four isolated PRs were tested via their GitHub Actions Go 1.25/1.27 matrices and
 - **Actual verification:** [GitHub Actions run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) **PASS** on **Go 1.25 and 1.27**: gofmt, unit, Lint, API/no-panic, race, coverage floor, fuzz and existing performance smoke. Initial iterations failed format or a tagged-switch Staticcheck finding; fixes were made and the cited run succeeded.
 - **Not claimed:** no formal Phase 17 reference-machine acceptance, no production interop test against an external SMSC, no `smpp_sim` end-to-end run and no 50k physical `submit_sm` PDU/s benchmark.
 - **Next exact step:** verify CI on the documentation-complete PR head, mark PR ready and merge, then close DLR-07 on `main` with recorded merge SHA. Later: optional vendor interop fixtures, raw trace review, formal reference performance. Keep binary/ID handling conservative and vendor normalization opt-in.
+
+## 2026-11-07 — Phase 20 DLR library acceptance and merge closure
+
+- **Merge completed:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7) squash-merged to `main` as `e4606a40961d62cf8eb917f28120385282e89b29`.
+- **Final-head acceptance:** [CI run 42306339442](https://github.com/majiddarvishan/go-smpp/actions/runs/42306339442) **PASS** for both Go 1.25 and Go 1.27 (gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke). Earlier code-only [run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) also PASS.
+- **PLAN Phase 20 DLR-01..DLR-07:** all closed; `.codex/TASKS.md` mirrors the verified state. `.codex/BACKLOG.md` closes **parsing only**; receipt formatting remains explicitly deferred.
+- **Current library contract:** `message.ParseDeliveryReceipt` is available from main, additive and independent from RX ACK behavior. Text `id:` wins over TLV message ID; numeric `message_state` TLV wins over text `stat:`; exact opaque IDs, conflict diagnostics, and malformed/not-receipt errors are preserved. See `.codex/DLR_PARSER_CONTRACT.md`.
+- **No simulator implementation:** `smpp_sim` remains at its separate frozen design baseline. Formal library Phase 17 100k reference acceptance and the separate simulator 50k physical submit-PDU/s benchmark remain **unverified**.
+- **Next exact task:** select one P1 library improvement from `.codex/TASKS.md`: vendor receipt interoperability fixtures (INT-01) are the smallest useful next step, followed by raw trace safety review (OBS-01). Do not silently enable vendor ID normalization.
+
