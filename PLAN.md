@@ -280,13 +280,15 @@ This file is the source of truth for implementation progress. Every completed ph
 
 > Owner authorized **go-smpp library improvements only**, not `smpp_sim` implementation. Task details live in `.codex/TASKS.md`. This additive parser must preserve the SMPP 3.4 wire/session core and existing API.
 
-- [ ] **DLR-01:** Publish a pure `message`-package receipt parser for `protocol.DeliverSM`, with explicit no-receipt handling.
-- [ ] **DLR-02:** Apply text-first `id:`, TLV-fallback identifier precedence; independently apply TLV-first `message_state`, text `stat:` fallback; preserve conflict evidence and opaque IDs.
-- [ ] **DLR-03:** Reject malformed/ambiguous receipt TLVs and invalid states; remain panic-free and avoid guessing or vendor-only normalization.
-- [ ] **DLR-04:** Add receipt examples, mismatch/duplicate/malformed/ordinary message fixtures and tests.
-- [ ] **DLR-05:** Update additive public API snapshot and exhaustive no-panic coverage.
-- [ ] **DLR-06:** Document limitations and synchronize `.codex` handoff/backlog.
+- [x] **DLR-01:** Publish a pure `message`-package receipt parser for `protocol.DeliverSM`, with explicit no-receipt handling.
+- [x] **DLR-02:** Apply text-first `id:`, TLV-fallback identifier precedence; independently apply TLV-first `message_state`, text `stat:` fallback; preserve conflict evidence and opaque IDs.
+- [x] **DLR-03:** Reject malformed/ambiguous receipt TLVs and invalid states; remain panic-free and avoid guessing or vendor-only normalization.
+- [x] **DLR-04:** Add receipt examples, mismatch/duplicate/malformed/ordinary message fixtures and tests.
+- [x] **DLR-05:** Update additive public API snapshot and exhaustive no-panic coverage.
+- [x] **DLR-06:** Document limitations and synchronize `.codex` handoff/backlog.
 - [ ] **DLR-07:** Verify Go 1.25/1.27 CI (format, unit, race, API, fuzz/coverage) and merge only after evidence.
+
+**Implementation verification:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7), [CI run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) passed Go 1.25/1.27 matrices (format, unit, API/no-panic, lint, race, coverage/fuzz/performance smoke). DLR-07 stays open until merge is completed and confirmed.
 
 ## Backlog policy
 
