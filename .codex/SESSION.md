@@ -193,3 +193,21 @@ Phase 17 implementation and development validation are complete. The remaining g
 - **Tests added:** suppression with live RX, deferred response exactly once, bounded capacity/abandon, public API snapshot updated. **No tests or gofmt/race results have been executed in this environment**; run Go 1.25 and Go 1.27 CI before merging.
 - **Review notes:** `docs/SMPP_SIM_INTEGRATION_REVIEW.md` describes the required 16-bit UDH/unpacked GSM7 adapter, reconnect jitter/permanent credential handling, strict SMPP 3.4 profile, fixed library window vs application Adaptive controller, receipt mapping and trace redaction.
 - **Next:** inspect PR CI, fix any compile/gofmt/api-snapshot/coverage failures, then separately address message interop and reconnect policy without breaking the current default public API. No performance regression claim without measured evidence.
+
+## 2026-11-07 — Library integration improvements completed
+
+**Scope:** only `majiddarvishan/go-smpp`. The frozen `smpp_sim` repository and its implementation authorization were not changed.
+
+Four isolated PRs were tested via their GitHub Actions Go 1.25/1.27 matrices and **squash-merged to main**:
+
+1. **#3** (`1387d9bddda63464d5f464d4f5d6c0acbf6f17c8`): bounded opt-in suppressed/deferred inbound `deliver_sm_resp` responses, exact Session ownership, one-shot acknowledgment, no per-PDU goroutine or timer; API snapshot and tests.
+2. **#4** (`f8b4805eb3c10c046e1846f804fb5790efb3e8b6`): fix GSM7 extension escape pairs crossing UDH/SAR boundaries; focused regression tests.
+3. **#6** (`eadea5e2b8f96bf8552cba9d0f7c65b231ae5680`): optional reconnect jitter and stop-on-explicit-permanent-bind-rejection, terminal cause propagation; legacy defaults unchanged.
+4. **#5** (`bff9b61c5f1a923e5d02e8fc1e613c460db4f476`): additive UDH16/unpacked-GSM7 and binary helpers, updated no-panic/API snapshots, exact 152/66/133 multipart bounds.
+
+**Verification:** each PR's CI passed on both Go 1.25 and Go 1.27 (gofmt, unit tests, API/no-panic snapshots, race, coverage, fuzz and performance smoke). This does **not** re-run the reference-machine 100k acceptance on the final composite HEAD, and does **not** demonstrate `smpp_sim` 50k physical submit TPS.
+
+**Review:** `docs/SMPP_SIM_INTEGRATION_REVIEW.md` now documents the implemented fixes, exact adapter configuration constraints, raw trace risks, library commit pin and remaining optional DLR text-first/TLV-first parsing. No new simulator module, CLI, Web UI or test harness was implemented.
+
+**Next technical work:** optional DLR parser/vendor fixtures if chosen; explicit compatibility/interop tests against representative SMSC peers; release readiness/tag review; simulator use only on separately authorized implementation.
+
