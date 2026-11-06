@@ -286,9 +286,9 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] **DLR-04:** Add receipt examples, mismatch/duplicate/malformed/ordinary message fixtures and tests.
 - [x] **DLR-05:** Update additive public API snapshot and exhaustive no-panic coverage.
 - [x] **DLR-06:** Document limitations and synchronize `.codex` handoff/backlog.
-- [ ] **DLR-07:** Verify Go 1.25/1.27 CI (format, unit, race, API, fuzz/coverage) and merge only after evidence.
+- [x] **DLR-07:** Verify Go 1.25/1.27 CI (format, unit, race, API, fuzz/coverage) and merge only after evidence.
 
-**Implementation verification:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7), [CI run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) passed Go 1.25/1.27 matrices (format, unit, API/no-panic, lint, race, coverage/fuzz/performance smoke). DLR-07 stays open until merge is completed and confirmed.
+**Implementation verification:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7), [CI run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) passed Go 1.25/1.27 matrices (format, unit, API/no-panic, lint, race, coverage/fuzz/performance smoke). DLR-07 was closed after [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7) merged as `e4606a40961d62cf8eb917f28120385282e89b29`; final PR-head CI [42306339442](https://github.com/majiddarvishan/go-smpp/actions/runs/42306339442) passed both Go 1.25/1.27 matrices.
 
 ## Backlog policy
 
