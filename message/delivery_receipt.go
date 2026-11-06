@@ -113,13 +113,14 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	}
 	var text string
 	if len(raw) > 0 {
-		if deliver.DataCoding == protocol.DataCodingUCS2 {
+		switch deliver.DataCoding {
+		case protocol.DataCodingUCS2:
 			var err error
 			text, err = smppenc.DecodeUCS2(raw)
 			if err != nil {
 				return DeliveryReceipt{}, fmt.Errorf("%w: invalid UCS-2 receipt text: %v", ErrInvalidDeliveryReceipt, err)
 			}
-		} else if deliver.DataCoding == protocol.DataCodingSMSCDefault {
+		case protocol.DataCodingSMSCDefault:
 			// Conventional DLR templates carry ASCII field labels/values
 			// directly as short_message octets. Do not guess whether a peer
 			// packed septets or apply a lossy charset conversion.
