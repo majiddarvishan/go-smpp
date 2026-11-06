@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"math/rand/v2"
 	"net"
 	"runtime/debug"
 	"sync"
@@ -28,6 +29,12 @@ type ReconnectPolicy struct {
 	MaxBackoff     time.Duration
 	Multiplier     float64
 	BindTimeout    time.Duration
+	// JitterFraction randomly subtracts up to this fraction from each retry
+	// delay (0 disables jitter). The effective interval never exceeds MaxBackoff.
+	JitterFraction float64
+	// StopOnPermanentBindFailure stops reconnecting after explicit credential
+	// rejection statuses, not generic/transient bind failures. Default is false.
+	StopOnPermanentBindFailure bool
 }
 
 // Config configures an ESME client.
@@ -84,6 +91,7 @@ type Client struct {
 	profile  *bindProfile
 	lastErr  error
 	lastLoss error
+	terminalReconnectErr error
 	dialable bool
 	closed   bool
 	notify   chan struct{}
@@ -153,6 +161,12 @@ func normalizeReconnect(policy ReconnectPolicy) ReconnectPolicy {
 	}
 	if policy.BindTimeout <= 0 {
 		policy.BindTimeout = session.DefaultSessionInitTimeout
+	}
+	if policy.JitterFraction < 0 {
+		policy.JitterFraction = 0
+	}
+	if policy.JitterFraction > 1 {
+		policy.JitterFraction = 1
 	}
 	return policy
 }
@@ -229,6 +243,11 @@ func (c *Client) WaitConnected(ctx context.Context) error {
 		if c.closed {
 			c.mu.RUnlock()
 			return ErrUnavailable
+		}
+		if c.terminalReconnectErr != nil {
+			err := c.terminalReconnectErr
+			c.mu.RUnlock()
+			return &UnavailableError{Cause: err, Reconnecting: false}
 		}
 		notify := c.notify
 		c.mu.RUnlock()
@@ -399,7 +418,7 @@ func (c *Client) activeSession() (*session.Session, error) {
 	c.mu.RLock()
 	sess := c.current
 	cause := c.lastErr
-	reconnecting := !c.closed && c.config.Reconnect.Enabled && c.dialable
+	reconnecting := !c.closed && c.config.Reconnect.Enabled && c.dialable && c.terminalReconnectErr == nil
 	closed := c.closed
 	c.mu.RUnlock()
 	if sess != nil && !closed {
@@ -445,7 +464,7 @@ func (c *Client) lifecycle(initial *session.Session) {
 
 		backoff := c.config.Reconnect.InitialBackoff
 		for {
-			if !waitContext(c.ctx, backoff) {
+			if !waitContext(c.ctx, jitterReconnectDelay(backoff, c.config.Reconnect.JitterFraction)) {
 				return
 			}
 			conn, err := dialTransport(c.ctx, c.config)
@@ -472,6 +491,10 @@ func (c *Client) lifecycle(initial *session.Session) {
 					_ = candidate.Close()
 					candidate.Wait()
 					c.recordReconnectError(err)
+					if c.config.Reconnect.StopOnPermanentBindFailure && isPermanentBindRejection(err) {
+						c.recordTerminalReconnectError(err)
+						return
+					}
 					backoff = nextBackoff(backoff, c.config.Reconnect)
 					continue
 				}
@@ -513,6 +536,44 @@ func (c *Client) recordReconnectError(err error) {
 	c.lastErr = err
 	c.signalLocked()
 	c.mu.Unlock()
+}
+
+func (c *Client) recordTerminalReconnectError(err error) {
+	c.mu.Lock()
+	c.lastErr = err
+	c.terminalReconnectErr = err
+	c.signalLocked()
+	c.mu.Unlock()
+}
+
+func isPermanentBindRejection(err error) bool {
+	var response *session.ResponseError
+	if !errors.As(err, &response) {
+		return false
+	}
+	switch response.Status {
+	case protocol.StatusInvalidPassword, protocol.StatusInvalidSystemID, protocol.StatusInvalidSystemType:
+		return true
+	default:
+		return false
+	}
+}
+
+// jitterReconnectDelay applies bounded downward jitter to avoid clients
+// reconnecting in lockstep; it never increases the configured max backoff.
+func jitterReconnectDelay(base time.Duration, fraction float64) time.Duration {
+	if base <= 0 || fraction <= 0 {
+		return base
+	}
+	if fraction > 1 {
+		fraction = 1
+	}
+	reduction := time.Duration(rand.Float64() * fraction * float64(base))
+	delay := base - reduction
+	if delay < time.Millisecond {
+		return time.Millisecond
+	}
+	return delay
 }
 
 func (c *Client) signalLocked() {
