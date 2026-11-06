@@ -89,7 +89,7 @@ func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segmen
 			}
 			return []Segment{{Kind: encoded.Kind, DataCoding: encoded.DataCoding, Units: encoded.Units, Data: clone(encoded.Data), UserData: packed, Total: 1, Sequence: 1}}, nil
 		}
-		chunks := splitBytes(encoded.Data, GSM7MultipartSeptets)
+		chunks := splitGSM7(encoded.Data, GSM7MultipartSeptets)
 		return makeUDHSegments(chunks, encoded.Kind, encoded.DataCoding, reference)
 	case smppenc.KindUCS2:
 		if encoded.Units <= UCS2SingleUnits {
@@ -332,7 +332,7 @@ func SegmentTextSAR(text string, allowSurrogates bool, reference uint16) ([]Segm
 	var chunks [][]byte
 	switch encoded.Kind {
 	case smppenc.KindGSM7:
-		chunks = splitBytes(encoded.Data, GSM7SingleSeptets)
+		chunks = splitGSM7(encoded.Data, GSM7SingleSeptets)
 	case smppenc.KindUCS2:
 		chunks = splitFixedUnits(encoded.Data, 2, UCS2SingleUnits)
 	case smppenc.KindUTF16BE:
@@ -387,6 +387,30 @@ func SegmentBinarySAR(data []byte, reference uint16) ([]Segment, error) {
 		out[i] = Segment{Reference: reference, Total: total, Sequence: seq, Kind: smppenc.KindBinary, DataCoding: protocol.DataCodingOctetBinary2, Units: len(chunk), Data: clone(chunk), UserData: clone(chunk), Optional: SARTLVs(reference, total, seq)}
 	}
 	return out, nil
+}
+
+// splitGSM7 splits unpacked GSM 03.38 septets without separating an ESC
+// (0x1B) from the extension-table septet that follows it. GSM7 extension
+// characters occupy two septets but represent one logical character; a split
+// between the pair changes the decoded message. All current callers pass a
+// maximum of at least two septets.
+func splitGSM7(data []byte, max int) [][]byte {
+	if len(data) == 0 {
+		return nil
+	}
+	if max < 2 {
+		return nil
+	}
+	parts := make([][]byte, 0, (len(data)+max-1)/max)
+	for len(data) > 0 {
+		n := min(len(data), max)
+		if n < len(data) && data[n-1] == 0x1b {
+			n-- // move the escape and its extension code to the next part
+		}
+		parts = append(parts, clone(data[:n]))
+		data = data[n:]
+	}
+	return parts
 }
 
 // splitBytes splits data into consecutive chunks of at most max bytes, each an
