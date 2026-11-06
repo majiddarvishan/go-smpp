@@ -13,6 +13,7 @@ field Config.FlowController FlowController
 field Config.Handler Handler
 field Config.InactivityTimeout time.Duration
 field Config.Logger *slog.Logger
+field Config.MaxDeferredResponses int
 field Config.MaxPDUSize uint32
 field Config.MaxPending int
 field Config.Observer Observer
@@ -38,6 +39,7 @@ field CongestionEvent.State protocol.CongestionState
 const DefaultEnquireLinkInterval time.Duration = 30000000000
 const DefaultEnquireLinkTimeout time.Duration = 10000000000
 const DefaultInactivityTimeout time.Duration = 120000000000
+const DefaultMaxDeferredResponses untyped int = 1024
 const DefaultMaxPending untyped int = 1024
 const DefaultReadBufferSize untyped int = 65536
 const DefaultResponseTimeout time.Duration = 30000000000
@@ -48,7 +50,11 @@ const DefaultTXQueueSize untyped int = 1024
 const DefaultWindowSize untyped int = 1024
 const DefaultWriteTimeout time.Duration = 30000000000
 var ErrBindInProgress error
+var ErrDeferredResponseBusy error
+var ErrDeferredResponseLimit error
+var ErrDeferredResponseUnknown error
 var ErrInvalidConfig error
+var ErrInvalidResponseAction error
 var ErrNotInitialized error
 var ErrPendingLimit error
 var ErrSequenceExhausted error
@@ -142,8 +148,13 @@ imethod PacketTracer.TracePacket(PacketTrace)
 type PacketTracerFunc func(PacketTrace)
 method (PacketTracerFunc).TracePacket(trace PacketTrace)
 type Response struct
+field Response.Action ResponseAction
 field Response.Body any
 field Response.Status protocol.CommandStatus
+type ResponseAction uint8
+const ResponseDeferred ResponseAction = 2
+const ResponseImmediate ResponseAction = 0
+const ResponseSuppress ResponseAction = 1
 type ResponseError struct
 field ResponseError.Command protocol.CommandID
 field ResponseError.Sequence protocol.SequenceNumber
@@ -154,6 +165,7 @@ method (Role).String() string
 const RoleESME Role = 1
 const RoleSMSC Role = 2
 type Session struct
+method (*Session).AbandonDeferredResponse(request codec.Header) bool
 method (*Session).AlertNotification(ctx context.Context, notification protocol.AlertNotification) error
 method (*Session).BindMode() BindMode
 method (*Session).BindReceiver(ctx context.Context, request protocol.BindRequest) (protocol.BindResponse, error)
@@ -173,12 +185,14 @@ method (*Session).Metrics() MetricsSnapshot
 method (*Session).Outbind(ctx context.Context, request protocol.Outbind) error
 method (*Session).PeerCapabilities() protocol.PeerCapabilities
 method (*Session).Pending() int
+method (*Session).PendingDeferredResponses() int
 method (*Session).Profile() protocol.Profile
 method (*Session).QueryBroadcastSM(ctx context.Context, request protocol.QueryBroadcastSM) (protocol.QueryBroadcastSMResp, error)
 method (*Session).QuerySM(ctx context.Context, request protocol.QuerySM) (protocol.QuerySMResp, error)
 method (*Session).RemoteAddr() net.Addr
 method (*Session).ReplaceSM(ctx context.Context, request protocol.ReplaceSM) error
 method (*Session).Request(ctx context.Context, command protocol.CommandID, body any) (codec.DecodedPDU, error)
+method (*Session).RespondDeferred(request codec.Header, response Response) error
 method (*Session).Role() Role
 method (*Session).SendOneWay(ctx context.Context, command protocol.CommandID, body any) error
 method (*Session).State() protocol.SessionState
