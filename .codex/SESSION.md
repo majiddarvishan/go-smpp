@@ -62,6 +62,15 @@ Tasks were registered before implementation in `.codex/TASKS.md` and `PLAN.md`.
 - Git status showed an untracked `.bench/` directory. The validation script explicitly did not read, delete, or modify it; preserve it.
 - Commit `de73b0f54580ff7fd1df0243fa924afc14e1ace6` applies the formatting-only gofmt alignment correction to all `DeliveryReceipt` fields after the DLR expansion, and to the `RegisteredDelivery` struct/composite literal. Rerun the full validation script before marking any Phase 21 task complete.
 
+### Latest final-head PR CI — 2026-11-07
+
+- The remaining gofmt failure was isolated to blank-line-separated field groups in `message/delivery_receipt.go`. Commit `73bbef53b190fdb6d4bfcdd23929ac3106ee39ee` changes whitespace only and aligns each group independently, matching gofmt.
+- Draft PR #8: https://github.com/majiddarvishan/go-smpp/pull/8
+- Final-head GitHub Actions run `42363925646` passed on commit `73bbef53b190fdb6d4bfcdd23929ac3106ee39ee` for both Go 1.25.x and Go 1.27.x.
+- Both matrix jobs passed gofmt, unit tests, race tests, fuzz smoke, protocol/codec benchmarks, Phase 17 performance smoke, the 2-second sustained resource-bound smoke, and no-unsafe. The Go 1.27.x job also passed golangci-lint and coverage floor.
+- The Phase 17 result remains a 2-second CI smoke, not the 60-second reference acceptance.
+- The complete local `scripts/phase21-validation.sh` rerun is still required against the latest branch head. Keep Phase 21 task checkboxes open and PR #8 in draft until that evidence and final review are recorded.
+
 ## Verification still required
 
 Local Phase 21 validation has now been executed on both supported Go lines. The latest run passed 35 gates and failed only the gofmt gate on `message/delivery_receipt.go` and `protocol/registered_delivery.go`; the formatting-only correction is committed as `de73b0f54580ff7fd1df0243fa924afc14e1ace6` and awaits a full rerun. Do not mark Phase 21 tasks complete until the full local validation rerun passes and final-head PR CI passes on both supported Go lines, including gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke. Keep P1 real-peer interoperability, the 60-second current-head reference performance acceptance, and release-tag gates open until their own evidence exists. Preserve the untracked `.bench/` directory.
