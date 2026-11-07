@@ -46,6 +46,13 @@ Tasks were registered before implementation in `.codex/TASKS.md` and `PLAN.md`.
 - Reconcile stale backlog and phase status against implemented source/tests and published performance evidence.
 - Run full Go 1.25.x/1.27.x CI and merge only after final-head checks pass.
 
+### Latest corrective patch — 2026-11-07
+
+- Commit `97edd84c90ae7828def9e3c186dba1d270862d5b` fixes the `registered_delivery` field-extraction vector (`0x1f), with reserved-bit cases retained), applies gofmt-equivalent alignment fixes to the four files identified by the validation report, restores the CI workflow from the `main` baseline and adds a dedicated DLR fuzz smoke.
+- The Phase 21 validation script now installs the pinned `golangci-lint v2.14.0` with the locally available Go 1.27.0 (`GOTOOLCHAIN=local`), uses a valid temporary tools directory, and does not disable checksum verification. If Go 1.25.0 cannot be securely downloaded because `GOSUMDB` is disabled or unset, the gate is reported as BLOCKED with remediation.
+- The duplicate decision identifier was corrected: the performance-laboratory decision is now D-048; the original SMPP one-way decision remains D-042.
+- These are source/documentation repairs, **not validation evidence**. No local Go test or CI run is recorded for this commit; all Phase 21 tasks remain open. `main` is unchanged and no PR has been opened.
+
 ## Verification still required
 
 No local Go execution has been performed for the Phase 21 branch edits yet. Do not mark Phase 21 tasks complete until the PR CI passes on both supported Go lines, including gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke. Keep P1 real-peer interoperability, current-head reference performance and release-tag gates open until their own evidence exists.
