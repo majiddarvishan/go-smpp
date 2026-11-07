@@ -346,7 +346,8 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Run the probe against the two local SMPP 3.4 simulator components, review the sanitized archive, and add only the two approved `simulator-peer` fixtures (`simulator-smsc-peer-001`, `simulator-esme-peer-002`) to the manifest; keep them distinct from deployed-peer evidence.
 - [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
 - [x] Improve the opt-in probe's ESME-originated `submit_sm` observation workflow with a longer configurable window, an explicit just-in-time prompt, and sanitized Unbind request/response diagnostics; keep it build-tagged and outside the public API. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
-- [ ] Re-run the ESME phase with an explicit outbound `submit_sm` action where supported; characterize both simulators' `unbind_resp` behavior and retain missing responses as peer-compatibility findings, not library success.
+- [ ] Re-run the ESME phase using the operator-controlled ESME CLI: after `OBSERVE`, issue exactly one outbound `submit_sm` within the configured window; verify `submit_sm_resp` and characterize `unbind_resp` behavior. Missing `unbind_resp` remains a peer-compatibility finding, not library success.
+- [ ] Make the test-only bind gate observe the actual successful `bind_transceiver_resp` write rather than polling transient session state; preserve a safe, allowlisted session-close cause when the response is not written. Cover the response/close race and peer EOF with regression tests.
 
 **INT-01 framework verification — 2026-11-07**
 
@@ -369,5 +370,14 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - Added reviewed fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002` to `testdata/interop/manifest.json`. Both remain explicitly `source=simulator-peer`; they do not establish deployed-peer/vendor compatibility.
 - Probe follow-up: default ESME submit observation window increased to 15 seconds and is configurable through `SMPP_INTEROP_SUBMIT_WAIT`; a just-in-time prompt and safe Unbind request/response diagnostics were added for both client and server roles. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
 - SMPP 3.4 permits Unbind from either role and expects the matching `unbind_resp`; the missing response is retained as an observed simulator compatibility gap, not normalized away.
+
+**Follow-up ESME CLI run analysis — 2026-11-07**
+
+- Reviewed sanitized archive `go-smpp-interop.MLqt5S.tar.gz`. The run lasted about 0.55 seconds and contains only `run.log`, `report.json`, and an empty candidate manifest; no raw PDU or credential material was persisted.
+- The probe received a TRX bind attempt and the configured authenticator accepted it: a rejected bind would have produced the explicit SMPP `command_status` and allowlisted reason, not the generic `error_type=*`.
+- The previous probe then reported `session closed before reaching Bound_TRX` through a generic `*errors.errorString`. Its 10 ms state polling could miss a short-lived Bound_TRX state if the ESME closed immediately after receiving `bind_transceiver_resp`; the old report also discarded `Session.Err()`, so this archive cannot distinguish peer EOF/reset from another terminal cause.
+- `frames_dropped_or_excluded=1` is expected here: the inbound bind frame is deliberately excluded by the credential-frame sanitizer. `frames=0` does not mean no bind request arrived.
+- No `OBSERVE` prompt was reached, so no CLI `submit_sm` command could be issued. The ESME simulator is operator-controlled; the correct order is READY → start ESME → successful bind/delivery handshake → OBSERVE → issue one CLI `submit_sm`.
+- Probe follow-up replaces transient state polling with the session's post-write `EventResponseSent` observation for `bind_transceiver_resp`, prioritizes an already-observed response over a simultaneous close, and retains a safe session-close cause (EOF/reset/fatal protocol classification). The CLI prompt and instructions are clarified. Regression tests cover the response/close race and peer EOF; CI validation is pending.
 
 **Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until deployed-peer evidence is added and reviewed.
