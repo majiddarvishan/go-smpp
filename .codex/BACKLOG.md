@@ -13,7 +13,7 @@ This file tracks intentionally deferred, reusable SMPP library work. The impleme
 - [x] `outbind` lifecycle and one-way semantics
 - [x] Standard command-status constants and codec coverage
 - [x] All 44 standard SMPP 3.4 TLV tags and registry coverage
-- [x] Lossless `registered_delivery` bit-field helpers (Phase 21; verify before closing this item)
+- [ ] Lossless `registered_delivery` bit-field helpers (Phase 21; pending final CI)
 
 ## Message and encoding
 
