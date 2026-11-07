@@ -37,7 +37,7 @@ Env knobs for the acceptance harness: duration, sessions, callers, minRPS, maxHe
 maxRetainedMB. It spawns `callers` goroutines alternating `esme.SubmitSM` / `smsc.DeliverSM` and
 samples goroutine count, heap, pending depth, and window occupancy every 250 ms.
 
-Simulator:
+Generic SMSC peer (standalone development/performance tool; not a public library package):
 
 ```bash
 go run ./cmd/smpp-sim -listen :2775 -window 4096 -tx-queue 4096
