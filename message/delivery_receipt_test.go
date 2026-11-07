@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -155,6 +156,23 @@ func TestParseDeliveryReceiptIdenticalStandardTLVDuplicates(t *testing.T) {
 
 func TestParseDeliveryReceiptRejectsAmbiguousStandardTLVs(t *testing.T) {
 	cases := map[string][]protocol.OptionalParameter{
+		"receipt ID missing terminator": {
+			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("missing-terminator")),
+		},
+		"receipt ID embedded NUL": {
+			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{'a', 0, 'b', 0}),
+		},
+		"receipt ID too long": {
+			receiptTLV(protocol.TLVTagReceiptedMessageID, append(bytes.Repeat([]byte{'a'}, 65), 0)),
+		},
+		"receipt ID conflicting duplicate": {
+			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("one\x00")),
+			receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("two\x00")),
+		},
+		"message state conflicting duplicate": {
+			receiptTLV(protocol.TLVTagMessageState, []byte{1}),
+			receiptTLV(protocol.TLVTagMessageState, []byte{2}),
+		},
 		"network error wrong length": {
 			receiptTLV(protocol.TLVTagNetworkErrorCode, []byte{1, 2}),
 		},
@@ -171,6 +189,12 @@ func TestParseDeliveryReceiptRejectsAmbiguousStandardTLVs(t *testing.T) {
 		},
 		"additional status empty TLV": {
 			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, nil),
+		},
+		"additional status missing terminator": {
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("unterminated")),
+		},
+		"additional status too long": {
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, append(bytes.Repeat([]byte{'s'}, 256), 0)),
 		},
 		"additional status embedded NUL": {
 			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte{'a', 0, 'b', 0}),
@@ -192,7 +216,7 @@ func TestParseDeliveryReceiptRejectsAmbiguousStandardTLVs(t *testing.T) {
 
 func TestParseDeliveryReceiptTLVOnlyAndDuplicates(t *testing.T) {
 	pdu := protocol.DeliverSM{Optional: []protocol.OptionalParameter{
-		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("00A39f")),
+		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("00A39f\x00")),
 		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte("00A39f\x00")),
 		receiptTLV(protocol.TLVTagMessageState, []byte{2}),
 		receiptTLV(protocol.TLVTagMessageState, []byte{2}),
@@ -315,4 +339,101 @@ func TestParseDeliveryReceiptOrdinaryMessageAndEchoedText(t *testing.T) {
 	if !errors.Is(err, ErrNotDeliveryReceipt) {
 		t.Fatalf("zero PDU: %v", err)
 	}
+}
+
+func TestParseDeliveryReceiptPreservesTextPayloadAndOpaqueColonID(t *testing.T) {
+	wantText := " first  line\tsecond  "
+	got, err := ParseDeliveryReceipt(protocol.DeliverSM{
+		ESMClass:     0x04,
+		ShortMessage: []byte("id: SMSC:00:AB stat: DELIVRD text: " + wantText),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MessageID != "SMSC:00:AB" {
+		t.Fatalf("opaque ID containing colons = %q", got.MessageID)
+	}
+	if got.Text != wantText {
+		t.Fatalf("text payload whitespace changed: got %q, want %q", got.Text, wantText)
+	}
+}
+
+func TestParseDeliveryReceiptDoesNotTreatStatusOnlyTextAsReceipt(t *testing.T) {
+	_, err := ParseDeliveryReceipt(protocol.DeliverSM{
+		ShortMessage: []byte("stat:DELIVRD"),
+	})
+	if !errors.Is(err, ErrNotDeliveryReceipt) {
+		t.Fatalf("status-only ordinary text error = %v", err)
+	}
+
+	got, err := ParseDeliveryReceipt(protocol.DeliverSM{
+		ESMClass:     0x04,
+		ShortMessage: []byte("stat:DELIVRD"),
+	})
+	if err != nil || !got.HasState || got.State != uint8(protocol.MessageStateDelivered) {
+		t.Fatalf("marked status-only receipt = %+v err=%v", got, err)
+	}
+}
+
+func TestParseDeliveryReceiptMessagePayloadDuplicates(t *testing.T) {
+	payload := []byte("id:payload-1 stat:DELIVRD")
+	got, err := ParseDeliveryReceipt(protocol.DeliverSM{Optional: []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagMessagePayload, payload),
+		receiptTLV(protocol.TLVTagMessagePayload, payload),
+	}})
+	if err != nil || got.MessageID != "payload-1" || got.State != uint8(protocol.MessageStateDelivered) {
+		t.Fatalf("identical message_payload duplicates: %+v err=%v", got, err)
+	}
+
+	_, err = ParseDeliveryReceipt(protocol.DeliverSM{Optional: []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagMessagePayload, payload),
+		receiptTLV(protocol.TLVTagMessagePayload, []byte("id:payload-2 stat:DELIVRD")),
+	}})
+	if !errors.Is(err, ErrInvalidDeliveryReceipt) {
+		t.Fatalf("conflicting message_payload duplicates error = %v", err)
+	}
+}
+
+func TestParseDeliveryReceiptCOctetTLVMaximumLengthsAndOpaqueBytes(t *testing.T) {
+	id := append(bytes.Repeat([]byte{'i'}, 64), 0)
+	status := append(bytes.Repeat([]byte{'s'}, 255), 0)
+	got, err := ParseDeliveryReceipt(protocol.DeliverSM{Optional: []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagReceiptedMessageID, id),
+		receiptTLV(protocol.TLVTagAdditionalStatusInfoText, status),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.TLVMessageID) != 64 || len(got.AdditionalStatusInfoText) != 255 {
+		t.Fatalf("maximum C-Octet values not preserved: id=%d additional=%d", len(got.TLVMessageID), len(got.AdditionalStatusInfoText))
+	}
+
+	opaqueID := string([]byte{0x80})
+	got, err = ParseDeliveryReceipt(protocol.DeliverSM{Optional: []protocol.OptionalParameter{
+		receiptTLV(protocol.TLVTagReceiptedMessageID, []byte{0x80, 0}),
+	}})
+	if err != nil || got.TLVMessageID != opaqueID {
+		t.Fatalf("opaque non-UTF8 ID was not preserved: id=%q err=%v", got.TLVMessageID, err)
+	}
+}
+
+func FuzzParseDeliveryReceipt(f *testing.F) {
+	f.Add([]byte("id:ABC123 stat:DELIVRD text:hello"), uint8(0), uint8(0x04), uint16(0), []byte(nil), uint16(0), []byte(nil))
+	f.Add([]byte(nil), uint8(protocol.DataCodingUCS2), uint8(0), uint16(protocol.TLVTagReceiptedMessageID), []byte("ABC123\x00"), uint16(protocol.TLVTagMessageState), []byte{2})
+	f.Add([]byte{0xff, 0x00, 0x80}, uint8(protocol.DataCodingIA5), uint8(0x04), uint16(protocol.TLVTagAdditionalStatusInfoText), []byte{0x80, 0}, uint16(0), []byte(nil))
+
+	f.Fuzz(func(t *testing.T, shortMessage []byte, dataCoding uint8, esmClass uint8, tag1 uint16, value1 []byte, tag2 uint16, value2 []byte) {
+		pdu := protocol.DeliverSM{
+			DataCoding:   protocol.DataCoding(dataCoding),
+			ESMClass:     esmClass,
+			ShortMessage: shortMessage,
+		}
+		if tag1 != 0 {
+			pdu.Optional = append(pdu.Optional, receiptTLV(tag1, value1))
+		}
+		if tag2 != 0 {
+			pdu.Optional = append(pdu.Optional, receiptTLV(tag2, value2))
+		}
+		_, _ = ParseDeliveryReceipt(pdu)
+	})
 }
