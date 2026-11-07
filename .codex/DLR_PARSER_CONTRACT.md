@@ -24,13 +24,13 @@ The parser preserves the conventional textual fields as raw strings: `id`, `sub`
 
 It also exposes the standard receipt-related TLVs:
 
-- `receipted_message_id`: C-Octet string.
+- `receipted_message_id`: C-Octet string with one final NUL terminator, no embedded NUL, and at most 65 octets including the terminator. Its payload remains opaque; no character-set or UTF-8 normalization is applied.
 - `message_state`: exactly one octet, standard values 1..8.
 - `network_error_code`: exactly three octets, preserved byte-for-byte.
 - `delivery_failure_reason`: exactly one octet, preserved without vendor-specific interpretation.
-- `additional_status_info_text`: C-Octet string.
+- `additional_status_info_text`: C-Octet string with one final NUL terminator, no embedded NUL, and at most 256 octets including the terminator. An empty payload is retained.
 
-Identical duplicate TLVs are tolerated; conflicting duplicates and malformed lengths/strings are errors. Unknown optional TLVs remain available on the original decoded PDU.
+Identical duplicate TLVs are tolerated; conflicting duplicates and malformed lengths/strings are errors. C-Octet terminators and field-specific maximum lengths are enforced. The trailing `text:` field removes exactly one separator whitespace byte after the marker and preserves the remaining payload byte-for-byte after text decoding. Unknown optional TLVs remain available on the original decoded PDU.
 
 ## Text encodings
 
