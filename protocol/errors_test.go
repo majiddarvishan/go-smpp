@@ -8,7 +8,7 @@ import (
 func TestProtocolErrorStringsOmitUntrustedReason(t *testing.T) {
 	const secret = "PROTOCOL_REASON_SECRET_MARKER"
 	semantic := &SemanticError{
-		Status:   StatusInvalidParameterValue,
+		Status:   StatusInvalidParameterLength,
 		Command:  CommandSubmitSM,
 		Sequence: 7,
 		Reason:   secret,
