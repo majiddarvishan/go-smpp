@@ -7,7 +7,7 @@ Base: `main` at `8effc6317d8141e36976b0a21bdbe190e2761116`
 Branch: `feature/product-neutral-library-dlr-completeness`
 Latest previously verified source/test commit: `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`
 Latest INT-01 fixture framework/test commit with full Go CI: `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`
-Current local simulator probe implementation head: `a0f081e78a3f694ad16766c285f0e5c5f5a4f71f` (Go 1.25.x/1.27.x CI passed in run `42379969430`)
+Current local simulator probe implementation commit: `05a6924563872e9a108b194e021dee70ec0e6c35` (Go 1.25.x/1.27.x CI passed in run `42380908792`)
 PR #8 remains open and Draft; consult the live GitHub PR for its current head and check state.
 PR: [#8 — feat: complete product-neutral DLR and registered_delivery helpers](https://github.com/majiddarvishan/go-smpp/pull/8)
 
@@ -56,7 +56,7 @@ PR #8 is **open and Draft**. It has not been merged.
 - The probe uses the existing client/server APIs; no production API or third-party dependency was added. Bind credentials are prompted with hidden terminal input or supplied by environment variables. The report does not include passwords, message content, or original message IDs/addresses.
 - Raw tracing is enabled only in the local test process. Bind/outbind frames are discarded before body decoding; unsupported commands and non-allowlisted TLVs are dropped; addresses and IDs are replaced; message content is removed or replaced with a synthetic receipt. Only sanitized candidate frames are written to the restricted temporary archive. Candidate fixtures use source `simulator-peer` and `reviewed=false` until manually reviewed.
 - The fixture validator now distinguishes `simulator-peer` from `real-peer-anonymized`; simulator candidates require `wire-capture-sanitized`, opaque peer/evidence IDs, and reviewed sanitization. Simulator evidence is not deployed SMSC/ESME vendor evidence.
-- Current implementation commit: `a0f081e78a3f694ad16766c285f0e5c5f5a4f71f`. The sanitizer tests and CLI compile passed in [run 42379969430](https://github.com/majiddarvishan/go-smpp/actions/runs/42379969430) on Go 1.25.x and Go 1.27.x. The documentation/tracking follow-up [run 42380096238](https://github.com/majiddarvishan/go-smpp/actions/runs/42380096238) also passed both versions.
+- Final probe/sanitizer commit: `05a6924563872e9a108b194e021dee70ec0e6c35`. Full CI [run 42380908792](https://github.com/majiddarvishan/go-smpp/actions/runs/42380908792) passed on Go 1.25.x and Go 1.27.x, including lint, unit, race, fuzz, coverage, benchmarks, performance/resource checks, sanitizer tests and CLI compilation. Malformed/conflicting receipt metadata is excluded from exported candidates.
 - Next user action: start the SMSC simulator, run `scripts/interop-local.sh all`, then start/restart the ESME simulator only when the runner prints `READY`; send the resulting sanitized archive for review.
 
 ## Verification evidence — 2026-11-07

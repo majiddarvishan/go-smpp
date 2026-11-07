@@ -355,8 +355,8 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 
 **INT-01E verification — 2026-11-07**
 
-- Probe implementation commit `a0f081e78a3f694ad16766c285f0e5c5f5a4f71f` passed [GitHub Actions run 42379969430](https://github.com/majiddarvishan/go-smpp/actions/runs/42379969430) on Go 1.25.x and Go 1.27.x. The opt-in CI step ran sanitizer tests and compiled the CLI without opening external connections.
-- Tracking/docs follow-up head `52b54e5ae280428282c817e40413ec7497dca2b5` passed [run 42380096238](https://github.com/majiddarvishan/go-smpp/actions/runs/42380096238) on both Go versions.
+- Final probe/sanitizer commit `05a6924563872e9a108b194e021dee70ec0e6c35` passed [GitHub Actions run 42380908792](https://github.com/majiddarvishan/go-smpp/actions/runs/42380908792) on Go 1.25.x and Go 1.27.x. This includes gofmt, lint, unit, race, fuzz, coverage, benchmark/performance checks, the opt-in sanitizer tests, and CLI compile validation.
+- The hosted-runner Phase 17 60-second soak is not the dedicated 60-second reference acceptance on the reference environment; PERF-01 remains open.
 - No live simulator session has been executed yet; the next step is the user's local run and review of the sanitized archive.
 
 **Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until simulator candidates are reviewed and deployed-peer evidence is added and reviewed.
