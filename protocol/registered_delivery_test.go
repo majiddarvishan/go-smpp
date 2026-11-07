@@ -13,17 +13,20 @@ func TestRegisteredDeliveryRoundTripsEveryOctet(t *testing.T) {
 
 func TestRegisteredDeliveryFieldExtraction(t *testing.T) {
 	got := DecodeRegisteredDelivery(0x3f)
+	if got.SMSCReceipt != SMSCReceiptModeSuccessOnly {
+		t.Fatalf("SMSC receipt mode = %d, want peer-specific success-only", got.SMSCReceipt)
+	}
 	if got.SMSCReceipt != SMSCReceiptModeReserved {
-		t.Fatalf("SMSC receipt mode = %d, want reserved", got.SMSCReceipt)
+		t.Fatalf("reserved alias = %d, want same 0b11 wire value", got.SMSCReceipt)
 	}
-	if got.SMEAcknowledgement != SMEDeliveryAcknowledgementModeReserved {
-		t.Fatalf("SME acknowledgement = %d, want reserved", got.SMEAcknowledgement)
+	if got.SMEAcknowledgement != SMEDeliveryAcknowledgementModeBoth {
+		t.Fatalf("SME acknowledgement = %d, want both", got.SMEAcknowledgement)
 	}
-	if got.IntermediateNotification != IntermediateNotificationModeReserved3 {
-		t.Fatalf("intermediate notification = %d, want reserved3", got.IntermediateNotification)
+	if got.IntermediateNotification != IntermediateNotificationModeRequested {
+		t.Fatalf("intermediate notification = %d, want requested", got.IntermediateNotification)
 	}
 	if got.ReservedBits != 0 {
-		t.Fatalf("reserved high bits = 0x%02x, want 0", got.ReservedBits)
+		t.Fatalf("reserved bits = 0x%02x, want 0", got.ReservedBits)
 	}
 
 	got = DecodeRegisteredDelivery(0xd1)
@@ -32,5 +35,15 @@ func TestRegisteredDeliveryFieldExtraction(t *testing.T) {
 		got.IntermediateNotification != IntermediateNotificationModeRequested ||
 		got.ReservedBits != 0xc0 {
 		t.Fatalf("unexpected field decode: %+v", got)
+	}
+
+	got = DecodeRegisteredDelivery(0x20)
+	if got.IntermediateNotification != IntermediateNotificationModeNone || got.ReservedBits != 0x20 {
+		t.Fatalf("bit 5 must remain reserved, got %+v", got)
+	}
+
+	got = DecodeRegisteredDelivery(0x30)
+	if got.IntermediateNotification != IntermediateNotificationModeRequested || got.ReservedBits != 0x20 {
+		t.Fatalf("bit 4 must request notification while bit 5 remains reserved, got %+v", got)
 	}
 }
