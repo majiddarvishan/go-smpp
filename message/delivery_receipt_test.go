@@ -142,11 +142,11 @@ func TestParseDeliveryReceiptResponseOnlyTLVsDoNotIdentifyReceipt(t *testing.T) 
 			receiptTLV(protocol.TLVTagDeliveryFailureReason, []byte{2}),
 		},
 		"additional_status_info_text": {
-			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\\x00")),
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\x00")),
 		},
 		"both response-only TLVs": {
 			receiptTLV(protocol.TLVTagDeliveryFailureReason, []byte{2}),
-			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\\x00")),
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\x00")),
 		},
 	}
 	for name, tlvs := range cases {
