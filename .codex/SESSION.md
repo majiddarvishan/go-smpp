@@ -100,3 +100,12 @@ Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep
   - Add regression tests for a written bind response followed by immediate session closure and for peer EOF.
 - Commits: probe observer/cause fix `2fc35e3f73a704c3795a480ee604b885740d1bce`; regression tests `07e4ae7313af005f42efb9ad2eba1edb96fa74c8`; CLI docs `6652ea0f970ba1bba7b236519d700c09c3b6e402`; task registration `95aa8081dc88feae61fafd229145757a49de1ab1`; plan evidence `0a4d5bc06677fa9ed272465feb4e410fa8076a15`; final READY wording `efc705df50c2c8d9e70b6d8daf7572f6bb509a91`.
 - Validation: pending GitHub Actions for the updated PR head. PR #8 remains Draft/open; no merge, release or tag.
+
+
+### Final validation — 2026-11-07
+
+- Formatting follow-up commits: `efc705df50c2c8d9e70b6d8daf7572f6bb509a91` clarified READY text; `900fc57ea54395c1e64264a840b1ac7c52dbd1d4` joined RX/TX loops before resolving the bind response/close race; `0cf19df7fe3dd145a07b839745a3be5bd4870358` corrected gofmt in the regression test.
+- GitHub Actions [run 42393189702](https://github.com/majiddarvishan/go-smpp/actions/runs/42393189702) passed both jobs: Go 1.25.x and Go 1.27.x. Passed gofmt, unit tests, opt-in interop tests, race tests, fuzz smoke, protocol/codec benchmarks, Phase 17 performance smoke, sustained resource-bound smoke, and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The hosted CI 2-second resource smoke is not the dedicated 60-second reference acceptance. PERF-01 remains open.
+- Final test-only bind-observation work is recorded as INT-01J complete. INT-01I remains open for a live CLI-driven ESME `submit_sm` exchange; INT-01G remains open for anonymized deployed-peer evidence.
+- PR #8 remains Draft/open and unmerged. No release tag was created.
