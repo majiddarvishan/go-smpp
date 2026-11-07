@@ -315,6 +315,16 @@ This file is the source of truth for implementation progress. Every completed ph
 - Implementation-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz (including DLR fuzz), benchmarks, 2-second resource/performance smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The subsequent documentation-only PR-head run [42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000) also passed both jobs.
 - The 2-second CI smoke is not the 60-second current-HEAD reference acceptance. Keep that P1 release gate open.
 
+## P1 — Safe observability and packet capture (OBS-01)
+
+- [ ] Audit all library-owned packet tracing, decode-failure, panic, callback-error and fatal-protocol diagnostic paths for credential, address, message-body and arbitrary TLV leakage.
+- [ ] Keep raw PDU capture disabled unless both a tracer and the explicit raw-capture option are configured; preserve header/direction/length-only metadata mode.
+- [ ] Ensure caller-controlled panic values and callback/decoder error messages are not copied into default logs or Observer events. Preserve error identity/type diagnostics without formatting untrusted values.
+- [ ] Document that every raw PDU may contain credentials, addresses, message content, identifiers or vendor TLVs; explain that the generic library cannot safely redact arbitrary peer/vendor fields.
+- [ ] Document short-lived, isolated, access-restricted local capture; drop bind/outbind and user-content frames before persistence, prefer synthetic data, and never forward unsanitized raw frames to shared/third-party telemetry.
+- [ ] Add regression tests proving secret markers in authenticator panics, one-way handler errors and custom decoder errors are absent from logs/events/error strings.
+- [ ] Verify Go 1.25.x and 1.27.x format, unit, race, fuzz, lint, coverage and CI before closing OBS-01.
+
 ## Backlog policy
 
 Items intentionally deferred from the first submit/deliver milestone are tracked in `.codex/BACKLOG.md`. Moving an item out of backlog requires adding it to the appropriate phase here; completion is still recorded only by changing its checkbox to `[x]`.
