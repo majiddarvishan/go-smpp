@@ -5,7 +5,7 @@
 Repository: `github.com/majiddarvishan/go-smpp`
 Base: `main` at `8effc6317d8141e36976b0a21bdbe190e2761116`
 Branch: `feature/product-neutral-library-dlr-completeness`
-Current head: `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`
+Latest source-code commit: `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` (subsequent branch commits are documentation/handoff reconciliation only).
 PR: [#8 — feat: complete product-neutral DLR and registered_delivery helpers](https://github.com/majiddarvishan/go-smpp/pull/8)
 
 The repository is a general-purpose, product-neutral SMPP 3.4 / 5.0 Go library. No downstream application or product may be imported, named, or used to define public APIs. See D-046, D-047, D-049, `AGENTS.md`, and `.codex/ARCHITECTURE.md`.
@@ -31,7 +31,7 @@ PR #8 is **open and Draft**. It has not been merged.
 - The local archive recorded total coverage of 84.4% on Go 1.25.0 and 84.3% on Go 1.27.0; `golangci-lint` reported 0 issues.
 - The archive recorded an untracked `.bench/` directory; the validation script did not read, delete, or modify it.
 - Follow-up correctness commit `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` adds the response-only-TLV false-positive fix and regression tests.
-- Final-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs: gofmt, unit, race, five fuzz smokes including DLR fuzz, protocol/codec benchmarks, Phase 17 performance/resource smokes, and no-unsafe; Go 1.27.x also passed lint and coverage.
+- Implementation-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs: gofmt, unit, race, five fuzz smokes including DLR fuzz, protocol/codec benchmarks, Phase 17 performance/resource smokes, and no-unsafe; Go 1.27.x also passed lint and coverage. The subsequent documentation-only reconciliation head was also green in [run 42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000).
 - The Phase 17 result in CI is a **2-second smoke only**, not the 60-second reference acceptance.
 
 ## Remaining P1 / release gates

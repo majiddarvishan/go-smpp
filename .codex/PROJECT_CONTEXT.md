@@ -53,7 +53,7 @@ The public dependency direction is enforced by `architecture_test.go`. Codec/pro
 - Phases 0–18 and 20 are implemented and have corresponding tests/documentation.
 - Phase 17 reference acceptance passed on the documented Linux/amd64 reference host: **713,932 aggregate bidirectional request PDUs/s for 60 seconds, minimum passing session count 1**, with required responses enabled. Exact environment and caveats are in `docs/PERFORMANCE.md`.
 - Phase 19 release readiness is open for the first production-ready version tag. A fresh reference run on the combined current `main` after later library additions remains a release regression gate.
-- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8, current head `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`; final-head CI run `42369084385` passed Go 1.25.x/1.27.x). PR #8 remains Draft pending maintainer review.
+- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8; source fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`). Implementation CI run `42369084385` and subsequent documentation-only PR-head run `42369351000` both passed Go 1.25.x/1.27.x. PR #8 remains Draft pending maintainer review.
 
 ## Recent generic library improvements
 

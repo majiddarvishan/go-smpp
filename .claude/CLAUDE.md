@@ -69,12 +69,13 @@ default Go 1.27.0, and the pinned golangci-lint v2.14.0.
 The archive recorded total coverage of 84.4% on Go 1.25.0 and 84.3% on Go 1.27.0.
 The untracked `.bench/` directory was preserved.
 
-A follow-up parser correctness fix is on commit
-`ce14ae06a3d9096937c5c54a99a93aa8f695ece7`. Final-head GitHub Actions run
+A follow-up parser correctness fix is on source commit
+`ce14ae06a3d9096937c5c54a99a93aa8f695ece7`. Implementation-head GitHub Actions run
 [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed
-both Go 1.25.x and Go 1.27.x jobs, including DLR fuzz smoke. The 2-second Phase 17 CI
-smoke is not the 60-second reference acceptance; a current-HEAD 60-second run remains
-open before release.
+both Go 1.25.x and Go 1.27.x jobs, including DLR fuzz smoke. The subsequent
+documentation-only PR-head run [42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000)
+also passed both jobs. The 2-second Phase 17 CI smoke is not the 60-second reference
+acceptance; a current-HEAD 60-second run remains open before release.
 
 
 ---

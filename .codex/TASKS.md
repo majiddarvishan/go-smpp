@@ -30,7 +30,7 @@ Task registration was committed before source or documentation cleanup.
 - [x] **AUDIT-01:** Reconcile the historical backlog against implemented Phase 12–14/17 evidence. Mark completed items only where source/tests/docs prove them; retain genuinely unsupported SMPP 5.0/vendor features as open.
 - [x] **DOC-01:** Align `PLAN.md`, `README.md`, `.codex/PROJECT_CONTEXT.md`, and `.codex/SESSION.md` with the published Phase 17 reference evidence and current release gate. Keep the exact evidence caveat in `docs/PERFORMANCE.md`.
 - [x] **TEST-01:** Add table-driven DLR and exhaustive 256-octet registered_delivery tests; update API snapshots and no-panic coverage for additive exports.
-- [x] **CI-01:** Pass gofmt, lint, unit, race, coverage, fuzz, API/no-panic and benchmark smoke on Go 1.25.x and Go 1.27.x. Final-head PR run `42369084385` passed both jobs; PR #8 remains Draft pending maintainer review and has not been merged.
+- [x] **CI-01:** Pass gofmt, lint, unit, race, coverage, fuzz, API/no-panic and benchmark smoke on Go 1.25.x and Go 1.27.x. Implementation run `42369084385` and subsequent documentation-only PR-head run `42369351000` passed both jobs; PR #8 remains Draft pending maintainer review and has not been merged.
 
 ## P1 — Generic library follow-ups
 

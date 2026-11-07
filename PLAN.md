@@ -312,7 +312,7 @@ This file is the source of truth for implementation progress. Every completed ph
 
 - Local `scripts/phase21-validation.sh` archive on commit `dff70d0968332e9fa78f4a4c80af744d00ab429a`: **37 PASS, 0 FAIL, 0 BLOCKED**, covering Go 1.25.0 and Go 1.27.0. The untracked `.bench/` directory was preserved.
 - Follow-up correctness fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` prevents response-only TLVs from identifying a `deliver_sm` receipt and adds regression coverage.
-- Final-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz (including DLR fuzz), benchmarks, 2-second resource/performance smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- Implementation-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz (including DLR fuzz), benchmarks, 2-second resource/performance smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The subsequent documentation-only PR-head run [42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000) also passed both jobs.
 - The 2-second CI smoke is not the 60-second current-HEAD reference acceptance. Keep that P1 release gate open.
 
 ## Backlog policy
