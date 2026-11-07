@@ -474,8 +474,6 @@ func DecodeRegisteredDelivery(value uint8) RegisteredDelivery
 type IntermediateNotificationMode uint8
 const IntermediateNotificationModeNone IntermediateNotificationMode = 0
 const IntermediateNotificationModeRequested IntermediateNotificationMode = 1
-const IntermediateNotificationModeReserved2 IntermediateNotificationMode = 2
-const IntermediateNotificationModeReserved3 IntermediateNotificationMode = 3
 type RegisteredDelivery struct
 field RegisteredDelivery.IntermediateNotification IntermediateNotificationMode
 field RegisteredDelivery.ReservedBits uint8
@@ -486,9 +484,10 @@ type SMEDeliveryAcknowledgementMode uint8
 const SMEDeliveryAcknowledgementModeNone SMEDeliveryAcknowledgementMode = 0
 const SMEDeliveryAcknowledgementModeRequested SMEDeliveryAcknowledgementMode = 1
 const SMEDeliveryAcknowledgementModeManualUserRequested SMEDeliveryAcknowledgementMode = 2
-const SMEDeliveryAcknowledgementModeReserved SMEDeliveryAcknowledgementMode = 3
+const SMEDeliveryAcknowledgementModeBoth SMEDeliveryAcknowledgementMode = 3
 type SMSCReceiptMode uint8
 const SMSCReceiptModeNone SMSCReceiptMode = 0
 const SMSCReceiptModeFinalOutcome SMSCReceiptMode = 1
 const SMSCReceiptModeFailureOnly SMSCReceiptMode = 2
+const SMSCReceiptModeSuccessOnly SMSCReceiptMode = 3
 const SMSCReceiptModeReserved SMSCReceiptMode = 3
