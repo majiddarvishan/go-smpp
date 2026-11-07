@@ -3,6 +3,7 @@ package interopprobe
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 
@@ -165,7 +166,7 @@ func TestSanitizeRawPDUReplacesDeliveryReceiptTextAndIDs(t *testing.T) {
 	}
 }
 
-func TestSanitizeRawPDUExcludesConflictingReceiptEvidence(t *testing.T) {
+func TestSanitizeRawPDUExcludesMalformedConflictingReceiptTLVs(t *testing.T) {
 	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
 	if err != nil {
 		t.Fatal(err)
@@ -177,15 +178,27 @@ func TestSanitizeRawPDUExcludesConflictingReceiptEvidence(t *testing.T) {
 	}, protocol.DeliverSM{
 		ESMClass:     0x04,
 		DataCoding:   protocol.DataCodingSMSCDefault,
-		ShortMessage: []byte("id:text-id sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:fixture"),
+		ShortMessage: []byte("id:fixture-text sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:fixture"),
 		Optional: []protocol.OptionalParameter{
-			{Tag: protocol.TLVTagReceiptedMessageID, Value: append([]byte("tlv-id"), 0)},
+			{Tag: protocol.TLVTagReceiptedMessageID, Value: append([]byte("tlv-id-1"), 0)},
+			{Tag: protocol.TLVTagReceiptedMessageID, Value: append([]byte("tlv-id-2"), 0)},
 		},
 	}, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
+	decoded, err := codec.DecodePDU(raw, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliver, ok := decoded.Body.(protocol.DeliverSM)
+	if !ok {
+		t.Fatalf("decoded body type = %T, want protocol.DeliverSM", decoded.Body)
+	}
+	if _, parseErr := message.ParseDeliveryReceipt(deliver); !errors.Is(parseErr, message.ErrInvalidDeliveryReceipt) {
+		t.Fatalf("fixture did not contain malformed conflicting receipt TLVs: %v", parseErr)
+	}
 	if _, ok := sanitizeRawPDU(raw, registry); ok {
-		t.Fatal("conflicting receipt evidence was exported as a fixture")
+		t.Fatal("malformed conflicting receipt evidence was exported as a fixture")
 	}
 }
