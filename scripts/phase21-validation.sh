@@ -121,6 +121,7 @@ run_fuzz_gate() {
 }
 
 # Use the CI-pinned linter. Install it outside the repository if needed.
+TOOL_DIR=""
 LINTER=""
 if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
   LINTER="$(command -v golangci-lint)"
