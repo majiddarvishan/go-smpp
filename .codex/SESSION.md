@@ -86,3 +86,17 @@ PR #8 is **open and Draft**. It has not been merged.
 - **REL-01:** First production-ready version tag after the reference regression and release checklist pass.
 
 Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep PR #8 Draft pending maintainer review; do not merge or tag automatically.
+
+
+## ESME CLI-driven interoperability follow-up — 2026-11-07
+
+- User clarified that the external ESME simulator is controlled through its CLI and never originates `submit_sm` without an explicit operator command. The correct test order is: probe `READY` → start/restart ESME → complete TRX bind, enquire_link and synthetic deliver_sm/deliver_sm_resp → wait for `OBSERVE` → issue exactly one CLI `submit_sm` within the configured window. The probe itself does not generate this ESME-originated message.
+- Reviewed uploaded sanitized archive `go-smpp-interop.MLqt5S.tar.gz`: run duration ~0.55s; `listen=PASS`, `bind_transceiver=FAIL` with generic `*errors.errorString`, zero sanitized frames, one excluded/dropped frame, no fixture candidate. The single excluded frame is consistent with the privacy rule that discards bind credential PDUs. No `OBSERVE` stage was reached, so no submit command was due.
+- The old bind gate received an authenticator-accepted TRX bind attempt, then its 10ms `BindMode()` polling observed session closure before seeing `Bound_TRX`. The old helper discarded `Session.Err()`; the archive cannot establish whether the peer sent EOF/reset or whether a successful bind response was briefly written and the peer immediately closed. Do not infer credential mismatch from this report.
+- Test-only probe follow-up on the existing feature branch:
+  - Observe `EventResponseSent` for `bind_transceiver_resp` (emitted after the response write) instead of polling a transient state; prefer an already-observed response if session closure races with event consumption.
+  - Preserve a safe session-close cause and classify EOF, reset, local close and fatal protocol errors without emitting raw PDUs, passwords, bind fields or caller-controlled error text.
+  - Clarify `READY` and `OBSERVE` prompts for the manual CLI workflow.
+  - Add regression tests for a written bind response followed by immediate session closure and for peer EOF.
+- Commits: probe observer/cause fix `2fc35e3f73a704c3795a480ee604b885740d1bce`; regression tests `07e4ae7313af005f42efb9ad2eba1edb96fa74c8`; CLI docs `6652ea0f970ba1bba7b236519d700c09c3b6e402`; task registration `95aa8081dc88feae61fafd229145757a49de1ab1`; plan evidence `0a4d5bc06677fa9ed272465feb4e410fa8076a15`; final READY wording `efc705df50c2c8d9e70b6d8daf7572f6bb509a91`.
+- Validation: pending GitHub Actions for the updated PR head. PR #8 remains Draft/open; no merge, release or tag.
