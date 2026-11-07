@@ -69,6 +69,16 @@ PR #8 is **open and Draft**. It has not been merged.
 - INT-01 fixture framework commit `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40` passed both Go jobs in [run 42375378458](https://github.com/majiddarvishan/go-smpp/actions/runs/42375378458): gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 development performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
 - The Phase 17 CI result is a **2-second smoke**, not the 60-second reference acceptance.
 
+## Local simulator interoperability review — 2026-11-07
+
+- Reviewed uploaded sanitized archive `go-smpp-interop.qgB9QT.tar.gz`. The archive contains only `report.json`, `manifest-candidate.json`, and `run.log`; no raw PCAP or unsanitized frame dump.
+- SMSC simulator (`peer-001`): TCP, TRX bind, enquire_link, submit_sm with registered_delivery `0x03`, submit_sm_resp and valid `DELIVRD` receipt all passed. Unbind request was observed but no matching unbind_resp was captured before the 8-second operation deadline.
+- ESME simulator (`peer-002`): TRX bind, enquire_link, synthetic deliver_sm and deliver_sm_resp passed. ESME-originated submit_sm was NOT_OBSERVED in the original 5-second window. Unbind request was observed but no matching unbind_resp was captured before the operation deadline.
+- Both peers' missing unbind_resp is an observed simulator compatibility gap. SMPP 3.4 permits either role to issue Unbind and requires a matching unbind_resp; do not change library behavior to hide this.
+- Reviewed and added two sanitized simulator fixtures: `simulator-smsc-peer-001` and `simulator-esme-peer-002`. They are simulator-only evidence and do not close deployed-peer compatibility.
+- Probe follow-up increases the default ESME submit observation window to 15 seconds (override `SMPP_INTEROP_SUBMIT_WAIT`), prints a just-in-time trigger prompt, and reports whether Unbind request/response frames were observed plus safe response-timeout metadata. CI run `42385917977` passed Go 1.25.x/1.27.x; the second-role diagnostic call-site follow-up is now included in the current pending commit.
+- Next live check: run `scripts/interop-local.sh esme` with the ESME simulator; trigger one outbound submit_sm during the new 15-second prompt window if supported. A repeat of Unbind timeout remains a peer finding, not a go-smpp library fix.
+
 ## Remaining P1 / release gates
 
 - **INT-01:** Review and add sanitized `simulator-peer` fixtures from the local run, then obtain anonymized deployed-peer evidence and build the representative-peer strict/compatible behavior matrix. The fixture harness and local probe are implemented; no live simulator evidence has been captured yet.

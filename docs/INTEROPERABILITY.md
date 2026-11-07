@@ -107,7 +107,7 @@ scripts/interop-local.sh all
 
 The SMSC simulator must be running before the probe starts. Keep the ESME simulator stopped until the runner prints `READY`; then start or restart it so it connects to the go-smpp listener. Each phase uses at most one connection, and the phases do not overlap. Use `scripts/interop-local.sh smsc` or `scripts/interop-local.sh esme` to run one direction only.
 
-The script asks for each bind password using a hidden terminal prompt. For non-interactive use, the corresponding environment variables are `SMPP_INTEROP_SMSC_PASSWORD` and `SMPP_INTEROP_ESME_PASSWORD`; never put passwords in command-line arguments or committed config. The default System IDs are `client_0` and `smpp_client_0`, System Type is `smpp`, and the bind type is TRX. Endpoints, IDs, System Type, synthetic test addresses/text and operation timeouts can be overridden with the `SMPP_INTEROP_*` environment variables or probe flags.
+The script asks for each bind password using a hidden terminal prompt. For non-interactive use, the corresponding environment variables are `SMPP_INTEROP_SMSC_PASSWORD` and `SMPP_INTEROP_ESME_PASSWORD`; never put passwords in command-line arguments or committed config. The default System IDs are `client_0` and `smpp_client_0`, System Type is `smpp`, and the bind type is TRX. Endpoints, IDs, System Type, synthetic test addresses/text and operation timeouts can be overridden with the `SMPP_INTEROP_*` environment variables or probe flags. The ESME-originated `submit_sm` observation window defaults to 15 seconds and can be changed with `SMPP_INTEROP_SUBMIT_WAIT` (for example, `30s`).
 
 The probe sends only synthetic test addresses/text. The SMSC phase deliberately sends registered_delivery octet `0x03`, which SMPP 3.4 reserves; the library's success-only label is a peer-specific interpretation, not a portable protocol meaning.
 
@@ -115,9 +115,20 @@ The probe sends only synthetic test addresses/text. The SMSC phase deliberately 
 
 The probe enables raw tracing only inside the opt-in local test process. Bind receiver/transmitter/transceiver and outbind frames are discarded before body decoding. Only a narrow command allowlist is decoded and re-encoded for export. Source/destination addresses and message IDs are replaced; message content is removed or replaced with a synthetic receipt; only a small receipt-TLV allowlist is retained with identifiers replaced; all other optional TLVs and unsupported commands are dropped. Malformed or ambiguous receipt metadata (including conflicting IDs/states) is excluded rather than normalized into a misleading fixture. Raw frames remain in memory only and are never written to the report, archive or ordinary logs.
 
-The script writes a permission-restricted archive under the system temporary directory containing the sanitized report, sanitized fixture candidate and run log. The candidate uses source `simulator-peer` and has `sanitization.reviewed=false`. It is not ready to add to the manifest until a maintainer reviews the exported bytes and explicitly marks the declaration reviewed. Simulator evidence is not deployed SMSC/ESME vendor evidence and does not close the deployed-peer compatibility matrix.
+The script writes a permission-restricted archive under the system temporary directory containing the sanitized report, sanitized fixture candidate and run log. New candidates use source `simulator-peer` and default to `sanitization.reviewed=false`; a maintainer must inspect the exported bytes before changing that declaration and adding them to the manifest. The first two candidates from the local run below have been reviewed and added. Simulator evidence is not deployed SMSC/ESME vendor evidence and does not close the deployed-peer compatibility matrix.
 
 The tool is compiled only with the `interop` build tag, adds no public API or runtime dependency, and is tested in CI without opening external connections.
+
+### First local simulator capture — 2026-11-07
+
+The first two-way local run was reviewed from its sanitized archive. No passwords, bind frames, raw PDUs, original addresses, message IDs or message content were committed.
+
+- **SMSC simulator (`peer-001`):** go-smpp connected as ESME, bound TRX, completed enquire_link, submitted a synthetic message with `registered_delivery=0x03`, received a successful `submit_sm_resp` with a message ID, and parsed the returned `DELIVRD` receipt. The subsequent Unbind request was captured, but no matching `unbind_resp` was observed before the 8-second operation deadline.
+- **ESME simulator (`peer-002`):** go-smpp listened as SMSC, accepted a TRX bind, completed enquire_link, sent a synthetic delivery receipt, and received a successful `deliver_sm_resp`. No ESME-originated `submit_sm` was observed during the original 5-second observation window. The subsequent Unbind request was captured, but no matching `unbind_resp` was observed before the operation deadline.
+- Both simulators therefore demonstrated the bind, enquire_link and message/DLR exchanges above, but did not complete the Unbind request/response handshake in this run. SMPP 3.4 permits either role to issue Unbind and defines the corresponding `unbind_resp` with the original sequence number (Specification Issue 1.2, Table 2-1 and §4.2.2). Treat this as an observed simulator interoperability gap, not a reason to weaken the library's Unbind behavior.
+- `submit_sm_from_esme=NOT_OBSERVED` is not itself a failure. The original 5-second window elapsed without an outbound ESME submit action. The opt-in probe now provides a 15-second default window, configurable with `SMPP_INTEROP_SUBMIT_WAIT`, and prints a just-in-time prompt before waiting.
+
+The reviewed sanitized exchanges are retained as `simulator-peer` fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002`. They validate observed wire forms and decode behavior only; they do not claim full peer conformance or deployed-vendor interoperability.
 
 ## Offline interoperability fixtures
 
@@ -146,4 +157,4 @@ A deployed real-peer fixture must use an opaque alias such as `peer-001`, an RFC
 - Use `reencode=exact` only when the peer's observed wire form is expected to round-trip byte-for-byte. Use `reencode=decode-only` for an accepted peer form whose decode behavior is under test but whose canonical encoder output is intentionally different.
 - Use `outcome=reject` with `error_kind=fatal|semantic|other` when the expected library behavior is to reject a recorded frame. A rejection is evidence about the library's handling of that frame, not proof that the peer itself is non-conformant.
 
-The initial manifest still contains only constructed synthetic SMPP 3.4 vectors (enquire_link, submit_sm/submit_sm_resp, and a synthetic deliver_sm receipt); the local simulator probe produces reviewed-candidate evidence separately. **INT-01 remains open until simulator candidates are reviewed and added, and deployed-peer exchanges are supplied for the vendor compatibility matrix.**
+The manifest contains the constructed synthetic SMPP 3.4 vectors plus the two reviewed `simulator-peer` exchanges described above. **INT-01 remains open until anonymized deployed-peer exchanges are supplied and the representative-peer strict/compatible behavior matrix is built.**

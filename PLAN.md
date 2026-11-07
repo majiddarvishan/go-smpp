@@ -343,7 +343,7 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
 - [x] Include only clearly labeled synthetic fixtures until reviewed peer exchanges are available. Never infer vendor behavior or claim deployed-peer interoperability from synthetic data.
 - [x] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
-- [ ] Run the probe, review and add approved `simulator-peer` fixture candidates to the offline manifest; keep them distinct from `real-peer-anonymized` deployed-peer evidence.
+- [x] Run the probe against the two local SMPP 3.4 simulator components, review the sanitized archive, and add only the two approved `simulator-peer` fixtures (`simulator-smsc-peer-001`, `simulator-esme-peer-002`) to the manifest; keep them distinct from deployed-peer evidence.
 - [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
 - [ ] Improve the opt-in probe's ESME-originated `submit_sm` observation workflow with a longer configurable window, an explicit just-in-time prompt, and sanitized Unbind request/response diagnostics; keep it build-tagged and outside the public API.
 - [ ] Re-run the ESME phase with an explicit outbound `submit_sm` action where supported; characterize both simulators' `unbind_resp` behavior and retain missing responses as peer-compatibility findings, not library success.
@@ -352,13 +352,22 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 
 - Implementation commits: task registration `62a4a5441f8389decc0ed6fedf623808873fc367`, fixture harness/docs `9bd79115444fd5408cb4d1a371a8f9e61a0934ce`, gofmt correction `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`.
 - GitHub Actions [run 42375378458](https://github.com/majiddarvishan/go-smpp/actions/runs/42375378458) passed both Go 1.25.x and Go 1.27.x, including gofmt, lint (Go 1.27.x), unit, race, coverage, fuzz smoke, protocol/codec benchmarks, Phase 17 development performance/resource smoke, and no-unsafe.
-- The manifest currently contains five constructed synthetic SMPP 3.4 PDUs. No real peer or vendor interoperability is claimed.
+- The manifest initially contained five constructed synthetic SMPP 3.4 PDUs; two reviewed `simulator-peer` fixtures from the local run were subsequently added. No deployed real-peer or vendor interoperability is claimed.
 - The fixture harness is test-only; it adds no public API or runtime dependency. Bind/outbind frames are rejected, and real-peer entries require reviewed sanitization metadata.
 
 **INT-01E verification — 2026-11-07**
 
 - Final probe/sanitizer commit `05a6924563872e9a108b194e021dee70ec0e6c35` passed [GitHub Actions run 42380908792](https://github.com/majiddarvishan/go-smpp/actions/runs/42380908792) on Go 1.25.x and Go 1.27.x. This includes gofmt, lint, unit, race, fuzz, coverage, benchmark/performance checks, the opt-in sanitizer tests, and CLI compile validation.
 - The hosted-runner Phase 17 60-second soak is not the dedicated 60-second reference acceptance on the reference environment; PERF-01 remains open.
-- No live simulator session has been executed yet; the next step is the user's local run and review of the sanitized archive.
+- The first live simulator run is recorded below; the sanitized archive was reviewed and two simulator fixtures were added. The ESME-originated submit action still needs a deliberate trigger, and both simulators' missing `unbind_resp` behavior remains an open compatibility finding.
 
-**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until simulator candidates are reviewed and deployed-peer evidence is added and reviewed.
+**Local simulator evidence — 2026-11-07**
+
+- Reviewed sanitized archive: `go-smpp-interop.qgB9QT.tar.gz`; no passwords, bind frames, raw PDU files, original addresses, IDs or message content were committed.
+- SMSC simulator: TRX bind, enquire_link, submit_sm (`registered_delivery=0x03`), submit_sm_resp and parsed `DELIVRD` receipt all PASS. Unbind request was sent; no `unbind_resp` was observed within the 8-second operation deadline.
+- ESME simulator: TRX bind, enquire_link, synthetic deliver_sm and deliver_sm_resp all PASS. No outbound ESME submit_sm was observed during the original 5-second window. Unbind request was sent; no `unbind_resp` was observed within the operation deadline.
+- Added reviewed fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002` to `testdata/interop/manifest.json`. Both remain explicitly `source=simulator-peer`; they do not establish deployed-peer/vendor compatibility.
+- Probe follow-up: default ESME submit observation window increased to 15 seconds and is configurable through `SMPP_INTEROP_SUBMIT_WAIT`; a just-in-time prompt and safe Unbind request/response diagnostics were added. CI run `42385917977` passed Go 1.25.x/1.27.x for the first implementation; second-role diagnostic wiring is pending CI.
+- SMPP 3.4 permits Unbind from either role and expects the matching `unbind_resp`; the missing response is retained as an observed simulator compatibility gap, not normalized away.
+
+**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until deployed-peer evidence is added and reviewed.

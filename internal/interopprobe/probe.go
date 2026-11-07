@@ -540,10 +540,10 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	unbindErr := attempt.sess.Unbind(unbindCtx)
 	cancelUnbind()
 	if unbindErr != nil {
-		result.addEvent("unbind", StatusFail, safeErrorDetails(unbindErr))
+		result.addEvent("unbind", StatusFail, unbindEventDetails(unbindErr, packetCapture))
 		result.setStatus(StatusFail)
 	} else {
-		result.addEvent("unbind", StatusPass, nil)
+		result.addEvent("unbind", StatusPass, unbindEventDetails(nil, packetCapture))
 	}
 	_ = attempt.sess.Close()
 	attempt.sess.Wait()
