@@ -26,13 +26,19 @@ Compatible registry mode preserves structurally valid unknown/duplicate TLVs and
 
 ## Delivery receipt parsing (optional)
 
-`message.ParseDeliveryReceipt` accepts one decoded `protocol.DeliverSM` and returns receipt metadata without interacting with Session, ACK or message-correlation state. For GSM7-default DLR templates, it reads conventional ASCII `id:` and `stat:` fields from `short_message` (or `message_payload` when exclusive). Strict UCS2/BMP `data_coding=0x08` is also decoded. It stops reading metadata at `text:` to avoid matching strings in echoed SMS content.
+`message.ParseDeliveryReceipt` accepts one decoded `protocol.DeliverSM` and returns standard receipt metadata without interacting with Session, acknowledgement or request-correlation state.
 
-**Identifier policy:** text `id:` wins over `receipted_message_id` TLV; IDs are opaque and case/leading-zero sensitive. Both values remain available with a conflict flag. **Status policy:** valid `message_state` TLV (1..8) wins independently over recognized text `stat:`; both statuses and a conflict flag remain available. Unknown vendor statuses stay as literal text without pretending to be a standard numeric state.
+It preserves the conventional text fields `id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err` and trailing `text`. Counts, dates and error codes remain raw strings so callers can apply peer-specific interpretation without losing leading zeroes. Standard receipt TLVs include `receipted_message_id`, `message_state`, `network_error_code`, `delivery_failure_reason` and `additional_status_info_text`.
 
-Malformed/contradictory duplicate TLVs and text fields return a typed error; identical repeated TLVs are accepted. An ordinary `deliver_sm` without recognizable receipt evidence returns a separate typed not-receipt error. Receipt parser output is **not** an SMS delivery guarantee or a correlation map: reassembly, late/duplicate tracking and missing-DLR accounting belong to the application.
+**Identifier selection:** text `id:` takes precedence over `receipted_message_id` TLV. IDs remain opaque and case/leading-zero sensitive; both sources and a conflict flag are retained. **Status selection:** valid `message_state` TLV takes precedence over recognized text `stat:`; both sources and a conflict flag remain available. `SMPPMessageState()` returns the selected value as `protocol.MessageState`. Unknown vendor status labels remain literal text and never become fabricated standard states.
 
-This parser is intentionally conservative. Vendor-specific decimal/hex ID conversions, packed-GSM7 DLR templates and nonstandard status labels need separate opt-in adapters and real interoperability fixtures. It does not change `deliver_sm_resp` selection or delay behavior.
+Text parsing supports conventional ASCII-compatible `data_coding=0x00`, IA5 `0x01`, Latin-1 `0x03`, and strict UCS-2/BMP `0x08`. Other encodings return `ErrUnsupportedDeliveryReceiptDataCoding` for a recognized receipt. Packed GSM7 is not guessed because the exact septet count/padding cannot be reliably inferred from `short_message` octet length alone.
+
+Malformed/contradictory duplicate TLVs and text fields return `ErrInvalidDeliveryReceipt`; identical duplicate TLVs are accepted. Ordinary `deliver_sm` without recognizable receipt evidence returns `ErrNotDeliveryReceipt`. This parser does not correlate receipts, define delivery guarantees, classify a message as billable, or manage late/duplicate/missing receipt retention.
+
+## registered_delivery bit fields
+
+PDU structs continue to expose the raw `registered_delivery` octet as `uint8`. `protocol.DecodeRegisteredDelivery` provides a lossless field-level view and `RegisteredDelivery.Encode()` reconstructs the original octet. The two-bit subfields retain reserved encodings, and bits 6-7 are preserved in `ReservedBits`. No value is rejected or silently normalized, so applications can inspect standard semantics while maintaining peer/vendor interoperability.
 
 ## deliver_sm_resp
 
