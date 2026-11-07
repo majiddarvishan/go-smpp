@@ -76,9 +76,11 @@ func noHandlerResponse(command protocol.CommandID) Response {
 // bound; MaxPending is a defensive correlation-table ceiling and is raised to
 // WindowSize automatically when necessary.
 //
-// TraceRawPDU makes PacketTracer receive every complete wire PDU, including
-// bind passwords in clear text; read the SECURITY note on PacketTracer before
-// enabling it.
+// TraceRawPDU makes a configured PacketTracer receive an owned copy of every
+// complete, unredacted wire PDU. Frames may contain clear-text credentials,
+// addresses, message content and arbitrary TLVs. This option is ineffective
+// without PacketTracer and is unsafe for ordinary production logging/storage;
+// read the PacketTracer security guidance before enabling it.
 type Config struct {
 	Role                 Role
 	Profile              protocol.Profile

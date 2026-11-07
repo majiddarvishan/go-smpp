@@ -304,3 +304,16 @@ Development-host and GitHub-hosted-runner measurements are recorded as regressio
 **Decision:** For `deliver_sm`, standard receipt evidence comes from the delivery-receipt ESM class marker, recognized receipt text, and receipt/intermediate-notification TLVs defined for `deliver_sm` (`receipted_message_id`, `message_state`, and optional `network_error_code`). The parser may preserve and validate `delivery_failure_reason` and `additional_status_info_text` if a peer supplies them on `deliver_sm`, but these response-oriented TLVs do not establish receipt identity and neither may make an ordinary `deliver_sm` a receipt by itself.
 
 **Reason:** SMPP 3.4 defines `delivery_failure_reason` for `data_sm_resp`; `additional_status_info_text` describes a response PDU. Treating either as standalone receipt evidence creates false-positive DLR classification. See SMPP 3.4 Issue 1.2, §§4.4, 4.7 and 5.3.2.11/5.3.2.33.
+
+
+## D-050 — Caller-controlled panic and error text is not automatic diagnostic data
+
+**Decision:** Library-owned logs and Observer events must not format caller-controlled panic values or callback/decoder error strings. `protocol.PanicError.Error()` reports only the panic source and value type; session panic logs report source/type/stack without the panic value; decode-failure events report the error type; and one-way handler failure logs report the error type. `PanicError.Value` remains available for deliberate programmatic inspection and `Unwrap` preserves `errors.Is`/`errors.As` behavior, but the value and any unwrapped error text are untrusted and may contain credentials or message data.
+
+**Reason:** User callbacks, custom registry decoders/encoders and transports can embed passwords, addresses, message bodies or arbitrary TLV values in panic/error text. Automatically copying that text into default logs/events creates a data-exfiltration path unrelated to raw packet capture.
+
+## D-051 — Raw packet capture is exact, opt-in and sensitive
+
+**Decision:** `PacketTracer` remains nil by default and metadata-only when configured. Full `RawPDU` delivery requires both a configured tracer and explicit `TraceRawPDU=true`; it is an exact owned copy with no built-in redaction. Every raw frame is treated as sensitive because known fields and unknown/vendor TLVs may carry credentials, identifiers, addresses or message content. The generic library does not attempt unsafe universal redaction.
+
+**Reason:** Peer/vendor TLVs do not have universally knowable privacy semantics. Metadata-only tracing is the safe default; raw capture belongs in a short-lived, isolated, access-restricted diagnostic workflow with peer-aware allowlist sanitization or full-frame dropping before persistence.
