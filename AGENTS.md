@@ -48,8 +48,8 @@ At the end of a meaningful implementation session, update `.codex/SESSION.md` wi
 
 ## Observability security
 
-- Never format caller-controlled panic values or callback/decoder error strings into library-owned logs or Observer events. Prefer source, dynamic error type, command/sequence metadata and stack locations; never include the arbitrary value/message.
-- `protocol.PanicError.Value` and its unwrapped error may contain secrets; do not log or format them. `PanicError.Error()` must remain value-free.
+- Never format caller-controlled panic values, callback/decoder error strings, or `SemanticError.Reason` / `FatalError.Reason` into library-owned logs, Observer events or default error strings. Prefer source, dynamic error type, command/sequence metadata and stack locations; never include the arbitrary value/message.
+- `protocol.PanicError.Value`, both protocol `Reason` fields and their unwrapped errors may contain secrets; do not log or format them. Their `Error()` methods must remain value-free.
 - Raw packet capture must remain explicit opt-in. A raw PDU may contain clear-text credentials, addresses, message content, identifiers and unknown/vendor TLVs; do not claim generic redaction is safe.
 - Prefer metadata-only traces. Any persisted raw capture requires a peer-aware allowlist sanitizer or full-frame dropping, isolated restricted storage and prompt deletion. Tracer callbacks run synchronously and must return promptly.
 

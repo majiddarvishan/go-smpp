@@ -68,7 +68,7 @@ Encoding/message logic stays outside the low-level PDU codec.
 - [ ] OpenTelemetry adapter/example (optional external package)
 - [ ] Structured packet trace formatter
 - [ ] PCAP/debug interoperability tooling if a concrete support need arises
-- [ ] Review raw packet capture guidance and redaction risks
+- [x] Review raw packet capture guidance and redaction risks (OBS-01, PR #8; raw capture remains explicit opt-in and is documented as sensitive)
 
 ## Performance research and release
 

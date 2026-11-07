@@ -317,13 +317,20 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## P1 — Safe observability and packet capture (OBS-01)
 
-- [ ] Audit all library-owned packet tracing, decode-failure, panic, callback-error and fatal-protocol diagnostic paths for credential, address, message-body and arbitrary TLV leakage.
-- [ ] Keep raw PDU capture disabled unless both a tracer and the explicit raw-capture option are configured; preserve header/direction/length-only metadata mode.
-- [ ] Ensure caller-controlled panic values and callback/decoder error messages are not copied into default logs or Observer events. Preserve error identity/type diagnostics without formatting untrusted values.
-- [ ] Document that every raw PDU may contain credentials, addresses, message content, identifiers or vendor TLVs; explain that the generic library cannot safely redact arbitrary peer/vendor fields.
-- [ ] Document short-lived, isolated, access-restricted local capture; drop bind/outbind and user-content frames before persistence, prefer synthetic data, and never forward unsanitized raw frames to shared/third-party telemetry.
-- [ ] Add regression tests proving secret markers in authenticator panics, one-way handler errors and custom decoder errors are absent from logs/events/error strings.
-- [ ] Verify Go 1.25.x and 1.27.x format, unit, race, fuzz, lint, coverage and CI before closing OBS-01.
+- [x] Audit all library-owned packet tracing, decode-failure, panic, callback-error and fatal-protocol diagnostic paths for credential, address, message-body and arbitrary TLV leakage.
+- [x] Keep raw PDU capture disabled unless both a tracer and the explicit raw-capture option are configured; preserve metadata-only tracing by default.
+- [x] Ensure caller-controlled panic values, callback/decoder error messages and protocol `Reason` text are not copied into default logs, Observer events or error strings. Preserve programmatic fields and error identity without formatting untrusted values.
+- [x] Document that every raw PDU may contain credentials, addresses, message content, identifiers or vendor TLVs; the generic library deliberately provides no unsafe universal redaction.
+- [x] Document short-lived, isolated, access-restricted local capture; drop bind/outbind frames, sanitize all other frames with a peer-aware allowlist, prefer synthetic data, and never forward unsanitized raw frames to shared/third-party telemetry.
+- [x] Add regression tests proving secret markers in authenticator panics, one-way handler errors, custom decoder errors and fatal decoder Reason are absent from logs/events/error strings.
+- [x] Verify Go 1.25.x and 1.27.x format, unit, race, fuzz, lint, coverage and CI before closing OBS-01.
+
+**OBS-01 verification — 2026-11-07**
+
+- Source/test commits: `82c06bddafc482c6e336c10c84f5d904d12c50c3`, `b3ed89c58b28c38d0ce7e0d43b1bf89a0c8a0a59`, and final test correction `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`.
+- GitHub Actions [run 42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- Raw capture remains a separate explicit opt-in; no built-in PCAP/file persistence or generic vendor-TLV redactor was added. Metadata-only tracing remains the safe default.
+- The 2-second CI performance smoke is not the 60-second reference acceptance; PERF-01 remains open.
 
 ## Backlog policy
 

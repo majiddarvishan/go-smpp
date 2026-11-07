@@ -161,9 +161,10 @@ type PacketTrace struct {
 //
 // With TraceRawPDU off (the default), RawPDU is nil and a configured tracer
 // receives only metadata. Config.TraceRawPDU has no effect unless
-// Config.PacketTracer is also non-nil. Library-owned logs and Observer events
-// do not format caller-controlled panic or callback/decoder error text; see
-// protocol.PanicError and docs/INTEROPERABILITY.md.
+// Config.PacketTracer is also non-nil. Library-owned logs, Observer events and
+// default error strings do not format caller-controlled panic values, callback/
+// decoder error text or protocol Reason fields; see protocol errors and
+// docs/INTEROPERABILITY.md.
 type PacketTracer interface {
 	TracePacket(PacketTrace)
 }

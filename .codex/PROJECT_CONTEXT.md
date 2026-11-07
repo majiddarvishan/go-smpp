@@ -67,11 +67,10 @@ The above are reusable protocol/library capabilities; no downstream product work
 
 ## Current work and next steps
 
-Phase 21 P0 work is complete. Remaining work is intentionally P1/release-scoped:
+Phase 21 P0 work and OBS-01 safe observability/packet-capture audit are complete. Remaining work is intentionally P1/release-scoped:
 
 1. Add opt-in interoperability fixtures from real, anonymized SMPP peers.
-2. Review raw packet tracing and safe capture/redaction guidance.
-3. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
-4. Create the first production-ready version tag only after the reference regression and release checklist pass.
+2. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
+3. Create the first production-ready version tag only after the reference regression and release checklist pass.
 
 PR #8 remains Draft and has not been merged.
