@@ -6,6 +6,7 @@ Repository: `github.com/majiddarvishan/go-smpp`
 Base: `main` at `8effc6317d8141e36976b0a21bdbe190e2761116`
 Branch: `feature/product-neutral-library-dlr-completeness`
 Latest verified source/test commit: `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`
+Latest documentation/status PR head at handoff: `3875d805a2c8be5396cc2811f3065f9d75d9be8e`
 PR: [#8 — feat: complete product-neutral DLR and registered_delivery helpers](https://github.com/majiddarvishan/go-smpp/pull/8)
 
 The repository is a general-purpose, product-neutral SMPP 3.4 / 5.0 Go library. No downstream application or product may be imported, named, or used to define public APIs. See D-046, D-047, D-049, D-050, D-051, `AGENTS.md`, and `.codex/ARCHITECTURE.md`.
@@ -41,6 +42,7 @@ PR #8 is **open and Draft**. It has not been merged.
 - Follow-up DLR correctness fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` prevents response-only TLVs from identifying a `deliver_sm` receipt.
 - OBS-01 source/test changes are recorded in commits `82c06bddafc482c6e336c10c84f5d904d12c50c3`, `b3ed89c58b28c38d0ce7e0d43b1bf89a0c8a0a59`, and `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`.
 - Final source/test-head GitHub Actions run [42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The final documentation/status PR head `3875d805a2c8be5396cc2811f3065f9d75d9be8e` also passed both Go jobs in [run 42371325448](https://github.com/majiddarvishan/go-smpp/actions/runs/42371325448).
 - The Phase 17 CI result is a **2-second smoke**, not the 60-second reference acceptance.
 
 ## Remaining P1 / release gates

@@ -74,14 +74,16 @@ A follow-up parser correctness fix is on source commit
 [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed
 both Go 1.25.x and Go 1.27.x jobs, including DLR fuzz smoke. The subsequent
 documentation-only PR-head run [42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000)
-also passed both jobs. 
+also passed both jobs.
 OBS-01 safe observability and packet-capture audit completed on source/test commit
 `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`. Final source/test-head GitHub Actions run
 [42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed
 both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz, benchmarks,
 Phase 17 smoke and no-unsafe; Go 1.27.x also passed lint and coverage. Raw PDU capture
 remains explicit opt-in; panic, decoder, callback and protocol Reason text are not
-formatted into default logs/events/error strings.
+formatted into default logs/events/error strings. The final documentation/status PR
+head `3875d805a2c8be5396cc2811f3065f9d75d9be8e` also passed both Go jobs in run
+[42371325448](https://github.com/majiddarvishan/go-smpp/actions/runs/42371325448).
 
 The 2-second Phase 17 CI smoke is not the 60-second reference
 acceptance; a current-HEAD 60-second run remains open before release.
