@@ -290,6 +290,22 @@ This file is the source of truth for implementation progress. Every completed ph
 
 **Implementation verification:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7), [CI run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) passed Go 1.25/1.27 matrices (format, unit, API/no-panic, lint, race, coverage/fuzz/performance smoke). DLR-07 was closed after [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7) merged as `e4606a40961d62cf8eb917f28120385282e89b29`; final PR-head CI [42306339442](https://github.com/majiddarvishan/go-smpp/actions/runs/42306339442) passed both Go 1.25/1.27 matrices.
 
+## Phase 21 — Product-neutral library audit and generic protocol completeness
+
+> This repository is a reusable SMPP library, not an application integration. No downstream product may be imported, named, or used to define library APIs. Task details are registered in `.codex/TASKS.md` before implementation.
+
+- [ ] Remove consumer/product-specific material from README, docs, `.codex` and other maintained handoff files; retain only protocol-level facts and generic development-tool descriptions.
+- [ ] Record the product-neutral boundary in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`.
+- [ ] Extend generic DLR parsing with all standard text receipt fields (`id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err`, `text`) while preserving raw values.
+- [ ] Expose standard receipt TLVs: `receipted_message_id`, `message_state`, `network_error_code`, `delivery_failure_reason`, and `additional_status_info_text`, with strict length/duplicate handling.
+- [ ] Support IA5 and Latin-1 DLR text; explicitly report unsupported encodings rather than treating them as an ordinary non-receipt or guessing.
+- [ ] Add a typed accessor for the standard `protocol.MessageState` without changing existing public field types.
+- [ ] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-value round trips.
+- [ ] Reconcile the historical backlog against implemented source/tests and correct stale Phase 12–14/17 status.
+- [ ] Align current status/handoff docs with the published reference acceptance result and remaining release gates.
+- [ ] Add comprehensive table-driven, malformed-input, round-trip, API snapshot and no-panic tests.
+- [ ] Pass the complete Go 1.25.x/1.27.x CI matrix and merge only after final-head evidence is green.
+
 ## Backlog policy
 
 Items intentionally deferred from the first submit/deliver milestone are tracked in `.codex/BACKLOG.md`. Moving an item out of backlog requires adding it to the appropriate phase here; completion is still recorded only by changing its checkbox to `[x]`.
