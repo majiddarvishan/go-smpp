@@ -55,6 +55,7 @@ Encoding/message logic stays outside the low-level PDU codec.
 
 ## Vendor interoperability
 
+- [x] Versioned offline fixture manifest and deterministic framer/codec replay harness (synthetic examples only; no real-peer compatibility claim).
 - [ ] Registry examples for vendor-specific TLVs
 - [ ] Registry examples for vendor-specific commands
 - [ ] Optional peer-quirk profiles only after real interoperability data exists

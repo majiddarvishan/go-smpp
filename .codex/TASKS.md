@@ -34,11 +34,11 @@ Task registration was committed before source or documentation cleanup.
 
 ## P1 — Generic library follow-ups
 
-- [ ] **INT-01:** Add opt-in interoperability fixtures from real, anonymized SMPP peers; no vendor normalization or quirks without evidence.
-  - [ ] **INT-01A:** Define a versioned, product-neutral fixture manifest that separates synthetic examples from anonymized real-peer evidence.
-  - [ ] **INT-01B:** Validate fixture provenance, peer aliases, protocol version, direction, expected decode outcome, and mandatory sanitization metadata for real-peer captures.
-  - [ ] **INT-01C:** Add deterministic offline replay through the SMPP stream framer and codec, with header/body assertions and optional exact wire round-trip checks.
-  - [ ] **INT-01D:** Add only explicitly synthetic examples until reviewed, anonymized real-peer exchanges are supplied; do not claim live-peer interoperability from synthetic fixtures.
+- [ ] **INT-01:** Add opt-in interoperability fixtures from real, anonymized SMPP peers; no vendor normalization or quirks without evidence. The offline framework is implemented, but real-peer evidence and the representative-peer behavior matrix are still required to close this task.
+  - [x] **INT-01A:** Define a versioned, product-neutral fixture manifest that separates synthetic examples from anonymized real-peer evidence.
+  - [x] **INT-01B:** Validate fixture provenance, peer aliases, protocol version, direction, expected decode outcome, and mandatory sanitization metadata for real-peer captures.
+  - [x] **INT-01C:** Add deterministic offline replay through the SMPP stream framer and codec, with header/body assertions and optional exact wire round-trip checks.
+  - [x] **INT-01D:** Add only explicitly synthetic examples until reviewed, anonymized real-peer exchanges are supplied; do not claim live-peer interoperability from synthetic fixtures.
 - [x] **OBS-01:** Audit every packet-trace, decode-failure, panic, callback-error and fatal-diagnostic output path. Keep raw PDU capture explicitly opt-in; ensure caller-controlled panic/error strings and protocol `Reason` fields cannot leak through library logs/events/default error strings; document raw-frame sensitivity, metadata-only operation, synchronous callback constraints and safe temporary capture/redaction practices. Regression tests cover authenticator panic, one-way handler error, custom decoder error, fatal decoder Reason and protocol error strings. Source/test CI run `42371052716` and final documentation/status PR-head run `42371554356` passed Go 1.25.x/1.27.x.
 - [ ] **PERF-01:** Re-run the 60-second reference acceptance on a combined current `main` after post-acceptance library changes; do not substitute hosted-runner smoke for the reference machine.
 - [ ] **REL-01:** Create the first production-ready version tag only after the release checklist and current-head performance gate are satisfied.

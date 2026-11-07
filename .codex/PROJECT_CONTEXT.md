@@ -53,7 +53,8 @@ The public dependency direction is enforced by `architecture_test.go`. Codec/pro
 - Phases 0–18 and 20 are implemented and have corresponding tests/documentation.
 - Phase 17 reference acceptance passed on the documented Linux/amd64 reference host: **713,932 aggregate bidirectional request PDUs/s for 60 seconds, minimum passing session count 1**, with required responses enabled. Exact environment and caveats are in `docs/PERFORMANCE.md`.
 - Phase 19 release readiness is open for the first production-ready version tag. A fresh reference run on the combined current `main` after later library additions remains a release regression gate.
-- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8; source fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`). Implementation CI run `42369084385` and subsequent documentation-only PR-head run `42369351000` both passed Go 1.25.x/1.27.x. PR #8 remains Draft pending maintainer review.
+- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8; source fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`). The final Phase 21 source/test head and subsequent documentation heads passed Go 1.25.x/1.27.x CI; PR #8 remains Draft pending maintainer review.
+- INT-01 offline fixture framework is implemented in test-only code at PR head `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`. CI run `42375378458` passed Go 1.25.x/1.27.x. The current manifest contains only five synthetic SMPP 3.4 PDUs; real-peer evidence and the representative-peer behavior matrix remain open.
 
 ## Recent generic library improvements
 
@@ -69,7 +70,7 @@ The above are reusable protocol/library capabilities; no downstream product work
 
 Phase 21 P0 work and OBS-01 safe observability/packet-capture audit are complete. Remaining work is intentionally P1/release-scoped:
 
-1. Add opt-in interoperability fixtures from real, anonymized SMPP peers.
+1. Add reviewed, anonymized real-peer exchanges to the new offline fixture harness and build the representative-peer strict/compatible behavior matrix from observed behavior only. Synthetic fixtures do not close INT-01.
 2. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
 3. Create the first production-ready version tag only after the reference regression and release checklist pass.
 

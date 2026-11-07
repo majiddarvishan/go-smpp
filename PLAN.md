@@ -338,9 +338,17 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 
 ## P1 — Interoperability fixture framework (INT-01)
 
-- [ ] Define a versioned, product-neutral fixture manifest distinguishing constructed synthetic examples from anonymized real-peer evidence.
-- [ ] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
-- [ ] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
-- [ ] Include only clearly labeled synthetic fixtures until real, reviewed, anonymized peer exchanges are available. Never infer vendor behavior or claim real-peer interoperability from synthetic data.
+- [x] Define a versioned, product-neutral fixture manifest distinguishing constructed synthetic examples from anonymized real-peer evidence.
+- [x] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
+- [x] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
+- [x] Include only clearly labeled synthetic fixtures until real, reviewed, anonymized peer exchanges are available. Never infer vendor behavior or claim real-peer interoperability from synthetic data.
+- [ ] Add reviewed, anonymized real-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed evidence only.
+
+**INT-01 framework verification — 2026-11-07**
+
+- Implementation commits: task registration `62a4a5441f8389decc0ed6fedf623808873fc367`, fixture harness/docs `9bd79115444fd5408cb4d1a371a8f9e61a0934ce`, gofmt correction `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`.
+- GitHub Actions [run 42375378458](https://github.com/majiddarvishan/go-smpp/actions/runs/42375378458) passed both Go 1.25.x and Go 1.27.x, including gofmt, lint (Go 1.27.x), unit, race, coverage, fuzz smoke, protocol/codec benchmarks, Phase 17 development performance/resource smoke, and no-unsafe.
+- The manifest currently contains five constructed synthetic SMPP 3.4 PDUs. No real peer or vendor interoperability is claimed.
+- The fixture harness is test-only; it adds no public API or runtime dependency. Bind/outbind frames are rejected, and real-peer entries require reviewed sanitization metadata.
 
 **Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until real-peer evidence is added and reviewed.
