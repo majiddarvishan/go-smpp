@@ -328,7 +328,7 @@ This file is the source of truth for implementation progress. Every completed ph
 **OBS-01 verification — 2026-11-07**
 
 - Source/test commits: `82c06bddafc482c6e336c10c84f5d904d12c50c3`, `b3ed89c58b28c38d0ce7e0d43b1bf89a0c8a0a59`, and final test correction `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`.
-- GitHub Actions [run 42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The final documentation/status PR head passed both jobs in [run 42371325448](https://github.com/majiddarvishan/go-smpp/actions/runs/42371325448).
+- GitHub Actions [run 42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The final documentation/status PR head `64af94935c5c07af1c7995813c3b1a228c0c244d` passed both jobs in [run 42371554356](https://github.com/majiddarvishan/go-smpp/actions/runs/42371554356).
 - Raw capture remains a separate explicit opt-in; no built-in PCAP/file persistence or generic vendor-TLV redactor was added. Metadata-only tracing remains the safe default.
 - The 2-second CI performance smoke is not the 60-second reference acceptance; PERF-01 remains open.
 

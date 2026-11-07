@@ -82,8 +82,8 @@ both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz, benchmarks
 Phase 17 smoke and no-unsafe; Go 1.27.x also passed lint and coverage. Raw PDU capture
 remains explicit opt-in; panic, decoder, callback and protocol Reason text are not
 formatted into default logs/events/error strings. The final documentation/status PR
-head `3875d805a2c8be5396cc2811f3065f9d75d9be8e` also passed both Go jobs in run
-[42371325448](https://github.com/majiddarvishan/go-smpp/actions/runs/42371325448).
+head `64af94935c5c07af1c7995813c3b1a228c0c244d` passed both Go jobs in run
+[42371554356](https://github.com/majiddarvishan/go-smpp/actions/runs/42371554356).
 
 The 2-second Phase 17 CI smoke is not the 60-second reference
 acceptance; a current-HEAD 60-second run remains open before release.
