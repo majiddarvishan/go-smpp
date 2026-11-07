@@ -317,3 +317,9 @@ Development-host and GitHub-hosted-runner measurements are recorded as regressio
 **Decision:** `PacketTracer` remains nil by default and metadata-only when configured. Full `RawPDU` delivery requires both a configured tracer and explicit `TraceRawPDU=true`; it is an exact owned copy with no built-in redaction. Every raw frame is treated as sensitive because known fields and unknown/vendor TLVs may carry credentials, identifiers, addresses or message content. The generic library does not attempt unsafe universal redaction.
 
 **Reason:** Peer/vendor TLVs do not have universally knowable privacy semantics. Metadata-only tracing is the safe default; raw capture belongs in a short-lived, isolated, access-restricted diagnostic workflow with peer-aware allowlist sanitization or full-frame dropping before persistence.
+
+## D-052 — Interoperability fixtures are test-only and provenance-tagged
+
+**Decision:** The interoperability fixture manifest and replay harness live only in repository test code and `testdata`; they add no public API, production package, or runtime dependency. Each fixture explicitly identifies itself as synthetic or anonymized real-peer evidence. Real-peer entries require an opaque peer alias and evidence reference, capture provenance, a reviewed peer-aware sanitization declaration, exclusion of bind/outbind frames, replacement of sensitive values, and removal or explicit review of unknown TLVs. Synthetic fixtures never count as evidence of deployed-peer interoperability.
+
+**Reason:** A reusable SMPP library needs reproducible peer compatibility evidence without coupling protocol packages to test-run workflows or persisting credentials, subscriber data, or unsanitized packet captures.
