@@ -7,7 +7,7 @@ Base: `main` at `8effc6317d8141e36976b0a21bdbe190e2761116`
 Branch: `feature/product-neutral-library-dlr-completeness`
 Latest verified source/test commit: `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`
 Latest INT-01 fixture framework/test commit with full Go CI: `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`
-Latest tracking-document commit: `a6b94f30acc9af1e22d0d1d3691efb2f4cdacd00`
+Current PR head at handoff: `5cc4a7add9c171b70ced186a0095ecf936b35369` (tracking-only follow-up to the tested fixture framework commit above).
 PR: [#8 — feat: complete product-neutral DLR and registered_delivery helpers](https://github.com/majiddarvishan/go-smpp/pull/8)
 
 The repository is a general-purpose, product-neutral SMPP 3.4 / 5.0 Go library. No downstream application or product may be imported, named, or used to define public APIs. See D-046, D-047, D-049, D-050, D-051, `AGENTS.md`, and `.codex/ARCHITECTURE.md`.
