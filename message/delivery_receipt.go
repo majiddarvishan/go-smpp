@@ -260,10 +260,10 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	if !markedReceipt && !hasTLVReceipt && !textReceipt {
 		return DeliveryReceipt{}, ErrNotDeliveryReceipt
 	}
-	if markedReceipt && !hasTLVReceipt && !textReceipt &&
-		receipt.SubmittedCount == "" && receipt.DeliveredCount == "" &&
-		receipt.SubmitDate == "" && receipt.DoneDate == "" &&
-		receipt.ErrorCode == "" && receipt.Text == "" {
+	hasTextFields := receipt.TextMessageID != "" || receipt.SubmittedCount != "" ||
+		receipt.DeliveredCount != "" || receipt.SubmitDate != "" || receipt.DoneDate != "" ||
+		receipt.TextStatus != "" || receipt.ErrorCode != "" || receipt.Text != ""
+	if markedReceipt && !hasTLVReceipt && !hasTextFields {
 		return DeliveryReceipt{}, fmt.Errorf("%w: receipt marker has no recognizable fields", ErrInvalidDeliveryReceipt)
 	}
 	return receipt, nil
