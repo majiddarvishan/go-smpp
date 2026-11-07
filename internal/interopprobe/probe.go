@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/majiddarvishan/go-smpp/client"
@@ -582,8 +582,10 @@ func waitForBindResponse(ctx context.Context, sess *session.Session, responses <
 	case status := <-responses:
 		return bindResponseStatusError(status)
 	case <-sess.Done():
-		// The response event is emitted after the response has been written.
-		// Check once more before treating a simultaneous close as a failed bind.
+		// Join the RX/TX loops before checking the observer channel. A peer can
+		// close immediately after reading bind_transceiver_resp, racing the RX
+		// close against the TX loop's post-write observer callback.
+		sess.Wait()
 		select {
 		case status := <-responses:
 			return bindResponseStatusError(status)
