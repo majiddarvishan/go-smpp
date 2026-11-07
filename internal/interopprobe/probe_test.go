@@ -282,7 +282,6 @@ func TestUnbindEventDetailsRecognizesSMSCInitiatedResponse(t *testing.T) {
 	}
 }
 
-
 func newProbeTestSession(t *testing.T) (*session.Session, net.Conn) {
 	t.Helper()
 	serverConn, peerConn := net.Pipe()
