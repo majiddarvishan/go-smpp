@@ -291,7 +291,7 @@ func extractReceiptTextFields(text string) (receiptTextFields, error) {
 			if next+1 < len(words) {
 				value += " " + strings.Join(words[next+1:], " ")
 			}
-			fields.Text = value
+			fields.Text = strings.TrimSpace(value)
 			return fields, nil
 
 		case hasPrefixFold(word, "id:"):
