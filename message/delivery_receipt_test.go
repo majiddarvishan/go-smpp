@@ -200,8 +200,8 @@ func TestParseDeliveryReceiptRejectsAmbiguousStandardTLVs(t *testing.T) {
 			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte{'a', 0, 'b', 0}),
 		},
 		"additional status conflict": {
-			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("one")),
-			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("two")),
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("one\\x00")),
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("two\\x00")),
 		},
 	}
 	for name, tlvs := range cases {
