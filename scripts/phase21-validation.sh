@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Phase 21 local validation matrix. Run from the repository root with:
+# Phase 21 local validation matrix. Run with:
 #   bash scripts/phase21-validation.sh
 #
-# This script records every gate and continues after failures. It never updates
-# API snapshots, modifies source files, writes to .bench, or runs the 60s Phase 17
-# reference acceptance. Its Phase 17 invocation is only the short CI smoke test.
+# Each gate is logged independently and failures do not stop later gates.
+# The script never updates API snapshots, modifies source files, writes to
+# .bench, or runs the 60-second Phase 17 reference acceptance.
 set -o pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,7 +23,11 @@ if [[ -z "$OUT" ]]; then
   if [[ -z "$TMPBASE" ]]; then TMPBASE="/tmp"; fi
   OUT="$TMPBASE/go-smpp-phase21-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 fi
-mkdir -p "$OUT"
+if ! mkdir -p "$OUT"; then
+  echo "FAIL: cannot create result directory $OUT" >&2
+  exit 2
+fi
+
 SUMMARY="$OUT/summary.tsv"
 printf 'status\tgate\tdetail\n' > "$SUMMARY"
 LAST_LOG=""
@@ -89,7 +93,27 @@ run_fuzz_gate() {
   local name="$2"
   local package="$3"
   local fuzz="$4"
-  run_gate "$version-$name" env GOTOOLCHAIN="$version" go test "$package" -run '^
+  run_gate "$version-$name" env GOTOOLCHAIN="$version" go test "$package" -run '^$' -fuzz="^$fuzz$" -fuzztime=2s
+}
+
+# Use the CI-pinned linter. Install it outside the repository if needed.
+LINTER=""
+if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
+  LINTER="$(command -v golangci-lint)"
+else
+  if mkdir -p "$OUT/bin"; then
+    run_gate "golangci-lint-install" env GOTOOLCHAIN=go1.27.0 GOBIN="$OUT/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+    if [[ -x "$OUT/bin/golangci-lint" ]]; then
+      LINTER="$OUT/bin/golangci-lint"
+    else
+      record BLOCKED "golangci-lint-tool" "pinned golangci-lint v2.14.0 could not be installed; see install log"
+    fi
+  else
+    record BLOCKED "golangci-lint-tool" "cannot create temporary tool directory"
+  fi
+fi
+
+for version in go1.25.0 go1.27.0; do
   echo
   echo "################ TOOLCHAIN: $version ################"
 
@@ -152,6 +176,7 @@ run_fuzz_gate() {
   else
     record BLOCKED "$version-lint" "pinned golangci-lint v2.14.0 is unavailable"
   fi
+
   run_gate "$version-coverage-floor" env GOTOOLCHAIN="$version" bash scripts/coverage.sh
 done
 
@@ -167,116 +192,12 @@ echo "The Phase 17 invocation above is a 2-second CI smoke only, not the 60-seco
 echo "The .bench directory was not read, deleted, or modified by this script."
 
 ARCHIVE="$OUT.tar.gz"
-tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"
-echo "RESULT_ARCHIVE=$ARCHIVE"
-
-if (( FAIL_COUNT > 0 )); then
+if tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"; then
+  echo "RESULT_ARCHIVE=$ARCHIVE"
+else
+  echo "FAIL: could not create result archive $ARCHIVE"
   exit 1
 fi
-if (( BLOCKED_COUNT > 0 )); then
-  exit 2
-fi
-exit 0
- -fuzz="^$fuzz$" -fuzztime=2s
-}
-
-# Use the CI-pinned linter version. If it is not already installed, install it
-# into the temporary result directory with the newest supported Go toolchain.
-LINTER=""
-if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
-  LINTER="$(command -v golangci-lint)"
-else
-  mkdir -p "$OUT/bin"
-  run_gate "golangci-lint-install" env GOTOOLCHAIN=go1.27.0 GOBIN="$OUT/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-  if [[ -x "$OUT/bin/golangci-lint" ]]; then
-    LINTER="$OUT/bin/golangci-lint"
-  else
-    record BLOCKED "golangci-lint-tool" "could not install pinned golangci-lint v2.14.0"
-  fi
-fi
-
-for version in go1.25.0 go1.27.0; do
-  echo
-  echo "################ TOOLCHAIN: $version ################"
-
-  version_log="$OUT/$version-version.log"
-  if ! env GOTOOLCHAIN="$version" go version > "$version_log" 2>&1; then
-    cat "$version_log"
-    record BLOCKED "$version-toolchain" "toolchain unavailable or automatic download failed"
-    continue
-  fi
-  cat "$version_log"
-  if ! grep -Fq "$version" "$version_log"; then
-    record BLOCKED "$version-toolchain" "requested toolchain did not report the exact version"
-    continue
-  fi
-  record PASS "$version-toolchain" "exact toolchain available"
-
-  run_gate "$version-gofmt" env GOTOOLCHAIN="$version" bash -c '
-    goroot="$(go env GOROOT)" || exit $?
-    files="$("$goroot/bin/gofmt" -l .)"
-    if [[ -n "$files" ]]; then
-      echo "Unformatted Go files:"
-      printf "%s\n" "$files"
-      exit 1
-    fi
-    echo "All Go files are gofmt-clean."
-  '
-
-  run_gate "$version-unit" env GOTOOLCHAIN="$version" go test -count=1 -v ./...
-  unit_log="$LAST_LOG"
-  check_api_and_nopanic_from_unit_log "$version" "$unit_log"
-
-  run_gate "$version-race" env GOTOOLCHAIN="$version" go test -race -count=1 ./...
-
-  run_fuzz_gate "$version" fuzz-framer ./codec FuzzFramer
-  run_fuzz_gate "$version" fuzz-decode-pdu ./codec FuzzDecodePDU
-  run_fuzz_gate "$version" fuzz-framer-chunked ./codec FuzzFramerChunked
-  run_fuzz_gate "$version" fuzz-decode-pdu50 ./codec FuzzDecodePDU50
-  run_fuzz_gate "$version" fuzz-dlr ./message FuzzParseDeliveryReceipt
-
-  run_gate "$version-protocol-codec-bench-smoke" env GOTOOLCHAIN="$version" go test -run '^$' -bench=. -benchmem ./protocol ./codec
-
-  run_gate "$version-session-bench-smoke" env GOTOOLCHAIN="$version" go test -run '^$' -bench=BenchmarkDeadlineHighOutstanding -benchmem -benchtime=300ms ./session
-
-  run_gate "$version-perflab-bench-smoke" env GOTOOLCHAIN="$version" SMPP_BENCH_SESSIONS=1,2,4,8 SMPP_BENCH_PARALLELISM=16 go test -run '^$' -bench='Benchmark(InMemorySession|LocalhostTCP|LocalhostTLS)Bidirectional' -benchmem -benchtime=200ms ./internal/perflab
-
-  run_gate "$version-phase17-short-smoke" env GOTOOLCHAIN="$version" SMPP_ACCEPTANCE=1 SMPP_ACCEPTANCE_DURATION=2s SMPP_ACCEPTANCE_SESSION_COUNT=1 SMPP_ACCEPTANCE_CALLERS=64 SMPP_ACCEPTANCE_MIN_RPS=1 go test ./internal/perflab -run '^TestPhase17ReferenceAcceptance$' -count=1 -v
-
-  run_gate "$version-no-unsafe" env GOTOOLCHAIN="$version" bash -c '
-    set -o pipefail
-    imports="$(go list -f "{{range .Imports}}{{.}}{{\"\\n\"}}{{end}}{{range .TestImports}}{{.}}{{\"\\n\"}}{{end}}{{range .XTestImports}}{{.}}{{\"\\n\"}}{{end}}" ./...)" || exit $?
-    if printf "%s\n" "$imports" | grep -qx unsafe; then
-      echo "Direct import of unsafe is not allowed."
-      exit 1
-    fi
-    echo "No direct unsafe imports."
-  '
-
-  if [[ "$version" == "go1.27.0" ]]; then
-    if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
-      run_gate "$version-lint" golangci-lint run --timeout=5m
-    else
-      run_gate "$version-lint" env GOTOOLCHAIN="$version" go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --timeout=5m
-    fi
-    run_gate "$version-coverage-floor" env GOTOOLCHAIN="$version" bash scripts/coverage.sh
-  fi
-done
-
-echo
-echo "===== PHASE 21 VALIDATION SUMMARY ====="
-cat "$SUMMARY"
-
-PASS_COUNT="$(awk -F '\t' '$1=="PASS"{n++} END{print n+0}' "$SUMMARY")"
-FAIL_COUNT="$(awk -F '\t' '$1=="FAIL"{n++} END{print n+0}' "$SUMMARY")"
-BLOCKED_COUNT="$(awk -F '\t' '$1=="BLOCKED"{n++} END{print n+0}' "$SUMMARY")"
-echo "PASS=$PASS_COUNT FAIL=$FAIL_COUNT BLOCKED=$BLOCKED_COUNT"
-echo "The Phase 17 invocation above is a 2-second CI smoke only, not the 60-second reference acceptance."
-echo "The .bench directory was not read, deleted, or modified by this script."
-
-ARCHIVE="$OUT.tar.gz"
-tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"
-echo "RESULT_ARCHIVE=$ARCHIVE"
 
 if (( FAIL_COUNT > 0 )); then
   exit 1
