@@ -345,6 +345,8 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
 - [ ] Run the probe, review and add approved `simulator-peer` fixture candidates to the offline manifest; keep them distinct from `real-peer-anonymized` deployed-peer evidence.
 - [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
+- [ ] Improve the opt-in probe's ESME-originated `submit_sm` observation workflow with a longer configurable window, an explicit just-in-time prompt, and sanitized Unbind request/response diagnostics; keep it build-tagged and outside the public API.
+- [ ] Re-run the ESME phase with an explicit outbound `submit_sm` action where supported; characterize both simulators' `unbind_resp` behavior and retain missing responses as peer-compatibility findings, not library success.
 
 **INT-01 framework verification — 2026-11-07**
 
