@@ -13,7 +13,7 @@ This file tracks intentionally deferred, reusable SMPP library work. The impleme
 - [x] `outbind` lifecycle and one-way semantics
 - [x] Standard command-status constants and codec coverage
 - [x] All 44 standard SMPP 3.4 TLV tags and registry coverage
-- [ ] Lossless `registered_delivery` bit-field helpers (Phase 21; pending final CI)
+- [ ] Lossless `registered_delivery` bit-field helpers (Phase 21; implementation present, field-layout correction and final CI pending)
 
 ## Message and encoding
 
@@ -51,7 +51,7 @@ Encoding/message logic stays outside the low-level PDU codec.
 - [x] Raw `network_error_code` TLV registration/preservation and generic receipt extraction
 - [ ] Typed network-error classification helpers (only after enum semantics are verified against the specification and peer evidence)
 - [ ] Higher-level USSD workflow helpers (optional; generic `data_sm` plus TLV preservation may already be sufficient)
-- [x] `registered_delivery` field decode/encode with reserved values preserved; SMPP 3.4 does not define a success-only SMSC receipt mode, and reserved encodings are not normalized
+- [ ] `registered_delivery` field decode/encode with reserved bits preserved; SMPP 3.4 reserves SMSC receipt value `0b11`; the named success-only alias is peer-specific and awaits Phase 21 test/CI evidence
 
 ## Vendor interoperability
 
