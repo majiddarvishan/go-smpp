@@ -283,3 +283,11 @@ The following remain to be decided in later phases and recorded here:
 Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
 
 **Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.
+
+## D-046 — Product-neutral reusable library boundary
+
+**Decision:** `go-smpp` is a general-purpose SMPP 3.4 / 5.0 Go library. Its source, public API, examples, documentation, CI and maintained agent handoff files must not import, name, or encode assumptions for any downstream application or product. Public capabilities are added only when they are reusable protocol, transport, session, encoding, messaging, or observability primitives. Application workflows, test-run state, workload controllers, billing policy, application-level correlation/retention and product UI/CLI behavior remain outside the library.
+
+The standalone `cmd/smpp-sim` is retained solely as a generic SMSC peer for this repository's development/performance lab. It is not a public library package, is not imported by public packages, and does not define library behavior or API requirements.
+
+**Reason:** A reusable protocol library must serve independent ESME/SMSC applications without knowing their names, architectures, workload policies or product-specific requirements. This keeps the dependency direction one-way and prevents the core from accumulating special-purpose behavior.
