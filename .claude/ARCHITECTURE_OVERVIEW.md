@@ -39,7 +39,7 @@ Performance target: 100,000 aggregate bidirectional request PDUs/s on Linux/amd6
 | `client` | ESME lifecycle — dial, bind, reconnect with exponential backoff, rebind. |
 | `server` | SMSC lifecycle — accept loop, session cap, handler dispatch. |
 | `internal/perflab` | Throughput and resource-bound acceptance harness. |
-| `cmd/smpp-sim` | Standalone SMSC simulator. |
+| `cmd/smpp-sim` | Standalone generic SMSC peer for local development/performance measurements; not a public library package. |
 | `examples/esme`, `examples/smsc` | Minimal runnable examples. |
 
 ### Dependency DAG
