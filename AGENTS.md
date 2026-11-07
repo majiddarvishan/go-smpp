@@ -45,3 +45,11 @@ Before changing code or plans, read in order: `PLAN.md`, `.codex/PROJECT_CONTEXT
 The first production path is bind/session management plus `submit_sm` and `deliver_sm` request/response. Other SMPP 3.4 operations remain required and tracked in the plan/backlog. GSM 7-bit and Unicode/emoji support are scheduled in the message/encoding phase and must remain decoupled from wire-level PDU framing.
 
 At the end of a meaningful implementation session, update `.codex/SESSION.md` with branch/commit, completed work, tests/benchmarks, unresolved issues, and exact next task.
+
+## Product-neutral library boundary
+
+- This repository is a general-purpose SMPP 3.4 / 5.0 Go library. It must remain independent of every downstream application, simulator, load generator, billing system, or product.
+- Do not import a consumer repository/module, add consumer-specific branches or defaults, name a downstream product in source/docs/agent notes, or encode one application's workflow as a library contract.
+- Add a capability to a public package only when it is a reusable protocol, transport, session, encoding, messaging, or observability primitive. Application scheduling, test-run lifecycle, billing policy, correlation stores, and product workflows belong to the consuming application.
+- Keep `cmd/smpp-sim` as a standalone generic SMSC peer for this repository's development/performance lab only. It is not a public package or a dependency of the library; do not use it to define public API behavior.
+- Keep examples generic and protocol-oriented. A consumer-specific use case may be discussed externally, but it must not be copied into this repository's maintained documentation or handoff files.
