@@ -12,9 +12,14 @@ const (
 	SMSCReceiptModeFinalOutcome
 	// SMSCReceiptModeFailureOnly requests a receipt only for final failure.
 	SMSCReceiptModeFailureOnly
-	// SMSCReceiptModeReserved is the reserved two-bit value 0b11. It is exposed
-	// so callers can inspect and preserve peer values without reinterpretation.
-	SMSCReceiptModeReserved
+	// SMSCReceiptModeSuccessOnly names the 0b11 encoding for peers that
+	// explicitly define it as a success-only receipt request. SMPP 3.4 reserves
+	// this encoding, so this interpretation is peer-specific and not portable.
+	SMSCReceiptModeSuccessOnly
+	// SMSCReceiptModeReserved is the SMPP 3.4 standards classification for
+	// the same 0b11 wire value. It is retained as an alias for standards-based
+	// inspection; the wire value is never changed by the decoder or encoder.
+	SMSCReceiptModeReserved = SMSCReceiptModeSuccessOnly
 )
 
 // SMEDeliveryAcknowledgementMode is the two-bit SME acknowledgement request
@@ -25,27 +30,28 @@ const (
 	SMEDeliveryAcknowledgementModeNone SMEDeliveryAcknowledgementMode = iota
 	SMEDeliveryAcknowledgementModeRequested
 	SMEDeliveryAcknowledgementModeManualUserRequested
-	SMEDeliveryAcknowledgementModeReserved
+	// SMEDeliveryAcknowledgementModeBoth requests both delivery and
+	// manual/user acknowledgements.
+	SMEDeliveryAcknowledgementModeBoth
 )
 
-// IntermediateNotificationMode is the two-bit intermediate-notification
-// request field in registered_delivery.
+// IntermediateNotificationMode is the single-bit intermediate-notification
+// request field in registered_delivery (bit 4).
 type IntermediateNotificationMode uint8
 
 const (
 	IntermediateNotificationModeNone IntermediateNotificationMode = iota
 	IntermediateNotificationModeRequested
-	IntermediateNotificationModeReserved2
-	IntermediateNotificationModeReserved3
 )
 
 // RegisteredDelivery is the lossless, field-level view of the SMPP
-// registered_delivery octet. The first three fields retain their complete
-// two-bit values, including reserved encodings. ReservedBits retains bits 6-7.
+// registered_delivery octet. SMSCReceipt and SMEAcknowledgement are two-bit
+// fields; IntermediateNotification represents bit 4; ReservedBits preserves
+// bits 5-7 exactly.
 //
 // Existing PDU structs continue to expose RegisteredDelivery as uint8. Use
 // DecodeRegisteredDelivery to inspect that octet and Encode to reconstruct it.
-// No reserved or vendor-defined value is rejected or normalized.
+// No reserved or vendor-defined bit is rejected or normalized.
 type RegisteredDelivery struct {
 	SMSCReceipt               SMSCReceiptMode
 	SMEAcknowledgement        SMEDeliveryAcknowledgementMode
@@ -54,21 +60,21 @@ type RegisteredDelivery struct {
 }
 
 // DecodeRegisteredDelivery splits a registered_delivery octet into its
-// standard bit fields without rejecting or normalizing reserved values.
+// standard fields without rejecting or normalizing reserved values.
 func DecodeRegisteredDelivery(value uint8) RegisteredDelivery {
 	return RegisteredDelivery{
 		SMSCReceipt:               SMSCReceiptMode(value & 0x03),
 		SMEAcknowledgement:        SMEDeliveryAcknowledgementMode((value >> 2) & 0x03),
-		IntermediateNotification: IntermediateNotificationMode((value >> 4) & 0x03),
-		ReservedBits:              value & 0xC0,
+		IntermediateNotification: IntermediateNotificationMode((value >> 4) & 0x01),
+		ReservedBits:              value & 0xE0,
 	}
 }
 
-// Encode reconstructs the registered_delivery octet, preserving every
-// two-bit field value and the reserved high bits.
+// Encode reconstructs the registered_delivery octet, preserving every field
+// value and all reserved bits.
 func (r RegisteredDelivery) Encode() uint8 {
 	return uint8(r.SMSCReceipt)&0x03 |
 		(uint8(r.SMEAcknowledgement)&0x03)<<2 |
-		(uint8(r.IntermediateNotification)&0x03)<<4 |
-		(r.ReservedBits & 0xC0)
+		(uint8(r.IntermediateNotification)&0x01)<<4 |
+		(r.ReservedBits & 0xE0)
 }
