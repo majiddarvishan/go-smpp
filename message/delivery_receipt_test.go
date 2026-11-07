@@ -136,6 +136,29 @@ func TestParseDeliveryReceiptStandardTLVs(t *testing.T) {
 	}
 }
 
+func TestParseDeliveryReceiptResponseOnlyTLVsDoNotIdentifyReceipt(t *testing.T) {
+	cases := map[string][]protocol.OptionalParameter{
+		"delivery_failure_reason": {
+			receiptTLV(protocol.TLVTagDeliveryFailureReason, []byte{2}),
+		},
+		"additional_status_info_text": {
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\\x00")),
+		},
+		"both response-only TLVs": {
+			receiptTLV(protocol.TLVTagDeliveryFailureReason, []byte{2}),
+			receiptTLV(protocol.TLVTagAdditionalStatusInfoText, []byte("diagnostic\\x00")),
+		},
+	}
+	for name, tlvs := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseDeliveryReceipt(protocol.DeliverSM{Optional: tlvs})
+			if !errors.Is(err, ErrNotDeliveryReceipt) {
+				t.Fatalf("response-only TLVs identified a delivery receipt: %v", err)
+			}
+		})
+	}
+}
+
 func TestParseDeliveryReceiptIdenticalStandardTLVDuplicates(t *testing.T) {
 	got, err := ParseDeliveryReceipt(protocol.DeliverSM{Optional: []protocol.OptionalParameter{
 		receiptTLV(protocol.TLVTagNetworkErrorCode, []byte{1, 2, 3}),

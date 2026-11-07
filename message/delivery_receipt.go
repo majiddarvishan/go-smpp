@@ -158,7 +158,8 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			}
 			receipt.DeliveryFailureReason = item.Value[0]
 			receipt.HasDeliveryFailureReason = true
-			hasTLVReceipt = true
+			// SMPP 3.4 defines delivery_failure_reason for data_sm_resp,
+			// not as evidence that this deliver_sm is a delivery receipt.
 
 		case protocol.TLVTagAdditionalStatusInfoText:
 			value, err := receiptTLVCString(item.Value, "additional_status_info_text", receiptMaxAdditionalStatusInfoOctets, true)
@@ -170,7 +171,8 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			}
 			receipt.AdditionalStatusInfoText = value
 			receipt.HasAdditionalStatusInfoText = true
-			hasTLVReceipt = true
+			// additional_status_info_text describes a response PDU. Retain it
+			// when a peer supplies it, but do not use it to identify a receipt.
 
 		case protocol.TLVTagMessagePayload:
 			if payloadSeen && !bytes.Equal(payload, item.Value) {

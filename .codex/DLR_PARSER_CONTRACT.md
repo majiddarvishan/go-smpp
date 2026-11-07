@@ -22,15 +22,18 @@ The parser is pure over an already decoded `deliver_sm`. It performs no network 
 
 The parser preserves the conventional textual fields as raw strings: `id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err` and the trailing `text` content. Counts, dates and error codes are not numerically or calendrically normalized because deployed peer formats vary.
 
-It also exposes the standard receipt-related TLVs:
+The standard `deliver_sm` receipt TLVs are:
 
 - `receipted_message_id`: C-Octet string with one final NUL terminator, no embedded NUL, and at most 65 octets including the terminator. Its payload remains opaque; no character-set or UTF-8 normalization is applied.
 - `message_state`: exactly one octet, standard values 1..8.
-- `network_error_code`: exactly three octets, preserved byte-for-byte.
-- `delivery_failure_reason`: exactly one octet, preserved without vendor-specific interpretation.
-- `additional_status_info_text`: C-Octet string with one final NUL terminator, no embedded NUL, and at most 256 octets including the terminator. An empty payload is retained.
+- `network_error_code`: exactly three octets, preserved byte-for-byte; SMPP 3.4 permits it on SMSC Delivery Receipts and Intermediate Notifications.
 
-Identical duplicate TLVs are tolerated; conflicting duplicates and malformed lengths/strings are errors. C-Octet terminators and field-specific maximum lengths are enforced. The trailing `text:` field removes exactly one separator whitespace byte after the marker and preserves the remaining payload byte-for-byte after text decoding. Unknown optional TLVs remain available on the original decoded PDU.
+Two additional standard TLV tags are tolerated and validated if a peer supplies them on `deliver_sm`, but SMPP 3.4 does not define them as standard `deliver_sm` receipt fields:
+
+- `delivery_failure_reason`: exactly one octet. The specification defines it for `data_sm_resp`, not `deliver_sm`.
+- `additional_status_info_text`: C-Octet string with one final NUL terminator, no embedded NUL, and at most 256 octets including the terminator. It is a response-PDU diagnostic, not standard `deliver_sm` receipt evidence. An empty payload is retained.
+
+These two response-oriented TLVs are preserved as peer-supplied diagnostics when present, but neither one alone makes an ordinary `deliver_sm` a delivery receipt. Identical duplicate TLVs are tolerated; conflicting duplicates and malformed lengths/strings are errors. C-Octet terminators and field-specific maximum lengths are enforced. The trailing `text:` field removes exactly one separator whitespace byte after the marker and preserves the remaining payload byte-for-byte after text decoding. Unknown optional TLVs remain available on the original decoded PDU.
 
 ## Text encodings
 
