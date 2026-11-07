@@ -29,7 +29,7 @@ func TestRegisteredDeliveryFieldExtraction(t *testing.T) {
 	got = DecodeRegisteredDelivery(0xd1)
 	if got.SMSCReceipt != SMSCReceiptModeFinalOutcome ||
 		got.SMEAcknowledgement != SMEDeliveryAcknowledgementModeNone ||
-		got.IntermediateNotification != IntermediateNotificationModeReserved3 ||
+		got.IntermediateNotification != IntermediateNotificationModeRequested ||
 		got.ReservedBits != 0xc0 {
 		t.Fatalf("unexpected field decode: %+v", got)
 	}
