@@ -576,6 +576,8 @@ func observeDelivery(deliver protocol.DeliverSM) map[string]string {
 		"optional_tlv_count":   fmt.Sprint(len(deliver.Optional)),
 	}
 	receipt, err := message.ParseDeliveryReceipt(deliver)
+	details["receipt_message_id_conflict"] = fmt.Sprintf("%t", receipt.MessageIDConflict)
+	details["receipt_state_conflict"] = fmt.Sprintf("%t", receipt.StateConflict)
 	switch {
 	case err == nil:
 		details["receipt_parse"] = "valid"
@@ -741,6 +743,11 @@ func sanitizeRawPDU(raw []byte, registry *codec.Registry) (FixtureFrame, bool) {
 	case protocol.CommandDeliverSM:
 		original, ok := decoded.Body.(protocol.DeliverSM)
 		if !ok {
+			return FixtureFrame{}, false
+		}
+		receipt, receiptErr := message.ParseDeliveryReceipt(original)
+		if errors.Is(receiptErr, message.ErrInvalidDeliveryReceipt) ||
+			(receiptErr == nil && (receipt.MessageIDConflict || receipt.StateConflict)) {
 			return FixtureFrame{}, false
 		}
 		body = sanitizeDeliverSM(original)

@@ -1,5 +1,3 @@
-//go:build interop
-
 package interopprobe
 
 import (
@@ -164,5 +162,30 @@ func TestSanitizeRawPDUReplacesDeliveryReceiptTextAndIDs(t *testing.T) {
 	}
 	if frame.Expect.Receipt == nil || frame.Expect.Receipt.MessageID != "fixture-001" {
 		t.Fatalf("fixture receipt expectation was not produced: %+v", frame.Expect.Receipt)
+	}
+}
+
+func TestSanitizeRawPDUExcludesConflictingReceiptEvidence(t *testing.T) {
+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := codec.EncodePDU(nil, codec.Header{
+		CommandID:      protocol.CommandDeliverSM,
+		CommandStatus:  protocol.StatusOK,
+		SequenceNumber: 11,
+	}, protocol.DeliverSM{
+		ESMClass:     0x04,
+		DataCoding:   protocol.DataCodingSMSCDefault,
+		ShortMessage: []byte("id:text-id sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:fixture"),
+		Optional: []protocol.OptionalParameter{
+			{Tag: protocol.TLVTagReceiptedMessageID, Value: append([]byte("tlv-id"), 0)},
+		},
+	}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sanitizeRawPDU(raw, registry); ok {
+		t.Fatal("conflicting receipt evidence was exported as a fixture")
 	}
 }
