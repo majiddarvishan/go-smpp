@@ -22,7 +22,7 @@ func main() {
 	requestTimeout := flag.Duration("request-timeout", 8*time.Second, "per-operation timeout")
 	peerWait := flag.Duration("peer-wait", 30*time.Second, "maximum wait for the ESME simulator to connect")
 	dlrWait := flag.Duration("dlr-wait", 5*time.Second, "maximum wait for a deliver_sm after submit_sm")
-	submitWait := flag.Duration("submit-wait", 5*time.Second, "maximum wait for an ESME-originated submit_sm")
+	submitWait := flag.Duration("submit-wait", 15*time.Second, "maximum wait for an ESME-originated submit_sm")
 	flag.Parse()
 
 	if *mode != "all" && *mode != "smsc" && *mode != "esme" {

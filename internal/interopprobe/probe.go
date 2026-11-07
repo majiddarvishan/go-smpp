@@ -341,10 +341,10 @@ func runSMSC(ctx context.Context, cfg Config) (PhaseResult, *Fixture) {
 	unbindErr := c.Unbind(unbindCtx)
 	cancelUnbind()
 	if unbindErr != nil {
-		result.addEvent("unbind", StatusFail, safeErrorDetails(unbindErr))
+		result.addEvent("unbind", StatusFail, unbindEventDetails(unbindErr, packetCapture))
 		result.setStatus(StatusFail)
 	} else {
-		result.addEvent("unbind", StatusPass, nil)
+		result.addEvent("unbind", StatusPass, unbindEventDetails(nil, packetCapture))
 	}
 
 	result.finish(packetCapture)
@@ -519,6 +519,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		})
 	}
 
+	fmt.Fprintf(output, "OBSERVE: trigger one outbound submit_sm from the ESME simulator now (window=%s).\n", cfg.SubmitWait)
 	submitTimer := time.NewTimer(cfg.SubmitWait)
 	select {
 	case observation := <-submits:
@@ -621,9 +622,55 @@ func safeErrorDetails(err error) map[string]string {
 	if errors.As(err, &opError) {
 		details["network_operation"] = opError.Op
 	}
+	var timeoutError *session.TimeoutError
+	if errors.As(err, &timeoutError) {
+		details["timeout_kind"] = timeoutError.Kind.String()
+		details["command_id"] = fmt.Sprintf("0x%08x", uint32(timeoutError.Command))
+		details["sequence_number"] = fmt.Sprint(uint32(timeoutError.Sequence))
+		details["timeout"] = timeoutError.After.String()
+	}
 	var responseError *session.ResponseError
 	if errors.As(err, &responseError) {
 		details["command_status"] = fmt.Sprintf("0x%08x", uint32(responseError.Status))
+	}
+	return details
+}
+
+func (c *capture) hasCommand(direction string, command protocol.CommandID) bool {
+	if c == nil {
+		return false
+	}
+	frames, _ := c.snapshot()
+	for _, frame := range frames {
+		if frame.Direction != direction {
+			continue
+		}
+		raw, err := hex.DecodeString(frame.Hex)
+		if err != nil {
+			continue
+		}
+		header, err := codec.DecodeHeader(raw)
+		if err == nil && header.CommandID == command {
+			return true
+		}
+	}
+	return false
+}
+
+func unbindEventDetails(err error, packetCapture *capture) map[string]string {
+	requestDirection, responseDirection := "esme_to_smsc", "smsc_to_esme"
+	if packetCapture != nil && packetCapture.localRole == "smsc" {
+		requestDirection, responseDirection = responseDirection, requestDirection
+	}
+	details := map[string]string{
+		"request_sent":       fmt.Sprint(packetCapture.hasCommand(requestDirection, protocol.CommandUnbind)),
+		"response_observed": fmt.Sprint(packetCapture.hasCommand(responseDirection, protocol.CommandUnbindResp)),
+	}
+	for key, value := range safeErrorDetails(err) {
+		details[key] = value
+	}
+	if details["request_sent"] == "true" && details["response_observed"] == "false" {
+		details["peer_response"] = "not_observed"
 	}
 	return details
 }

@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 MODE="${1:-all}"
+SUBMIT_WAIT="${SMPP_INTEROP_SUBMIT_WAIT:-15s}"
 case "$MODE" in
   all|smsc|esme) ;;
   *)
@@ -52,6 +53,7 @@ go-smpp local interoperability probe
 Mode: $MODE
 SMSC peer: ${SMPP_INTEROP_SMSC_ADDRESS:-127.0.0.1:3000}
 go-smpp server listener: ${SMPP_INTEROP_ESME_LISTEN_ADDRESS:-127.0.0.1:4000}
+ESME submit observation window: ${SUBMIT_WAIT}
 
 Before continuing:
 - Start the SMSC simulator for mode all or smsc.
@@ -62,7 +64,7 @@ Before continuing:
 EOF
 
 set +e
-go run -tags=interop ./cmd/interop-probe -mode "$MODE" 2>&1 | tee "$RUN_DIR/run.log"
+go run -tags=interop ./cmd/interop-probe -mode "$MODE" -submit-wait "$SUBMIT_WAIT" 2>&1 | tee "$RUN_DIR/run.log"
 RUN_STATUS=${PIPESTATUS[0]}
 set -e
 
