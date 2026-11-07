@@ -49,6 +49,11 @@ jobs:
           set -o pipefail
           go test ./... 2>&1 | tee "$RUNNER_TEMP/unit.log"
 
+      - name: Opt-in interoperability probe tests
+        run: |
+          go test -tags=interop -count=1 ./internal/interopprobe
+          go test -tags=interop -run='a^' ./cmd/interop-probe
+
       # The step log is awkward to read outside the web UI; surface failing tests as an annotation.
       - name: Report failing unit tests
         if: failure()
@@ -80,6 +85,7 @@ jobs:
           go test ./codec -run '^$' -fuzz='^FuzzDecodePDU$' -fuzztime=2s
           go test ./codec -run '^$' -fuzz='^FuzzFramerChunked$' -fuzztime=2s
           go test ./codec -run '^$' -fuzz='^FuzzDecodePDU50$' -fuzztime=2s
+          go test ./message -run '^$' -fuzz='^FuzzParseDeliveryReceipt$' -fuzztime=2s
 
       - name: Protocol and codec benchmarks
         run: go test -run '^$' -bench=. -benchmem ./protocol ./codec

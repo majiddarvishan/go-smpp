@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "synthetic-smpp34-basic-exchange",
+      "source": "synthetic",
+      "peer_alias": "synthetic",
+      "protocol_version": "3.4",
+      "capture_method": "constructed",
+      "frames": [
+        {
+          "direction": "esme_to_smsc",
+          "hex": "00000010000000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000010800000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "0000002f00000004000000000000000700010131323300010134353600000000000001000000024869020c00021234",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000004",
+            "command_status": "0x00000000",
+            "sequence_number": 7,
+            "body_type": "protocol.SubmitSM",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "0000001d800000040000000000000007666978747572652d3030303100",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000004",
+            "command_status": "0x00000000",
+            "sequence_number": 7,
+            "body_type": "protocol.SubmitSMResp",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000043000000050000000000000009000101313233000101343536000400000000000000001c69643a73796e7468657469632d303120737461743a44454c49565244",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000005",
+            "command_status": "0x00000000",
+            "sequence_number": 9,
+            "body_type": "protocol.DeliverSM",
+            "reencode": "exact",
+            "receipt": {
+              "message_id": "synthetic-01",
+              "text_status": "DELIVRD"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "simulator-smsc-peer-001",
+      "source": "simulator-peer",
+      "peer_alias": "peer-001",
+      "protocol_version": "3.4",
+      "capture_method": "wire-capture-sanitized",
+      "captured_at": "2026-11-07T14:25:52Z",
+      "evidence_ref": "INT-01-PEER-001-001",
+      "sanitization": {
+        "reviewed": true,
+        "policy": "peer-aware-allowlist-v1",
+        "bind_frames_excluded": true,
+        "sensitive_values_replaced": true,
+        "unknown_tlvs": "removed"
+      },
+      "frames": [
+        {
+          "direction": "esme_to_smsc",
+          "hex": "00000010000000150000000000000002",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000015",
+            "command_status": "0x00000000",
+            "sequence_number": 2,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000010800000150000000000000002",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000015",
+            "command_status": "0x00000000",
+            "sequence_number": 2,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "0000002900000004000000000000000300000031303030000000323030300000000000000300000000",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000004",
+            "command_status": "0x00000000",
+            "sequence_number": 3,
+            "body_type": "protocol.SubmitSM",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "0000001c800000040000000000000003666978747572652d30303100",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000004",
+            "command_status": "0x00000000",
+            "sequence_number": 3,
+            "body_type": "protocol.SubmitSMResp",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "000000a700000005000000006bc000000000003130303000000032303030000400000000050000006e69643a666978747572652d303031207375623a30303120646c7672643a303031207375626d697420646174653a3236313130373132303020646f6e6520646174653a3236313130373132303120737461743a44454c49565244206572723a30303020746578743a66697874757265001e000c666978747572652d30303100",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000005",
+            "command_status": "0x00000000",
+            "sequence_number": 1807745024,
+            "body_type": "protocol.DeliverSM",
+            "reencode": "decode-only",
+            "receipt": {
+              "message_id": "fixture-001",
+              "text_status": "DELIVRD"
+            }
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "0000001180000005000000006bc0000000",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000005",
+            "command_status": "0x00000000",
+            "sequence_number": 1807745024,
+            "body_type": "protocol.DeliverSMResp",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "00000010000000060000000000000004",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000006",
+            "command_status": "0x00000000",
+            "sequence_number": 4,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        }
+      ]
+    },
+    {
+      "id": "simulator-esme-peer-002",
+      "source": "simulator-peer",
+      "peer_alias": "peer-002",
+      "protocol_version": "3.4",
+      "capture_method": "wire-capture-sanitized",
+      "captured_at": "2026-11-07T14:26:08Z",
+      "evidence_ref": "INT-01-PEER-002-001",
+      "sanitization": {
+        "reviewed": true,
+        "policy": "peer-aware-allowlist-v1",
+        "bind_frames_excluded": true,
+        "sensitive_values_replaced": true,
+        "unknown_tlvs": "removed"
+      },
+      "frames": [
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000010000000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "00000010800000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "000000970000000500000000000000020000003130303000000032303030000400000000000000006e69643a666978747572652d303031207375623a30303120646c7672643a303031207375626d697420646174653a3236313130373132303020646f6e6520646174653a3236313130373132303120737461743a44454c49565244206572723a30303020746578743a66697874757265",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000005",
+            "command_status": "0x00000000",
+            "sequence_number": 2,
+            "body_type": "protocol.DeliverSM",
+            "reencode": "decode-only",
+            "receipt": {
+              "message_id": "fixture-001",
+              "text_status": "DELIVRD"
+            }
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "0000001180000005000000000000000200",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000005",
+            "command_status": "0x00000000",
+            "sequence_number": 2,
+            "body_type": "protocol.DeliverSMResp",
+            "reencode": "decode-only"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000010000000060000000000000003",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000006",
+            "command_status": "0x00000000",
+            "sequence_number": 3,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "decode-only"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -13,9 +13,10 @@ func TestPanicError(t *testing.T) {
 		t.Fatalf("nil PanicError: Error()=%q Unwrap()=%v", nilErr.Error(), nilErr.Unwrap())
 	}
 
-	byValue := &PanicError{Source: "session.Handler", Value: "boom"}
-	if got := byValue.Error(); !strings.Contains(got, "session.Handler") || !strings.Contains(got, "boom") {
-		t.Fatalf("Error() = %q, want the source and the panic value", got)
+	const secret = "PANIC_SECRET_MARKER"
+	byValue := &PanicError{Source: "session.Handler", Value: secret}
+	if got := byValue.Error(); !strings.Contains(got, "session.Handler") || !strings.Contains(got, "value type string") || strings.Contains(got, secret) {
+		t.Fatalf("Error() = %q, want source/type without the panic value", got)
 	}
 	if byValue.Unwrap() != nil {
 		t.Fatal("Unwrap() of a non-error panic value is not nil")

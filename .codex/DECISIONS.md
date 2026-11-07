@@ -276,10 +276,57 @@ The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
 
-## D-042 — Performance laboratory results are not acceptance results
+## D-046 — Product-neutral reusable library boundary
+
+**Decision:** `go-smpp` is a general-purpose SMPP 3.4 / 5.0 Go library. Its source, public API, examples, documentation, CI and maintained agent handoff files must not import, name, or encode assumptions for any downstream application or product. Public capabilities are added only when they are reusable protocol, transport, session, encoding, messaging, or observability primitives. Application workflows, test-run state, workload controllers, billing policy, application-level correlation/retention and product UI/CLI behavior remain outside the library.
+
+The standalone `cmd/smpp-sim` is retained solely as a generic SMSC peer for this repository's development/performance lab. It is not a public library package, is not imported by public packages, and does not define library behavior or API requirements.
+
+**Reason:** A reusable protocol library must serve independent ESME/SMSC applications without knowing their names, architectures, workload policies or product-specific requirements. This keeps the dependency direction one-way and prevents the core from accumulating special-purpose behavior.
+
+## D-047 — Peer-specific success-only alias for reserved registered_delivery value
+
+**Decision:** Keep the SMPP 3.4 wire interpretation explicit: the SMSC delivery-receipt subfield value `0b11` is reserved by the standard. Expose `SMSCReceiptModeSuccessOnly` as a named peer-specific alias for that same raw value when an SMSC explicitly documents or negotiates success-only semantics. Retain `SMSCReceiptModeReserved` as the standards-oriented alias. The library never assumes the peer-specific meaning, rewrites the octet, or treats it as portable SMPP behavior. The remaining `registered_delivery` layout is decoded according to its actual bit widths: two-bit SMSC receipt, two-bit SME acknowledgement, one-bit intermediate notification, and three reserved high bits.
+
+**Reason:** Some peers may assign operational meaning to a standards-reserved encoding. A reusable library can name that convention without claiming it is standardized or silently applying it to unrelated peers; lossless decode/encode remains the invariant.
+
+## D-048 — Performance laboratory results are not acceptance results
 
 **Decision:** Phase 16 provides repeatable codec/session/TCP/TLS benchmarks, profiling scripts, and a minimal SMPP peer simulator. End-to-end benchmarks default to one SMPP session and accept explicit additional session counts through `SMPP_BENCH_SESSIONS`; the lab must not silently assume that more connections are better.
 
 Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
 
 **Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.
+
+
+## D-049 — DeliverSM receipt evidence excludes response-only TLVs
+
+**Decision:** For `deliver_sm`, standard receipt evidence comes from the delivery-receipt ESM class marker, recognized receipt text, and receipt/intermediate-notification TLVs defined for `deliver_sm` (`receipted_message_id`, `message_state`, and optional `network_error_code`). The parser may preserve and validate `delivery_failure_reason` and `additional_status_info_text` if a peer supplies them on `deliver_sm`, but these response-oriented TLVs do not establish receipt identity and neither may make an ordinary `deliver_sm` a receipt by itself.
+
+**Reason:** SMPP 3.4 defines `delivery_failure_reason` for `data_sm_resp`; `additional_status_info_text` describes a response PDU. Treating either as standalone receipt evidence creates false-positive DLR classification. See SMPP 3.4 Issue 1.2, §§4.4, 4.7 and 5.3.2.11/5.3.2.33.
+
+
+## D-050 — Caller-controlled panic and error text is not automatic diagnostic data
+
+**Decision:** Library-owned logs, Observer events and default error strings must not format caller-controlled panic values, callback/decoder error strings or arbitrary protocol `Reason` text. `protocol.PanicError.Error()` reports only the panic source and value type; session panic logs report source/type/stack without the panic value; decode-failure events report the error type; one-way handler failure logs report the error type; and fatal logs/events use only the bounded fatal-kind enum. `PanicError.Value`, `SemanticError.Reason` and `FatalError.Reason` remain available for deliberate programmatic inspection and `Unwrap` preserves `errors.Is`/`errors.As` behavior, but these values and any unwrapped error text are untrusted and may contain credentials or message data.
+
+**Reason:** User callbacks, custom registry decoders/encoders and transports can embed passwords, addresses, message bodies or arbitrary TLV values in panic/error text or protocol Reason fields. Automatically copying that text into default logs/events/error strings creates a data-exfiltration path unrelated to raw packet capture.
+
+## D-051 — Raw packet capture is exact, opt-in and sensitive
+
+**Decision:** `PacketTracer` remains nil by default and metadata-only when configured. Full `RawPDU` delivery requires both a configured tracer and explicit `TraceRawPDU=true`; it is an exact owned copy with no built-in redaction. Every raw frame is treated as sensitive because known fields and unknown/vendor TLVs may carry credentials, identifiers, addresses or message content. The generic library does not attempt unsafe universal redaction.
+
+**Reason:** Peer/vendor TLVs do not have universally knowable privacy semantics. Metadata-only tracing is the safe default; raw capture belongs in a short-lived, isolated, access-restricted diagnostic workflow with peer-aware allowlist sanitization or full-frame dropping before persistence.
+
+## D-052 — Interoperability fixtures are test-only and provenance-tagged
+
+**Decision:** The interoperability fixture manifest and replay harness live only in repository test code and `testdata`; they add no public API, production package, or runtime dependency. Each fixture explicitly identifies itself as synthetic or anonymized real-peer evidence. Real-peer entries require an opaque peer alias and evidence reference, capture provenance, a reviewed peer-aware sanitization declaration, exclusion of bind/outbind frames, replacement of sensitive values, and removal or explicit review of unknown TLVs. Synthetic fixtures never count as evidence of deployed-peer interoperability.
+
+**Reason:** A reusable SMPP library needs reproducible peer compatibility evidence without coupling protocol packages to test-run workflows or persisting credentials, subscriber data, or unsanitized packet captures.
+
+
+## D-053 — Local simulator interoperability probe is opt-in and provenance-separated
+
+**Decision:** The local two-way interoperability probe is a test/development tool under `cmd/interop-probe` and `internal/interopprobe`, compiled only with the `interop` build tag. It exercises existing client/server APIs and adds no public API, production runtime package, or third-party dependency. It runs sequentially with one connection per external simulator. Credentials are supplied through hidden prompts or environment variables and are never written to evidence. Raw tracing is enabled only inside this explicit local run; bind/outbind frames are dropped before body decoding, unsupported commands are dropped, and only an allowlisted, sanitized re-encoding is exported. Addresses and identifiers are replaced, message content is removed or replaced with synthetic text, and non-allowlisted TLVs are removed. Malformed or ambiguous receipt metadata is excluded from exported candidates. Candidate fixtures use source `simulator-peer` and remain unreviewed until a maintainer inspects the sanitized bytes. Simulator evidence is not represented as deployed-peer/vendor evidence.
+
+**Reason:** Independent protocol implementations are useful interoperability evidence, but simulator-only observations must not be conflated with production SMSC/ESME behavior. Explicit build tagging keeps the probe out of normal library builds and coverage, while the sanitized-candidate workflow avoids persisting raw credentials, addresses, message content, or unknown vendor TLVs.

@@ -62,3 +62,17 @@ func SegmentTextUDH(text string, allowSurrogates bool, reference byte) ([]Segmen
 func SegmentTextUDH16Unpacked(text string, allowSurrogates bool, reference uint16) ([]Segment, error)
 const UCS2MultipartUnits untyped int = 67
 const UCS2SingleUnits untyped int = 70
+field DeliveryReceipt.AdditionalStatusInfoText string
+field DeliveryReceipt.DeliveredCount string
+field DeliveryReceipt.DeliveryFailureReason uint8
+field DeliveryReceipt.DoneDate string
+field DeliveryReceipt.ErrorCode string
+field DeliveryReceipt.HasAdditionalStatusInfoText bool
+field DeliveryReceipt.HasDeliveryFailureReason bool
+field DeliveryReceipt.HasNetworkErrorCode bool
+field DeliveryReceipt.NetworkErrorCode [3]byte
+field DeliveryReceipt.SubmitDate string
+field DeliveryReceipt.SubmittedCount string
+field DeliveryReceipt.Text string
+method (DeliveryReceipt).SMPPMessageState() (protocol.MessageState, bool)
+var ErrUnsupportedDeliveryReceiptDataCoding error

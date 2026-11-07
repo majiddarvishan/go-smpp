@@ -98,7 +98,7 @@ func (s *Session) reportPanic(p *protocol.PanicError) {
 		s.logger.Error("recovered panic; the process keeps running",
 			"event", "smpp_panic_recovered",
 			"source", p.Source,
-			"panic", fmt.Sprint(p.Value),
+			"panic_type", fmt.Sprintf("%T", p.Value),
 			"stack", string(p.Stack))
 	}
 	if p.Source != sourceObserver {

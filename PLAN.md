@@ -235,16 +235,18 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 17 — Performance acceptance and optimization
 
-> Reference gate status: implementation complete; final throughput/session-count evidence must come from the `smpp-reference` 8-core/10-GB Linux/amd64 runner before the two remaining checkboxes can be closed.
+> Historical reference acceptance passed on the documented `smpp-reference` 8-core/10-GB Linux/amd64 runner. A fresh 60-second run on the combined current HEAD after later library additions remains a separate P1 release-regression gate.
 
-- [ ] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
+- [x] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
-- [ ] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.
+- [x] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.
 - [x] Verify bounded memory under sustained load.
 - [x] Verify no goroutine-per-message growth pattern.
 - [x] Verify configured timeout tracking remains bounded and does not become a throughput bottleneck.
 - [x] Profile before every significant optimization.
 - [x] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
+
+**Reference acceptance evidence:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md) records the 2026-10-06 Linux/amd64 reference run at 713,932 request-PDU/s for 60 seconds with one session. The report documents a local acceptance-script edit caveat; recorded parameters match current defaults, and no library source changed between the measured commit and the subsequent Go directive/docs-only commits. A new combined-HEAD run after later library additions remains a separate pre-release regression task.
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
@@ -273,12 +275,12 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Complete package documentation.
 - [x] Document interoperability quirks and vendor-extension APIs.
 - [x] Document GSM 7-bit and Unicode/emoji interoperability behavior and peer-capability caveats.
-- [ ] Publish reproducible performance results for the reference machine.
+- [x] Publish reproducible performance results for the reference machine.
 - [ ] Tag the first production-ready release.
 
-## Phase 20 — Optional delivery-receipt parsing and Test Studio library readiness
+## Phase 20 — Optional generic delivery-receipt parsing
 
-> Owner authorized **go-smpp library improvements only**, not `smpp_sim` implementation. Task details live in `.codex/TASKS.md`. This additive parser must preserve the SMPP 3.4 wire/session core and existing API.
+> This additive message-layer helper preserves the SMPP 3.4 wire/session core and existing API. It defines protocol parsing only; application correlation and delivery policy remain outside the library.
 
 - [x] **DLR-01:** Publish a pure `message`-package receipt parser for `protocol.DeliverSM`, with explicit no-receipt handling.
 - [x] **DLR-02:** Apply text-first `id:`, TLV-fallback identifier precedence; independently apply TLV-first `message_state`, text `stat:` fallback; preserve conflict evidence and opaque IDs.
@@ -290,6 +292,92 @@ This file is the source of truth for implementation progress. Every completed ph
 
 **Implementation verification:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7), [CI run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) passed Go 1.25/1.27 matrices (format, unit, API/no-panic, lint, race, coverage/fuzz/performance smoke). DLR-07 was closed after [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7) merged as `e4606a40961d62cf8eb917f28120385282e89b29`; final PR-head CI [42306339442](https://github.com/majiddarvishan/go-smpp/actions/runs/42306339442) passed both Go 1.25/1.27 matrices.
 
+## Phase 21 — Product-neutral library audit and generic protocol completeness
+
+> This repository is a reusable SMPP library, not an application integration. No downstream product may be imported, named, or used to define library APIs. Task details were registered in `.codex/TASKS.md` before implementation.
+
+- [x] Remove consumer/product-specific material from README, docs, `.codex` and other maintained handoff files; retain only protocol-level facts and generic development-tool descriptions.
+- [x] Record the product-neutral boundary in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`.
+- [x] Extend generic DLR parsing with all standard text receipt fields (`id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err`, `text`) while preserving raw values.
+- [x] Parse standard `deliver_sm` receipt TLVs (`receipted_message_id`, `message_state`, optional `network_error_code`) with strict length/duplicate handling. Tolerate response-oriented `delivery_failure_reason` and `additional_status_info_text` as peer-supplied diagnostics without treating either alone as receipt evidence.
+- [x] Support IA5 and Latin-1 DLR text; explicitly report unsupported encodings rather than treating them as an ordinary non-receipt or guessing.
+- [x] Add a typed accessor for the standard `protocol.MessageState` without changing existing public field types.
+- [x] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-bit round trips. Document the `0b11` SMSC receipt value as standards-reserved and expose success-only meaning only as an explicitly peer-specific alias.
+- [x] Reconcile the historical backlog against implemented source/tests and correct stale Phase 12–14/17 status.
+- [x] Align current status/handoff docs with the published reference acceptance result and remaining release gates.
+- [x] Add comprehensive table-driven, malformed-input, round-trip, API snapshot and no-panic tests.
+- [x] Pass the complete Go 1.25.x/1.27.x CI matrix and confirm final-head checks are green. PR #8 remains Draft pending maintainer review; no merge was performed.
+
+**Phase 21 verification — 2026-11-07**
+
+- Local `scripts/phase21-validation.sh` archive on commit `dff70d0968332e9fa78f4a4c80af744d00ab429a`: **37 PASS, 0 FAIL, 0 BLOCKED**, covering Go 1.25.0 and Go 1.27.0. The untracked `.bench/` directory was preserved.
+- Follow-up correctness fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` prevents response-only TLVs from identifying a `deliver_sm` receipt and adds regression coverage.
+- Implementation-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz (including DLR fuzz), benchmarks, 2-second resource/performance smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The subsequent documentation-only PR-head run [42369351000](https://github.com/majiddarvishan/go-smpp/actions/runs/42369351000) also passed both jobs.
+- The 2-second CI smoke is not the 60-second current-HEAD reference acceptance. Keep that P1 release gate open.
+
+## P1 — Safe observability and packet capture (OBS-01)
+
+- [x] Audit all library-owned packet tracing, decode-failure, panic, callback-error and fatal-protocol diagnostic paths for credential, address, message-body and arbitrary TLV leakage.
+- [x] Keep raw PDU capture disabled unless both a tracer and the explicit raw-capture option are configured; preserve metadata-only tracing by default.
+- [x] Ensure caller-controlled panic values, callback/decoder error messages and protocol `Reason` text are not copied into default logs, Observer events or error strings. Preserve programmatic fields and error identity without formatting untrusted values.
+- [x] Document that every raw PDU may contain credentials, addresses, message content, identifiers or vendor TLVs; the generic library deliberately provides no unsafe universal redaction.
+- [x] Document short-lived, isolated, access-restricted local capture; drop bind/outbind frames, sanitize all other frames with a peer-aware allowlist, prefer synthetic data, and never forward unsanitized raw frames to shared/third-party telemetry.
+- [x] Add regression tests proving secret markers in authenticator panics, one-way handler errors, custom decoder errors and fatal decoder Reason are absent from logs/events/error strings.
+- [x] Verify Go 1.25.x and 1.27.x format, unit, race, fuzz, lint, coverage and CI before closing OBS-01.
+
+**OBS-01 verification — 2026-11-07**
+
+- Source/test commits: `82c06bddafc482c6e336c10c84f5d904d12c50c3`, `b3ed89c58b28c38d0ce7e0d43b1bf89a0c8a0a59`, and final test correction `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`.
+- GitHub Actions [run 42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage. The final documentation/status PR head `64af94935c5c07af1c7995813c3b1a228c0c244d` passed both jobs in [run 42371554356](https://github.com/majiddarvishan/go-smpp/actions/runs/42371554356).
+- Raw capture remains a separate explicit opt-in; no built-in PCAP/file persistence or generic vendor-TLV redactor was added. Metadata-only tracing remains the safe default.
+- The 2-second CI performance smoke is not the 60-second reference acceptance; PERF-01 remains open.
+
 ## Backlog policy
 
 Items intentionally deferred from the first submit/deliver milestone are tracked in `.codex/BACKLOG.md`. Moving an item out of backlog requires adding it to the appropriate phase here; completion is still recorded only by changing its checkbox to `[x]`.
+
+## P1 — Interoperability fixture framework (INT-01)
+
+- [x] Define a versioned, product-neutral fixture manifest distinguishing constructed synthetic examples from anonymized real-peer evidence.
+- [x] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
+- [x] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
+- [x] Include only clearly labeled synthetic fixtures until reviewed peer exchanges are available. Never infer vendor behavior or claim deployed-peer interoperability from synthetic data.
+- [x] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
+- [x] Run the probe against the two local SMPP 3.4 simulator components, review the sanitized archive, and add only the two approved `simulator-peer` fixtures (`simulator-smsc-peer-001`, `simulator-esme-peer-002`) to the manifest; keep them distinct from deployed-peer evidence.
+- [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
+- [x] Improve the opt-in probe's ESME-originated `submit_sm` observation workflow with a longer configurable window, an explicit just-in-time prompt, and sanitized Unbind request/response diagnostics; keep it build-tagged and outside the public API. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
+- [ ] Re-run the ESME phase using the operator-controlled ESME CLI: after `OBSERVE`, issue exactly one outbound `submit_sm` within the configured window; verify `submit_sm_resp` and characterize `unbind_resp` behavior. Missing `unbind_resp` remains a peer-compatibility finding, not library success.
+- [x] Make the test-only bind gate observe the actual successful `bind_transceiver_resp` write rather than polling transient session state; preserve a safe, allowlisted session-close cause when the response is not written. Cover the response/close race and peer EOF with regression tests. Final head `0cf19df7fe3dd145a07b839745a3be5bd4870358` passed full CI on Go 1.25.x and Go 1.27.x in [run 42393189702](https://github.com/majiddarvishan/go-smpp/actions/runs/42393189702).
+
+**INT-01 framework verification — 2026-11-07**
+
+- Implementation commits: task registration `62a4a5441f8389decc0ed6fedf623808873fc367`, fixture harness/docs `9bd79115444fd5408cb4d1a371a8f9e61a0934ce`, gofmt correction `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`.
+- GitHub Actions [run 42375378458](https://github.com/majiddarvishan/go-smpp/actions/runs/42375378458) passed both Go 1.25.x and Go 1.27.x, including gofmt, lint (Go 1.27.x), unit, race, coverage, fuzz smoke, protocol/codec benchmarks, Phase 17 development performance/resource smoke, and no-unsafe.
+- The manifest initially contained five constructed synthetic SMPP 3.4 PDUs; two reviewed `simulator-peer` fixtures from the local run were subsequently added. No deployed real-peer or vendor interoperability is claimed.
+- The fixture harness is test-only; it adds no public API or runtime dependency. Bind/outbind frames are rejected, and real-peer entries require reviewed sanitization metadata.
+
+**INT-01E verification — 2026-11-07**
+
+- Final probe/sanitizer commit `05a6924563872e9a108b194e021dee70ec0e6c35` passed [GitHub Actions run 42380908792](https://github.com/majiddarvishan/go-smpp/actions/runs/42380908792) on Go 1.25.x and Go 1.27.x. This includes gofmt, lint, unit, race, fuzz, coverage, benchmark/performance checks, the opt-in sanitizer tests, and CLI compile validation.
+- The hosted-runner Phase 17 60-second soak is not the dedicated 60-second reference acceptance on the reference environment; PERF-01 remains open.
+- The first live simulator run is recorded below; the sanitized archive was reviewed and two simulator fixtures were added. The ESME-originated submit action still needs a deliberate trigger, and both simulators' missing `unbind_resp` behavior remains an open compatibility finding.
+
+**Local simulator evidence — 2026-11-07**
+
+- Reviewed sanitized archive: `go-smpp-interop.qgB9QT.tar.gz`; no passwords, bind frames, raw PDU files, original addresses, IDs or message content were committed.
+- SMSC simulator: TRX bind, enquire_link, submit_sm (`registered_delivery=0x03`), submit_sm_resp and parsed `DELIVRD` receipt all PASS. Unbind request was sent; no `unbind_resp` was observed within the 8-second operation deadline.
+- ESME simulator: TRX bind, enquire_link, synthetic deliver_sm and deliver_sm_resp all PASS. No outbound ESME submit_sm was observed during the original 5-second window. Unbind request was sent; no `unbind_resp` was observed within the operation deadline.
+- Added reviewed fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002` to `testdata/interop/manifest.json`. Both remain explicitly `source=simulator-peer`; they do not establish deployed-peer/vendor compatibility.
+- Probe follow-up: default ESME submit observation window increased to 15 seconds and is configurable through `SMPP_INTEROP_SUBMIT_WAIT`; a just-in-time prompt and safe Unbind request/response diagnostics were added for both client and server roles. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
+- SMPP 3.4 permits Unbind from either role and expects the matching `unbind_resp`; the missing response is retained as an observed simulator compatibility gap, not normalized away.
+
+**Follow-up ESME CLI run analysis — 2026-11-07**
+
+- Reviewed sanitized archive `go-smpp-interop.MLqt5S.tar.gz`. The run lasted about 0.55 seconds and contains only `run.log`, `report.json`, and an empty candidate manifest; no raw PDU or credential material was persisted.
+- The probe received a TRX bind attempt and the configured authenticator accepted it: a rejected bind would have produced the explicit SMPP `command_status` and allowlisted reason, not the generic `error_type=*`.
+- The previous probe then reported `session closed before reaching Bound_TRX` through a generic `*errors.errorString`. Its 10 ms state polling could miss a short-lived Bound_TRX state if the ESME closed immediately after receiving `bind_transceiver_resp`; the old report also discarded `Session.Err()`, so this archive cannot distinguish peer EOF/reset from another terminal cause.
+- `frames_dropped_or_excluded=1` is expected here: the inbound bind frame is deliberately excluded by the credential-frame sanitizer. `frames=0` does not mean no bind request arrived.
+- No `OBSERVE` prompt was reached, so no CLI `submit_sm` command could be issued. The ESME simulator is operator-controlled; the correct order is READY → start ESME → successful bind/delivery handshake → OBSERVE → issue one CLI `submit_sm`.
+- Probe follow-up replaces transient state polling with the session's post-write `EventResponseSent` observation for `bind_transceiver_resp`, prioritizes an already-observed response over a simultaneous close, and retains a safe session-close cause (EOF/reset/fatal protocol classification). The CLI prompt and instructions are clarified. Regression tests cover the response/close race and peer EOF; full CI passed on Go 1.25.x and Go 1.27.x in [run 42393189702](https://github.com/majiddarvishan/go-smpp/actions/runs/42393189702) at final head `0cf19df7fe3dd145a07b839745a3be5bd4870358`.
+
+**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until deployed-peer evidence is added and reviewed.

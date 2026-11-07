@@ -2,231 +2,110 @@
 
 ## Current state
 
-Branch: `main`
-
-Phase 0 through Phase 16 are complete and verified. Phase 16 adds the minimal SMPP peer simulator, codec/session/TCP/TLS benchmark laboratory, timeout/window/liveness overhead benchmarks, and CPU/heap/mutex/block/scheduler/GC profiling. Phase 17 performance acceptance and optimization is now in progress.
-
-The core Phase 5–7 implementation began in commit `2dd79458bd4859ad4a834e79f53bbcfb4572622d` and was hardened by follow-up test/correctness commits through `01ec03bd3ed9cae50f0e905835c5789032fd5751` before the completion documentation updates.
-
-Network transport is TCP. X.25 is out of scope. TLS is implemented as TLS-over-TCP using the Go standard library.
-
-## Phase 5 completed — shared session state machine
-
-The `session` package now contains a shared state machine for ESME and SMSC roles with:
-
-- `Closed`, `Open`, `Outbound`, `Bound_TX`, `Bound_RX`, `Bound_TRX`, and `Unbound` states
-- role-aware legal-operation validation
-- bind transmitter/receiver/transceiver lifecycle
-- unbind lifecycle
-- atomic state reads plus serialized multi-step lifecycle transitions
-- invalid-state response behavior
-- race-safe/idempotent close behavior
-- fatal decoder/framing failure -> structured diagnostic -> connection close -> state Closed exactly once
-
-The codec remains independent of session state.
-
-## Phase 6 completed — TCP and TLS-over-TCP transport
-
-The `transport` package now provides:
-
-- plain TCP dial/listen using `net.Dialer` and `net.ListenConfig`
-- TLS client/server wrappers using `crypto/tls`
-- TLS dial and listen helpers layered over TCP
-- caller-supplied `net.Conn` compatibility
-- `WriteFull` handling short writes so full-dispatch semantics are explicit
-- tests for localhost TCP, fragmented stream reads, short writes, TLS handshake/data exchange, connection close, and fatal receive interrupting a blocked transmit
-
-A fatal structural/framing PDU closes the offending connection. Closing the underlying `net.Conn` interrupts blocked RX/TX operations. No stream resynchronization is attempted.
-
-## Phase 7 completed — asynchronous engine with synchronous public API
-
-Each active session uses independent long-lived RX and TX paths. There is no goroutine-per-request/message architecture.
-
-Implemented behavior includes:
-
-- synchronous/context-aware public request calls over the asynchronous wire engine
-- typed `BindTransmitter`, `BindReceiver`, `BindTransceiver`, `SubmitSM`, `DeliverSM`, `EnquireLink`, and `Unbind` helpers
-- session-local outbound sequence generation in `1..0x7fffffff` with wrap back to 1
-- inbound interoperability sequence acceptance through `0xffffffff`
-- exact inbound sequence echo in responses
-- bounded pending-request correlation
-- out-of-order response completion
-- concurrent bidirectional TRX operation
-- inbound `deliver_sm` processing while an outbound `submit_sm` remains outstanding
-- concurrent-safe `Session`, active `Client`, and `Server` lifecycle/request APIs
-- exactly-once terminal completion primitive across response, caller cancellation, future timeout completion, fatal protocol failure, and session loss
-- late/unmatched/duplicate responses cannot complete a different request
-- owned copies for response values returned past the receive-frame lifetime
-
-Phase 8 adds a configurable outbound request window (default 1024), context-cancellable blocking acquisition, non-blocking `TryRequest` admission with `ErrWindowFull`, exact-once slot release through pending-entry ownership, and lock-free window utilization/high-water/wait snapshots with an optional observer hook. `MaxPending` remains a defensive correlation-table ceiling and is automatically kept at least as large as the window.
-
-Phase 9 adds configurable response deadlines that begin only after full PDU dispatch, a cancellable shared deadline heap with one reusable timer/goroutine per session, typed response/enquire timeouts, Session Init timeout, automatic Enquire Link after idle periods, and inactivity shutdown. Deadline cancellation is coupled to the exact-once pending terminal path so window capacity and timer state are released together.
-
-Phase 10 adds opt-in automatic reconnect/rebind for dialed clients with bounded exponential backoff, persistent bind-profile copies, fresh sequence/pending state per replacement session, typed unavailable/loss metadata, retained fatal-protocol loss cause, and explicit Close cancellation. No ambiguous submit/deliver request is replayed.
-
-Phase 11 completes SMSC/server mode with TCP/TLS listener construction, bind authentication and submit dispatch hooks, per-session isolation and sequence spaces, Session Init enforcement, configurable active-session limits, server-originated `deliver_sm`, and malformed/slow-client isolation. Outbound server requests use the same bounded window and response-timeout machinery as client requests.
-
-Phase 12 adds GSM 03.38 default/extension alphabet conversion, septet packing/unpacking, strict UCS-2, UTF-16BE surrogate-pair emoji support, explicit text encoding selection, binary payload helpers, UDH multipart segmentation/reassembly metadata, and SAR-TLV helpers. Segmentation counts septets/code units rather than Go runes and never splits a UTF-16 surrogate pair.
-
-Phase 13 completes the SMPP 3.4 command surface with `data_sm`, `submit_multi`, `query_sm`, `cancel_sm`, `replace_sm`, `alert_notification`, and `outbind`; registers all 44 SMPP 3.4 standard TLV tag identifiers; and verifies the complete named 3.4 command-status set. `outbind` and `alert_notification` are modeled as one-way primitives, never consume a pending/window slot, and never receive a synthetic response. Outbind moves both sides through `Outbound` and permits the ESME to originate `bind_receiver`. `replace_sm` is intentionally Bound_TX-only per the 3.4 operation matrix. Typed client/session/server convenience methods were added for the newly completed operations.
-
-Phase 14 extends that same core rather than introducing a parallel SMPP 5.0 stack. `Config.Profile` selects the standard registry/profile, bind negotiation records `PeerCapabilities`, and an ESME can use v5-only operations only after 5.0 was mutually negotiated. SMSC sessions automatically add `sc_interface_version` to successful bind responses for 3.4/5.0 peers, but do not send it to pre-3.4 peers. A local 3.4 profile cannot advertise 5.0, and a local 5.0 profile that intentionally binds as 3.4 is capped at 3.4 capabilities.
-
-The v5 registry adds six Cell Broadcast command IDs and 20 v5 TLV tags on top of the complete 3.4 registry, including `congestion_state`, broadcast/billing fields, number portability, and endpoint network/node identification. `broadcast_sm`, `query_broadcast_sm`, and `cancel_broadcast_sm` have typed session/client APIs. The codec accepts `congestion_state` on normal, header-only, and non-zero-status responses; error responses may carry TLVs without reintroducing their omitted standard body. `FlowController` receives validated 0..100 congestion feedback on the RX path and is intentionally separate from the hard request-window bound.
-
-## Phase 15 completed — observability without hot-path logging
-
-Each `Session` now exposes a lock-free `Metrics()` snapshot for sent/received requests and responses, protocol/liveness timeouts, Enquire Link activity, decode/fatal failures, response RTT samples, congestion feedback, and the bounded request-window snapshot. The client exposes reconnect and failed-reconnect counters without changing reconnect semantics.
-
-`Observer` provides optional typed session events and `PacketTracer` provides optional direction/header/length traces. Both are nil by default and use no background worker/queue. Raw PDU tracing is a separate `TraceRawPDU` opt-in because complete wire frames may contain bind credentials or SMS content. Normal traffic still produces no per-PDU `slog` records. Fatal structural/framing failures continue to emit the mandatory safe structured diagnostic before/while closing the offending TCP session, regardless of whether optional observability hooks are configured.
-
-RTT measurement is tied to the full-dispatch boundary. A very fast peer can return a response before the TX goroutine records its post-write timestamp; that race is preserved as a valid zero lower-bound RTT sample instead of dropping the sample. Congestion metrics are updated from negotiated SMPP 5.0 response feedback even if no adaptive `FlowController` is configured.
-
-## Phase 16 completed — performance laboratory
-
-Phase 16 added a reproducible benchmark stack and verified it on Go 1.26.8/Linux amd64. The end-to-end workload exchanges `submit_sm/submit_sm_resp` and `deliver_sm/deliver_sm_resp` concurrently, counts only request PDUs in `request_pdu/s`, and still processes every required response.
-
-GitHub Actions run `35279555454` completed successfully with `go test ./...`, `go test -race ./...`, `go vet ./...`, codec/session microbenchmarks, in-memory bidirectional benchmarks, localhost TCP/TLS benchmarks, and profiling.
-
-Development-run baselines on the hosted AMD EPYC runner were approximately 163k request-PDU/s for one in-memory session, 42.6k for one localhost TCP session, 56.3k for two TCP sessions, 60.0k for four, and 60.2k for eight. TLS measured approximately 39.7k, 52.0k, 55.4k, and 55.5k request-PDU/s for 1/2/4/8 sessions respectively. These numbers are diagnostics only and are not the Phase 17 8-core/10-GB acceptance result.
-
-The first profile shows the main optimization candidates are session scheduling/channel coordination and per-request allocation pressure rather than codec framing: the in-memory path already exceeds the target on one session, while localhost TCP plateaus well below it on this runner. The heap profile also highlights `Session.request`, short-message encoding/decoding, owned response copies, and deadline records as measurable allocation sources.
-
-## Validation performed
-
-GitHub Actions run `34986312997` validated the Phase 5–7 code on Go 1.26.x / Linux amd64 and completed successfully:
-
-```text
-go test ./...
-go test -race ./...
-go test -run '^$' -bench=. -benchmem ./protocol ./codec
-```
-
-Coverage added for these phases includes:
-
-- state transitions and invalid-state commands
-- 128 concurrent requests with responses returned in reverse order
-- concurrent bidirectional submit/deliver traffic
-- `deliver_sm` while `submit_sm` is still pending
-- receive-side sequence values through `0xffffffff`
-- fragmented TCP reads and short writes
-- TLS-over-TCP handshake/data exchange
-- fatal malformed PDU logging + close
-- fatal receive closing a connection while TX is blocked
-- response/timeout/cancellation/session-loss exactly-once completion races
-- concurrent client/server/session close behavior
-- outbound sequence wrap
-
-The protocol/codec benchmarks remain microbenchmarks; no end-to-end 100k request-PDU/s performance claim has been made yet.
-
-The Phase 15 apply gate runs on Go 1.26.x/Linux and requires all of the following before the phase commit can be pushed to `main`:
-
-```text
-git diff --check --cached
-go test ./...
-go test -race ./...
-go vet ./...
-```
-
-Phase 15 adds tests for observability counters/events, opt-in packet tracing and raw-trace gating, timeout/liveness counters, congestion metrics, reconnect metrics, fatal decode counters/logging, and ordinary-traffic no-log behavior.
-
-## Important requirements to preserve
-
-- 100k aggregate bidirectional request-PDU/s target on 8 cores / 10 GB RAM with minimum practical TCP session count.
-- locally generated sequence numbers: `1..0x7fffffff`.
-- inbound sequence interoperability: accept `1..0xffffffff` and preserve exact value in responses.
-- synchronous/context-aware public API over an asynchronous pipelined engine.
-- thread-safe active runtime APIs; no goroutine-per-message/request/timeout model.
-- all queues/pending structures must remain bounded.
-- configurable request-response timeout; Session Init, Enquire Link and inactivity handling remain required.
-- auto-reconnect/rebind is implemented without hidden auto-resubmit of ambiguous requests.
-- fatal malformed/framing PDU => mandatory structured error log + close offending connection; no stream resynchronization.
-- GSM 03.38/GSM 7-bit, strict UCS-2, and UTF-16BE surrogate-pair/emoji support are implemented and must remain separate from the protocol hot path.
-- SMPP 3.4 complete first, architecture SMPP 5.0-aware.
-- no `unsafe` initially; minimal runtime dependencies.
-
-## Phase 17 progress — profile-guided TCP optimization
-
-The first Phase 17 profile showed the single-session localhost TCP path dominated by transport write syscalls. Opportunistic TX batching was therefore implemented and then upgraded to `net.Buffers` scatter/gather for plain `*net.TCPConn` sessions. A same-run batch sweep on a hosted AMD EPYC 9V74 runner improved one-session localhost TCP from roughly 67.8k request-PDU/s at batch 1 to roughly 182.5k request-PDU/s at batch 32 while processing all required SMPP responses. This is a development-run result, not the 8-core/10-GB acceptance result.
-
-The response-deadline record is now embedded in `pendingRequest`, the dispatch/receive timestamps are reused, caller parallelism is configurable in the benchmark lab, and the deadline microbenchmark has reached zero allocations in recent CI runs. An attempted outbound frame `sync.Pool` optimization was reverted after CI showed it increased bytes/op and allocations/op; Phase 17 remains profile-driven rather than keeping regressions.
-
-
-
-The Phase 17 short sustained CI checkpoint now verifies all mandatory SMPP responses, fixed-worker goroutine bounds, bounded pending/window state, and zero retained heap growth after GC in the sampled run. `PLAN.md` marks those non-reference-specific checks complete. Final 100k/minimum-session/sustained-memory acceptance remains open until `scripts/acceptance.sh` runs on the actual 8-core/10-GB reference environment.
-
-
-
-Phase 17 now has a successful 60-second development soak: one TCP session, 128 fixed callers, ~352,587 request-PDU/s, ~21.15M request/response transactions, 3 MiB peak sampled heap, zero retained heap growth after GC, and bounded pending/window high water of 64. The no-`unsafe` CI gate also passes. These results are development evidence only; the remaining Phase 17 blockers are the actual 8-core/10-GB reference throughput run and its minimum-session-count result.
-
-## Phase 17 reference-run status
-
-Reference workflow run `35289231617` was triggered from commit `5c12ee45a67070452c8b5611906c986fbbe0fbb7`. Its `reference-acceptance` job is queued waiting for a self-hosted Linux/x64 runner carrying the `smpp-reference` label. The ordinary CI run for the same commit completed successfully, including unit tests, race tests, performance smoke, sustained resource-bound smoke, and the no-`unsafe` gate.
-
-The reference workflow now supports both manual `workflow_dispatch` and a main-branch commit message containing `[reference]`; this makes the queued job start automatically once an eligible runner is online. The final two Phase 17 checkboxes remain intentionally open until that exact reference contract succeeds.
-
-## Phase 18 completed — reliability, fuzzing and chaos
-
-Phase 18 is complete and verified in GitHub Actions run `35289809937` on Go 1.26.x/Linux amd64. The run passed the full unit suite, `go test -race ./...`, both codec fuzz-smoke targets, protocol/codec benchmarks, the Phase 17 performance smoke, the sustained resource-bound smoke, and the no-`unsafe` gate.
-
-Phase 18 added explicit end-to-end coverage for fragmented and coalesced real TCP traffic, malformed/oversized/truncated frames, invalid mandatory-field and TLV lengths, fail-closed no-resynchronization behavior, fatal-log redaction, unexpected and duplicate responses, disconnects during bind/idle/full-window states, late-response timeout storms, slow application handlers, and slow peers with blocked TX. Existing out-of-order, high inbound sequence, Session Init, Enquire Link, inactivity, exactly-once completion, reconnect/close race, and 60-second concurrent soak coverage are now part of the Phase 18 acceptance set.
-
-The two reference-machine-only Phase 17 checkboxes remain open. Reference run `35289231617` is still queued waiting for a self-hosted Linux/x64 runner labeled `smpp-reference`; Phase 18 completion does not change or weaken that acceptance requirement.
-
-## Phase 19 progress — release readiness documentation
-
-The release-facing API is now frozen for Phase 19 and documented under `docs/`. The repository now includes explicit compatibility, concurrency, timeout/liveness, malformed-PDU/fail-closed, vendor-extension, GSM7, strict UCS-2, UTF-16BE/emoji, and release-checklist documentation. Compileable ESME and SMSC/server examples live under `examples/`, and all public package `doc.go` files were refreshed to match the implemented runtime.
-
-A compile-time release-critical API contract test guards the primary client/server/session/registry/encoding entry points. GitHub Actions run `35290678344` completed successfully after the example fixes, including unit tests, race tests, Phase 18 fuzz smoke, protocol/codec benchmarks, performance smoke, resource-bound smoke, and the no-`unsafe` gate.
-
-The first eight Phase 19 checklist items are complete. The final two remain blocked on the Phase 17 reference-machine acceptance evidence and the production-ready tag. Reference run `35289231617` is still queued waiting for a self-hosted Linux/x64 runner labeled `smpp-reference`.
-
-## Exact next task
-
-Phase 17 implementation and development validation are complete. The remaining gate is external execution only: bring a Linux/amd64 self-hosted GitHub Actions runner online with label `smpp-reference`, at least 8 logical CPUs, at least 10 GiB RAM, and Go 1.26.x support. The queued/reference workflow runs `scripts/acceptance.sh`, tests one TCP session first, and increases to 2/4 only if required. Do not mark the final two Phase 17 checkboxes complete from a 4-core hosted runner or from extrapolation.
-
-## 2026-11-07 — SMPP Test Studio library adoption review
-
-- **Scope:** go-smpp library review and compatible improvements only. Explicitly **no smpp_sim implementation**.
-- **Base:** main at `28c44d3f9aac1c2a68896994e26ba7625ab25939`; working branch `feature/deferred-deliver-response`.
-- **Finding:** existing session Handler always replied to inbound deliver_sm; sleeping in Handler would stall the RX stream. This branch proposes additive `Response.Action` modes Immediate/Suppress/Deferred, session-bounded one-shot `RespondDeferred`/`AbandonDeferredResponse`, and no application goroutine or timer inside the library.
-- **Tests added:** suppression with live RX, deferred response exactly once, bounded capacity/abandon, public API snapshot updated. **No tests or gofmt/race results have been executed in this environment**; run Go 1.25 and Go 1.27 CI before merging.
-- **Review notes:** `docs/SMPP_SIM_INTEGRATION_REVIEW.md` describes the required 16-bit UDH/unpacked GSM7 adapter, reconnect jitter/permanent credential handling, strict SMPP 3.4 profile, fixed library window vs application Adaptive controller, receipt mapping and trace redaction.
-- **Next:** inspect PR CI, fix any compile/gofmt/api-snapshot/coverage failures, then separately address message interop and reconnect policy without breaking the current default public API. No performance regression claim without measured evidence.
-
-## 2026-11-07 — Library integration improvements completed
-
-**Scope:** only `majiddarvishan/go-smpp`. The frozen `smpp_sim` repository and its implementation authorization were not changed.
-
-Four isolated PRs were tested via their GitHub Actions Go 1.25/1.27 matrices and **squash-merged to main**:
-
-1. **#3** (`1387d9bddda63464d5f464d4f5d6c0acbf6f17c8`): bounded opt-in suppressed/deferred inbound `deliver_sm_resp` responses, exact Session ownership, one-shot acknowledgment, no per-PDU goroutine or timer; API snapshot and tests.
-2. **#4** (`f8b4805eb3c10c046e1846f804fb5790efb3e8b6`): fix GSM7 extension escape pairs crossing UDH/SAR boundaries; focused regression tests.
-3. **#6** (`eadea5e2b8f96bf8552cba9d0f7c65b231ae5680`): optional reconnect jitter and stop-on-explicit-permanent-bind-rejection, terminal cause propagation; legacy defaults unchanged.
-4. **#5** (`bff9b61c5f1a923e5d02e8fc1e613c460db4f476`): additive UDH16/unpacked-GSM7 and binary helpers, updated no-panic/API snapshots, exact 152/66/133 multipart bounds.
-
-**Verification:** each PR's CI passed on both Go 1.25 and Go 1.27 (gofmt, unit tests, API/no-panic snapshots, race, coverage, fuzz and performance smoke). This does **not** re-run the reference-machine 100k acceptance on the final composite HEAD, and does **not** demonstrate `smpp_sim` 50k physical submit TPS.
-
-**Review:** `docs/SMPP_SIM_INTEGRATION_REVIEW.md` now documents the implemented fixes, exact adapter configuration constraints, raw trace risks, library commit pin and remaining optional DLR text-first/TLV-first parsing. No new simulator module, CLI, Web UI or test harness was implemented.
-
-**Next technical work:** optional DLR parser/vendor fixtures if chosen; explicit compatibility/interop tests against representative SMSC peers; release readiness/tag review; simulator use only on separately authorized implementation.
-
-## 2026-11-07 — Phase 20 DLR Parser library implementation (PR #7)
-
-- **Authorized scope:** only `go-smpp` library improvements. The separate `smpp_sim` remains design-frozen and **unmodified**, with no simulator implementation authorization.
-- **Task-first workflow:** registered `.codex/TASKS.md` and unchecked `PLAN.md` Phase 20 before the first Go source change; contract documented in `.codex/DLR_PARSER_CONTRACT.md`.
-- **Branch:** `feature/dlr-receipt-parser-v1`, based on `b8eaa68ffda24836aa38bef913f26bcbe2a454ef`; [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7).
-- **Implemented (DLR-01..06):** opt-in `message.ParseDeliveryReceipt(protocol.DeliverSM)`; text-first opaque `id:` plus TLV fallback, independently TLV-first numeric `message_state` plus text `stat:`; conflict flags preserving original source fields; strict malformed/duplicate TLV handling, ordinary non-receipt detection; message_payload fallback and UCS2 text support. Tests and API/no-panic snapshots updated; docs added without changing `Session` or ACK behavior.
-- **Actual verification:** [GitHub Actions run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) **PASS** on **Go 1.25 and 1.27**: gofmt, unit, Lint, API/no-panic, race, coverage floor, fuzz and existing performance smoke. Initial iterations failed format or a tagged-switch Staticcheck finding; fixes were made and the cited run succeeded.
-- **Not claimed:** no formal Phase 17 reference-machine acceptance, no production interop test against an external SMSC, no `smpp_sim` end-to-end run and no 50k physical `submit_sm` PDU/s benchmark.
-- **Next exact step:** verify CI on the documentation-complete PR head, mark PR ready and merge, then close DLR-07 on `main` with recorded merge SHA. Later: optional vendor interop fixtures, raw trace review, formal reference performance. Keep binary/ID handling conservative and vendor normalization opt-in.
-
-## 2026-11-07 — Phase 20 DLR library acceptance and merge closure
-
-- **Merge completed:** [PR #7](https://github.com/majiddarvishan/go-smpp/pull/7) squash-merged to `main` as `e4606a40961d62cf8eb917f28120385282e89b29`.
-- **Final-head acceptance:** [CI run 42306339442](https://github.com/majiddarvishan/go-smpp/actions/runs/42306339442) **PASS** for both Go 1.25 and Go 1.27 (gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke). Earlier code-only [run 42305732414](https://github.com/majiddarvishan/go-smpp/actions/runs/42305732414) also PASS.
-- **PLAN Phase 20 DLR-01..DLR-07:** all closed; `.codex/TASKS.md` mirrors the verified state. `.codex/BACKLOG.md` closes **parsing only**; receipt formatting remains explicitly deferred.
-- **Current library contract:** `message.ParseDeliveryReceipt` is available from main, additive and independent from RX ACK behavior. Text `id:` wins over TLV message ID; numeric `message_state` TLV wins over text `stat:`; exact opaque IDs, conflict diagnostics, and malformed/not-receipt errors are preserved. See `.codex/DLR_PARSER_CONTRACT.md`.
-- **No simulator implementation:** `smpp_sim` remains at its separate frozen design baseline. Formal library Phase 17 100k reference acceptance and the separate simulator 50k physical submit-PDU/s benchmark remain **unverified**.
-- **Next exact task:** select one P1 library improvement from `.codex/TASKS.md`: vendor receipt interoperability fixtures (INT-01) are the smallest useful next step, followed by raw trace safety review (OBS-01). Do not silently enable vendor ID normalization.
-
+Repository: `github.com/majiddarvishan/go-smpp`
+Base: `main` at `8effc6317d8141e36976b0a21bdbe190e2761116`
+Branch: `feature/product-neutral-library-dlr-completeness`
+Latest previously verified source/test commit: `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`
+Latest INT-01 fixture framework/test commit with full Go CI: `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`
+Latest simulator probe code commit: `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` (Go 1.25.x/1.27.x CI passed in run `42386492884`)
+PR #8 remains open and Draft; consult the live GitHub PR for its current head and check state.
+PR: [#8 — feat: complete product-neutral DLR and registered_delivery helpers](https://github.com/majiddarvishan/go-smpp/pull/8)
+
+The repository is a general-purpose, product-neutral SMPP 3.4 / 5.0 Go library. No downstream application or product may be imported, named, or used to define public APIs. See D-046, D-047, D-049, D-050, D-051, D-052, D-053, `AGENTS.md`, and `.codex/ARCHITECTURE.md`.
+
+PR #8 is **open and Draft**. It has not been merged.
+
+## Phase 21 — completed P0 work
+
+- Removed the downstream-product integration review document and consumer-specific references from maintained docs/handoff files.
+- Recorded the product-neutral dependency/documentation boundary in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`.
+- Completed generic DLR text extraction, raw counts/dates/error values, ID/state precedence and conflict evidence.
+- Added strict IA5/Latin-1/UCS-2 handling and explicit unsupported-data-coding errors; packed GSM7 is not guessed.
+- Added standard `deliver_sm` receipt TLV parsing and strict duplicate/length checks.
+- Corrected response-only TLV semantics: `delivery_failure_reason` and `additional_status_info_text` are retained when peer-supplied but do not identify a `deliver_sm` receipt by themselves. Added regression tests.
+- Added the typed `protocol.MessageState` accessor.
+- Added lossless `registered_delivery` decode/encode helpers and exhaustive 256-octet round-trip coverage.
+- Documented `SMSCReceiptModeSuccessOnly` as a peer-specific alias for SMPP 3.4 reserved value `0b11`; the library does not infer peer semantics.
+- Reconciled historical backlog and Phase 12–17 status.
+
+## OBS-01 — completed
+
+- Confirmed `PacketTracer` is absent by default. When configured, it emits metadata only unless `TraceRawPDU=true`; the raw option has no effect without a tracer.
+- Confirmed raw mode supplies an owned copy of the complete unredacted PDU. The library has no built-in PCAP/file writer or universal redactor; unknown/vendor TLVs make generic sanitization unsafe.
+- Documented raw-frame sensitivity (clear-text bind/outbind credentials, system IDs, addresses, message bodies, IDs and arbitrary TLVs), metadata-only preference, peer-aware allowlist sanitization, full-frame dropping, isolated/restricted temporary capture and synchronous callback constraints.
+- Prevented caller-controlled panic values from entering `PanicError.Error()`, session logs or Observer events. `PanicError.Value` remains available for explicit inspection and `Unwrap` behavior.
+- Prevented custom decoder error text and one-way handler error text from entering default Observer events/logs.
+- Prevented arbitrary `SemanticError.Reason` and `FatalError.Reason` from entering default error strings, fatal logs or fatal Observer events. The fields remain available for explicit programmatic inspection.
+- Added regression coverage for authenticator panic containing the bind password, one-way handler error text, custom decoder error text, fatal decoder Reason and protocol error formatting.
+
+## INT-01 — offline fixture framework implemented; real-peer evidence pending
+
+- Added the test-only manifest `testdata/interop/manifest.json` (schema version 1) and root external test harness `interop_fixtures_test.go`; no public API, production code, or runtime dependency changed.
+- The manifest distinguishes `synthetic` from `real-peer-anonymized` evidence. Strict JSON decoding rejects unknown fields/trailing data; validation checks fixture IDs, protocol version, opaque peer aliases, capture provenance, expected header/body/decode outcomes, and real-peer sanitization attestations.
+- Bind receiver/transmitter/transceiver request/response and outbind frames are rejected from persistent fixtures. Real-peer entries require a reviewed peer-aware allowlist declaration, bind/outbind exclusion, replacement of sensitive values, and removal or explicit review of unknown TLVs.
+- Deterministic offline replay feeds each direction as an independent TCP byte stream using repeatable fragmented/coalesced chunk sizes, decodes each PDU, asserts expected header/body, supports reject expectations, and optionally checks exact re-encoding.
+- The manifest contains five synthetic SMPP 3.4 PDUs plus two reviewed sanitized `simulator-peer` fixtures. Simulator evidence is kept distinct from deployed-peer/vendor compatibility.
+- Focused fixture tests are included in repository-wide `go test ./...` CI. No deployed real-peer evidence is available yet, so INT-01G remains open.
+
+
+## INT-01E — local two-way simulator probe (implemented; CI verified; first live simulator run reviewed)
+
+- The user confirmed both simulator components and the repository are on the same Linux host. SMSC simulator endpoint: `127.0.0.1:3000`, System ID `client_0`, System Type `smpp`, TRX, SMPP 3.4, plain TCP, one connection. ESME simulator connects to `127.0.0.1:4000`, System ID `smpp_client_0`, System Type `smpp`, TRX, SMPP 3.4, plain TCP, one connection. Do not record the bind password in this file.
+- Added build-tagged local probe code under `cmd/interop-probe` and `internal/interopprobe`; invoke only through `scripts/interop-local.sh` or `go run -tags=interop`. Normal library builds do not include this tool.
+- Mode `all` runs sequentially: go-smpp ESME connects to SMSC simulator and sends enquire_link/submit_sm with registered_delivery `0x03`; then go-smpp SMSC listens for the ESME simulator, sends enquire_link and a synthetic deliver_sm receipt, and observes responses. One connection per peer.
+- The probe uses the existing client/server APIs; no production API or third-party dependency was added. Bind credentials are prompted with hidden terminal input or supplied by environment variables. The report does not include passwords, message content, or original message IDs/addresses.
+- Raw tracing is enabled only in the local test process. Bind/outbind frames are discarded before body decoding; unsupported commands and non-allowlisted TLVs are dropped; addresses and IDs are replaced; message content is removed or replaced with a synthetic receipt. Only sanitized candidate frames are written to the restricted temporary archive. New candidates default to `reviewed=false`; the first two candidates were manually reviewed and added as `simulator-peer` fixtures.
+- The fixture validator now distinguishes `simulator-peer` from `real-peer-anonymized`; simulator candidates require `wire-capture-sanitized`, opaque peer/evidence IDs, and reviewed sanitization. Simulator evidence is not deployed SMSC/ESME vendor evidence.
+- Initial probe/sanitizer commit `05a6924563872e9a108b194e021dee70ec0e6c35` passed full CI in [run 42380908792](https://github.com/majiddarvishan/go-smpp/actions/runs/42380908792). The live two-way simulator capture and follow-up diagnostics are recorded below.
+
+## Verification evidence — 2026-11-07
+
+- Local `scripts/phase21-validation.sh` archive on commit `dff70d0968332e9fa78f4a4c80af744d00ab429a`: **37 PASS, 0 FAIL, 0 BLOCKED**, covering Go 1.25.0 and Go 1.27.0. Coverage was 84.4% / 84.3%; `golangci-lint` reported 0 issues; untracked `.bench/` was preserved.
+- Follow-up DLR correctness fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` prevents response-only TLVs from identifying a `deliver_sm` receipt.
+- OBS-01 source/test changes are recorded in commits `82c06bddafc482c6e336c10c84f5d904d12c50c3`, `b3ed89c58b28c38d0ce7e0d43b1bf89a0c8a0a59`, and `5e3f4678b1516c5eb4c5f84fd0af48d44ffe49a5`.
+- Final source/test-head GitHub Actions run [42371052716](https://github.com/majiddarvishan/go-smpp/actions/runs/42371052716) passed both Go 1.25.x and Go 1.27.x: gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The final Phase 21 documentation/status PR head `64af94935c5c07af1c7995813c3b1a228c0c244d` passed both Go jobs in [run 42371554356](https://github.com/majiddarvishan/go-smpp/actions/runs/42371554356).
+- INT-01 fixture framework commit `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40` passed both Go jobs in [run 42375378458](https://github.com/majiddarvishan/go-smpp/actions/runs/42375378458): gofmt, unit, race, fuzz smoke, protocol/codec benchmarks, Phase 17 development performance/resource smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The Phase 17 CI result is a **2-second smoke**, not the 60-second reference acceptance.
+
+## Local simulator interoperability review — 2026-11-07
+
+- Reviewed uploaded sanitized archive `go-smpp-interop.qgB9QT.tar.gz`. The archive contains only `report.json`, `manifest-candidate.json`, and `run.log`; no raw PCAP or unsanitized frame dump.
+- SMSC simulator (`peer-001`): TCP, TRX bind, enquire_link, submit_sm with registered_delivery `0x03`, submit_sm_resp and valid `DELIVRD` receipt all passed. Unbind request was observed but no matching unbind_resp was captured before the 8-second operation deadline.
+- ESME simulator (`peer-002`): TRX bind, enquire_link, synthetic deliver_sm and deliver_sm_resp passed. ESME-originated submit_sm was NOT_OBSERVED in the original 5-second window. Unbind request was observed but no matching unbind_resp was captured before the operation deadline.
+- Both peers' missing unbind_resp is an observed simulator compatibility gap. SMPP 3.4 permits either role to issue Unbind and requires a matching unbind_resp; do not change library behavior to hide this.
+- Reviewed and added two sanitized simulator fixtures: `simulator-smsc-peer-001` and `simulator-esme-peer-002`. They are simulator-only evidence and do not close deployed-peer compatibility.
+- Probe follow-up increases the default ESME submit observation window to 15 seconds (override `SMPP_INTEROP_SUBMIT_WAIT`), prints a just-in-time trigger prompt, and reports whether Unbind request/response frames were observed plus safe response-timeout metadata in both client and server roles. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
+- Next live check: run `scripts/interop-local.sh esme` with the ESME simulator; trigger one outbound submit_sm during the new 15-second prompt window if supported. A repeat of Unbind timeout remains a peer finding, not a go-smpp library fix.
+
+## Remaining P1 / release gates
+
+- **INT-01G:** Obtain anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix. The local simulator fixtures are reviewed and committed; deployed-peer evidence remains open.
+- **INT-01I:** Re-run the ESME phase with an explicit outbound `submit_sm` action during the 15-second observation window if the simulator supports it; keep missing `unbind_resp` as a simulator compatibility finding.
+- **PERF-01:** Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions.
+- **REL-01:** First production-ready version tag after the reference regression and release checklist pass.
+
+Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep PR #8 Draft pending maintainer review; do not merge or tag automatically.
+
+
+## ESME CLI-driven interoperability follow-up — 2026-11-07
+
+- User clarified that the external ESME simulator is controlled through its CLI and never originates `submit_sm` without an explicit operator command. The correct test order is: probe `READY` → start/restart ESME → complete TRX bind, enquire_link and synthetic deliver_sm/deliver_sm_resp → wait for `OBSERVE` → issue exactly one CLI `submit_sm` within the configured window. The probe itself does not generate this ESME-originated message.
+- Reviewed uploaded sanitized archive `go-smpp-interop.MLqt5S.tar.gz`: run duration ~0.55s; `listen=PASS`, `bind_transceiver=FAIL` with generic `*errors.errorString`, zero sanitized frames, one excluded/dropped frame, no fixture candidate. The single excluded frame is consistent with the privacy rule that discards bind credential PDUs. No `OBSERVE` stage was reached, so no submit command was due.
+- The old bind gate received an authenticator-accepted TRX bind attempt, then its 10ms `BindMode()` polling observed session closure before seeing `Bound_TRX`. The old helper discarded `Session.Err()`; the archive cannot establish whether the peer sent EOF/reset or whether a successful bind response was briefly written and the peer immediately closed. Do not infer credential mismatch from this report.
+- Test-only probe follow-up on the existing feature branch:
+  - Observe `EventResponseSent` for `bind_transceiver_resp` (emitted after the response write) instead of polling a transient state; prefer an already-observed response if session closure races with event consumption.
+  - Preserve a safe session-close cause and classify EOF, reset, local close and fatal protocol errors without emitting raw PDUs, passwords, bind fields or caller-controlled error text.
+  - Clarify `READY` and `OBSERVE` prompts for the manual CLI workflow.
+  - Add regression tests for a written bind response followed by immediate session closure and for peer EOF.
+- Commits: probe observer/cause fix `2fc35e3f73a704c3795a480ee604b885740d1bce`; regression tests `07e4ae7313af005f42efb9ad2eba1edb96fa74c8`; CLI docs `6652ea0f970ba1bba7b236519d700c09c3b6e402`; task registration `95aa8081dc88feae61fafd229145757a49de1ab1`; plan evidence `0a4d5bc06677fa9ed272465feb4e410fa8076a15`; final READY wording `efc705df50c2c8d9e70b6d8daf7572f6bb509a91`.
+- Validation: pending GitHub Actions for the updated PR head. PR #8 remains Draft/open; no merge, release or tag.
+
+
+### Final validation — 2026-11-07
+
+- Formatting follow-up commits: `efc705df50c2c8d9e70b6d8daf7572f6bb509a91` clarified READY text; `900fc57ea54395c1e64264a840b1ac7c52dbd1d4` joined RX/TX loops before resolving the bind response/close race; `0cf19df7fe3dd145a07b839745a3be5bd4870358` corrected gofmt in the regression test.
+- GitHub Actions [run 42393189702](https://github.com/majiddarvishan/go-smpp/actions/runs/42393189702) passed both jobs: Go 1.25.x and Go 1.27.x. Passed gofmt, unit tests, opt-in interop tests, race tests, fuzz smoke, protocol/codec benchmarks, Phase 17 performance smoke, sustained resource-bound smoke, and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The hosted CI 2-second resource smoke is not the dedicated 60-second reference acceptance. PERF-01 remains open.
+- Final test-only bind-observation work is recorded as INT-01J complete. INT-01I remains open for a live CLI-driven ESME `submit_sm` exchange; INT-01G remains open for anonymized deployed-peer evidence.
+- PR #8 remains Draft/open and unmerged. No release tag was created.

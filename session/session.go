@@ -76,9 +76,11 @@ func noHandlerResponse(command protocol.CommandID) Response {
 // bound; MaxPending is a defensive correlation-table ceiling and is raised to
 // WindowSize automatically when necessary.
 //
-// TraceRawPDU makes PacketTracer receive every complete wire PDU, including
-// bind passwords in clear text; read the SECURITY note on PacketTracer before
-// enabling it.
+// TraceRawPDU makes a configured PacketTracer receive an owned copy of every
+// complete, unredacted wire PDU. Frames may contain clear-text credentials,
+// addresses, message content and arbitrary TLVs. This option is ineffective
+// without PacketTracer and is unsafe for ordinary production logging/storage;
+// read the PacketTracer security guidance before enabling it.
 type Config struct {
 	Role                 Role
 	Profile              protocol.Profile
@@ -604,8 +606,8 @@ func (s *Session) terminate(cause error) {
 		if errors.As(cause, &fatal) {
 			s.metrics.decodeFailures.Add(1)
 			s.metrics.fatalProtocolErrors.Add(1)
-			s.emitEvent(Event{Kind: EventDecodeFailure, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
-			s.emitEvent(Event{Kind: EventFatalProtocolError, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Reason})
+			s.emitEvent(Event{Kind: EventDecodeFailure, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Kind.String()})
+			s.emitEvent(Event{Kind: EventFatalProtocolError, Command: fatal.Command, Sequence: fatal.Sequence, FatalKind: fatal.Kind, Reason: fatal.Kind.String()})
 			s.guard(sourceConn, func() { s.logFatal(fatal) })
 		}
 		s.errMu.Lock()
@@ -650,9 +652,6 @@ func (s *Session) logFatal(err *protocol.FatalError) {
 	}
 	if remote := s.conn.RemoteAddr(); remote != nil {
 		attrs = append(attrs, "remote", remote.String())
-	}
-	if err.Reason != "" {
-		attrs = append(attrs, "detail", err.Reason)
 	}
 	s.logger.Error("fatal SMPP protocol error; closing TCP connection", attrs...)
 }

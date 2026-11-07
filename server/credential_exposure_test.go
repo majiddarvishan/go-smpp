@@ -28,7 +28,8 @@ const (
 	// 8 octets: the longest password SMPP 3.4 allows.
 	leakMarker = "Zq7!pwXk"
 	// Sent over-long and unterminated to drive the malformed-PDU (fatal) path.
-	longLeakMarker = "LONGSECRETPASSWORD"
+	longLeakMarker  = "LONGSECRETPASSWORD"
+	panicLeakMarker = "P4n!cKey"
 )
 
 type captured struct {
@@ -123,6 +124,9 @@ func TestPasswordNeverReachesLogsEventsOrErrors(t *testing.T) {
 		Address:       "127.0.0.1:0",
 		SessionConfig: leakCheckConfig(c),
 		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, _ session.BindMode, r protocol.BindRequest) (server.BindResult, error) {
+			if string(r.Password) == panicLeakMarker {
+				panic(panicLeakMarker)
+			}
 			if string(r.Password) != leakMarker {
 				return server.BindResult{Status: protocol.StatusInvalidPassword}, nil
 			}
@@ -148,6 +152,7 @@ func TestPasswordNeverReachesLogsEventsOrErrors(t *testing.T) {
 
 	c.err(bind(leakMarker))          // accepted
 	c.err(bind("Wr0ng!pw"))          // rejected: exercises the failure path
+	c.err(bind(panicLeakMarker))     // authenticator panic contains the password
 	c.err(bind(leakMarker + "\x00")) // client-side encode error path (embedded NUL)
 	c.err(bind(longLeakMarker))      // client-side encode error path (too long)
 
@@ -172,7 +177,7 @@ func TestPasswordNeverReachesLogsEventsOrErrors(t *testing.T) {
 	raw.Close()
 	waitSessions(t, srv, 0, 2*time.Second)
 
-	assertNoLeak(t, c, leakMarker, "Wr0ng!pw", longLeakMarker)
+	assertNoLeak(t, c, leakMarker, "Wr0ng!pw", panicLeakMarker, longLeakMarker)
 	if !strings.Contains(c.text(), "smpp_protocol_fatal") {
 		t.Fatalf("the malformed-bind scenario never reached the fatal-error log path, so it proved nothing:\n%s", c.text())
 	}

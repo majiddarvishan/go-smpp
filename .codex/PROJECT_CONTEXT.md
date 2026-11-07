@@ -1,122 +1,79 @@
 # Project Context
 
-## Project
+## Project identity
 
 Repository: `github.com/majiddarvishan/go-smpp`
 
-Purpose: build a high-performance SMPP stack in Go that can be used both as an ESME/client and an SMSC/server.
+Purpose: a high-performance, general-purpose Go implementation of SMPP 3.4 with a negotiated SMPP 5.0 extension surface. It provides reusable ESME/client and SMSC/server APIs over one shared protocol/session core.
 
-Current implementation baseline: Go 1.26, Linux/amd64, TCP transport.
+**Product-neutrality is mandatory:** this repository must not import, name, document or encode assumptions for any downstream application. See `.codex/DECISIONS.md` D-046 and `AGENTS.md`.
 
-## Protocol references
+## Protocol and toolchain
 
-Primary specifications supplied by the project owner:
+Primary references:
 
-- Short Message Peer-to-Peer Protocol Specification v3.4, Issue 1.2, 12-Oct-1999.
-- Short Message Peer-to-Peer Protocol Specification v5.0, 19-February-2003.
+- SMPP Protocol Specification v3.4, Issue 1.2, 12-Oct-1999.
+- SMPP Protocol Specification v5.0, 19-Feb-2003.
 
-The specifications are protocol references, not source-code dependencies.
+Minimum Go version: **1.25**. CI validates Go 1.25.x and 1.27.x. The library uses only the Go standard library; no third-party runtime dependencies, cgo or direct `unsafe` imports.
 
-## Product requirements
+Transport: TCP, with optional TLS-over-TCP. X.25 is out of scope.
 
-- Implement both client/ESME and server/SMSC behavior.
-- Use one shared protocol/session core for both sides wherever semantics are common.
-- Complete SMPP 3.4 support first.
-- Keep the architecture SMPP 5.0-aware from the beginning so 5.0 is an extension, not a rewrite.
-- Initial functional focus is `submit_sm`/`submit_sm_resp` and `deliver_sm`/`deliver_sm_resp`, plus the session-management PDUs needed to operate them.
-- Other 3.4 commands remain required and must stay in backlog/plan until implemented.
-- Network transport is TCP. X.25 is out of scope.
-- Optional TLS, when used, runs over TCP and stays in the transport layer.
-- Provide encoding/message functionality as separate packages in the same repository.
-- GSM 03.38/GSM 7-bit encode/decode, extension-table handling, and septet packing/unpacking are required.
-- Unicode message support must distinguish strict UCS-2/BMP from UTF-16BE with surrogate pairs; emoji support uses the latter when the configured peer/carrier capability permits it.
-- Public API should be synchronous/context-aware.
-- Underlying protocol engine must still be asynchronous, pipelined and capable of out-of-order response correlation.
-- Every outbound request that expects a response must support a configurable response timeout.
-- The protocol response timeout starts after the request PDU has been fully dispatched to the transport; local queue/window waiting is governed separately by caller context/deadline.
-- A timed-out request must be completed exactly once, removed from pending correlation and release its window slot exactly once.
-- Late responses after timeout must be treated as late/unmatched and must not complete another request.
-- Session Init timeout is required.
-- Enquire Link scheduling and response-timeout handling are required.
-- Inactivity timeout is required.
-- Client must support automatic reconnect/rebind.
-- Never silently auto-resubmit an ambiguous request after connection loss.
-- Public active runtime objects and request APIs must be safe for concurrent use by multiple goroutines where documented.
-- Internal sequence allocation, session state, pending correlation, window accounting, timeout/cancel/close/reconnect paths must be data-race free.
-- Locally generated sequence numbers stay in `0x00000001..0x7fffffff`.
-- Received sequence numbers accept the interoperability range `0x00000001..0xffffffff`; responses must preserve the received sequence number exactly.
-- Fatal structural/framing corruption terminates the offending TCP connection/session after structured diagnostic logging; no byte-stream resynchronization is attempted.
-- A server must isolate malformed input to the offending connection; the listener and unrelated sessions continue normally.
-- Minimize external dependencies; prefer the standard library.
-- Minimum supported Go version is 1.25, and newer releases through 1.27 are supported (`docs/DECISIONS.md` D2; changed from 1.26 on 2026-10-06).
-- Initial implementation must not use `unsafe`.
-- Extensible registry is required for vendor-specific TLVs and future/custom commands.
+## Public architecture
 
-## Performance requirement
+- `protocol`: command/status vocabulary, PDU bodies, TLVs, sequence/address/data-coding types and negotiated capabilities.
+- `codec`: SMPP PDU encoding/decoding, stream framing and immutable command/TLV registries.
+- `transport`: TCP/TLS and caller-supplied connection primitives.
+- `session`: shared ESME/SMSC state machine, bounded request correlation/window, response/liveness deadlines and observability.
+- `client`: ESME dial/bind/reconnect facade.
+- `server`: SMSC listener, bind authentication, inbound request dispatch and server-originated operations.
+- `encoding` and `message`: GSM 03.38, UCS-2/UTF-16BE, binary, UDH/SAR segmentation/reassembly and optional receipt parsing.
+- `internal/perflab`: private performance acceptance/benchmark harness.
+- `cmd/smpp-sim`: standalone generic SMSC peer for local development/performance measurements only; it is not a public package or a dependency of the library.
+- `cmd/interop-probe`: build-tagged (`interop`) local two-way peer probe; it is not part of normal builds or a library dependency.
+- `examples/`: generic ESME and SMSC usage examples.
 
-The project owner's `100k` requirement means:
+The public dependency direction is enforced by `architecture_test.go`. Codec/protocol must not depend on session/network packages. Message encoding stays outside the low-level PDU codec.
 
-> Sustain 100,000 aggregate SMPP **request PDUs per second**, counting requests sent and requests received at the same time, using the minimum practical number of TCP connections/sessions.
+## Core contracts
 
-Responses are not counted as request throughput, but response processing is mandatory SMPP work and therefore must be included in end-to-end performance tests.
+- One shared protocol/session engine for ESME and SMSC roles.
+- SMPP 3.4 command and standard TLV coverage; SMPP 5.0 features are enabled only after capability negotiation.
+- Synchronous/context-aware public request API over asynchronous pipelined RX/TX paths.
+- No goroutine per PDU/request and no unbounded queues or pending work.
+- Local sequence numbers use 1..0x7fffffff; inbound non-zero interoperability sequence values through 0xffffffff are accepted and echoed exactly.
+- Response deadlines begin only after complete transport dispatch.
+- Exactly-once local completion/window release across response, timeout, cancellation, fatal failure and session loss.
+- Reconnect creates a fresh session and never silently replays ambiguous requests.
+- Fatal structural/framing corruption is fail-closed and isolated to the offending TCP session.
+- GSM 03.38/GSM7, strict UCS-2 and UTF-16BE surrogate handling remain explicit, separate choices.
+- Raw PDU tracing is opt-in; default observability does not expose credentials or message bodies.
 
-Reference machine:
+## Verified project status
 
-- Linux/amd64
-- 8 CPU cores
-- 10 GB RAM
+- Phases 0–18 and 20 are implemented and have corresponding tests/documentation.
+- Phase 17 reference acceptance passed on the documented Linux/amd64 reference host: **713,932 aggregate bidirectional request PDUs/s for 60 seconds, minimum passing session count 1**, with required responses enabled. Exact environment and caveats are in `docs/PERFORMANCE.md`.
+- Phase 19 release readiness is open for the first production-ready version tag. A fresh reference run on the combined current `main` after later library additions remains a release regression gate.
+- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8; source fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`). The final Phase 21 source/test head and subsequent documentation heads passed Go 1.25.x/1.27.x CI; PR #8 remains Draft pending maintainer review.
+- INT-01 offline fixture framework is implemented in test-only code at PR head `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`; CI run `42375378458` passed Go 1.25.x/1.27.x. The manifest contains five synthetic SMPP 3.4 PDUs plus two reviewed sanitized `simulator-peer` fixtures from the local run on 2026-11-07. The separate opt-in two-way simulator probe and sanitizer hardening passed Go 1.25.x/1.27.x CI in run `42380908792` at implementation commit `05a6924563872e9a108b194e021dee70ec0e6c35`; the first follow-up (15-second configurable ESME submit observation and timeout diagnostics) passed both Go versions in run `42385917977`; final two-role Unbind diagnostics and reviewed fixture integration passed both versions in run `42386492884` at commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e`. Both simulators passed bind/enquire/message exchanges but did not return `unbind_resp`; the ESME-originated submit action was not observed in the original 5-second window. This evidence is simulator-only and does not claim deployed-peer/vendor compatibility.
 
-The project benchmarks one session first, then increases connection count only if measurement requires it.
+## Recent generic library improvements
 
-## SMPP implementation facts that drive the architecture
+- PR #3: bounded, opt-in suppressed/deferred inbound response handling; Session-scoped one-shot reply ownership.
+- PR #4: GSM7 extension ESC-pair-safe multipart splitting across UDH/SAR boundaries.
+- PR #6: optional reconnect jitter and stop on explicitly permanent bind credential rejection; legacy defaults unchanged.
+- PR #5: additive 16-bit UDH and unpacked-GSM7/binary segmentation helpers.
+- PR #7: optional generic DLR parser with independent text-first identifier and TLV-first standard-state selection, conflict diagnostics, API snapshot and no-panic tests.
 
-- SMPP is processed as a TCP byte stream; a single TCP read is not one PDU.
-- Every PDU has a fixed 16-byte header and uses `command_length` for framing.
-- The framer handles fragmented PDUs and multiple coalesced PDUs in one TCP read.
-- The framer can emit complete PDUs already present in an input buffer without copying; fragmented PDUs use bounded buffering.
-- The initial default maximum PDU size is 1 MiB and is configurable.
-- Framing trust is connection-scoped: if a structural decode error makes alignment unsafe, the framer is poisoned and the connection is discarded rather than heuristically resynchronized.
-- SMPP is asynchronous: several requests may be outstanding and responses may arrive out of order.
-- Request/response correlation is session-local and based on `sequence_number`.
-- A reconnect establishes a new session; pending operations from a lost session cannot be correlated with the new session.
-- TX, RX and TRX session modes must be supported.
-- SMPP sessions require request-response timeout, Session Init, Enquire Link and inactivity handling.
-- SMPP 5.0 adds capabilities such as `congestion_state` that must fit into the same core.
-- TLV optional parameters are the primary extension mechanism and unknown/vendor TLVs must not force a closed type system.
-- Supported SMPP 3.4 PDU decoders preserve ordered optional TLVs, including duplicates and unknown/vendor tags.
-- `short_message` and `message_payload` are mutually exclusive carriers of message user data for the supported submit/deliver path.
-- Active sessions use independent long-lived RX and TX paths over `net.Conn`; there is no goroutine per request/message.
-- Bounded pending correlation supports out-of-order response completion and exact-once terminal ownership.
-- A successful full `WriteFull` call is the transport boundary after which future protocol response-timeout accounting may start.
+The above are reusable protocol/library capabilities; no downstream product workflow is part of this repository.
 
-## Concurrency correctness rules
+## Current work and next steps
 
-- Do not require application-level serialization around an active session for normal concurrent sends.
-- A response and timeout racing for the same request must have one winner only.
-- Timeout, context cancellation, fatal decoder failure, close and session loss must not double-release a window slot or double-notify a caller.
-- `Close` must be safe to call concurrently and must not race with reconnect into reviving a deliberately closed client.
-- Registries should avoid mutable global hot-path state; prefer immutable/frozen session-visible snapshots.
-- `go test -race` is part of normal development for session/client/server concurrency tests.
+Phase 21 P0 work and OBS-01 safe observability/packet-capture audit are complete. Remaining work is intentionally P1/release-scoped:
 
-## Current implementation state
+1. Re-run `scripts/interop-local.sh esme` with an explicit outbound ESME `submit_sm` action during the 15-second observation window where supported; retain the missing `unbind_resp` as a simulator finding unless a new run changes the evidence.
+2. Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior only. Synthetic and simulator fixtures alone do not close the deployed-peer portion of INT-01.
+3. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
+4. Create the first production-ready version tag only after the reference regression and release checklist pass.
 
-Phase 0 through Phase 16 and Phase 18 are complete and verified; Phase 17 remains open only for its reference-machine throughput/minimum-session acceptance. The shared core now covers complete SMPP 3.4, the planned SMPP 5.0 extensions, GSM 7-bit/Unicode message encoding, bounded asynchronous sessions, response/liveness timers, client reconnect/rebind, SMSC/server mode, low-overhead observability, and a reproducible performance simulator/benchmark laboratory.
-
-Session observability provides atomic snapshots for traffic, response/liveness timeouts, Enquire Link activity, window state, RTT, decode/fatal failures, and SMPP 5.0 congestion feedback. Dialed clients expose reconnect counters. Event hooks and packet tracing are explicit opt-ins; raw wire-PDU copying requires a second explicit opt-in. Ordinary per-PDU logging remains disabled while mandatory structured fatal-protocol logging cannot be turned off through the observability configuration.
-
-Phase 16 is complete. Phase 17 is now the active phase: profile-guided optimization and acceptance on the documented Linux/amd64 8-core / 10-GB reference environment. No 100k request-PDU/s acceptance claim is made until that reference run sustains the target with the minimum practical session count.
-
-
-## Phase 18 reliability coverage
-
-The repository now has explicit end-to-end reliability/chaos coverage for real TCP fragmentation/coalescing, fail-closed malformed/oversized/truncated frames, invalid mandatory/TLV lengths, no byte-stream resynchronization, safe fatal diagnostics, unexpected/duplicate responses, receive-side sequence values through 0xffffffff, disconnects across bind/idle/full-window states, late response storms, liveness timers, close/timeout/reconnect races, slow handlers/peers, fuzz-smoke runs, race-detector runs, and sustained concurrent-caller soak behavior.
-
-## External consumer: SMPP Test Studio (library-only integration readiness)
-
-The owner intends to reuse this Go module in `majiddarvishan/smpp_sim`, whose V1 design is frozen under D-001–D-040. **Authorization currently covers go-smpp library improvements, not building or editing the simulator.** The simulator uses SMPP 3.4 TX/RX/TRX, up to 50k physical `submit_sm` PDUs/s as a future unverified benchmark, and a headless/Go API, but no duplicate SMPP wire/session stack should be created.
-
-Four earlier library PRs (#3/#4/#5/#6) added optional deferred/suppressed inbound ACK, GSM7 extension-safe multipart splitting, UDH16/unpacked GSM7 helpers and optional reconnect jitter/terminal authentication handling; these are merged on `main`. The application-specific Adaptive Window controller and 8,192-run-wide pending limit belong **above** this module, not in the SMPP response/window core.
-
-Phase 20 adds the optional `message.ParseDeliveryReceipt` helper for DLR parsing. **ID is text `id:` first, TLV `receipted_message_id` second**; independently, **state is TLV `message_state` first, recognized text `stat:` second**. Preserve original conflicting values, exact case and leading zeros. Never auto-resend ambiguous submits or treat `submit_sm_resp` as delivered. The simulator owns DLR aggregation, missing/late/duplicate policy, configurable retention and the ACK delay scheduler.
-
-See `.codex/TASKS.md`, `.codex/DLR_PARSER_CONTRACT.md`, and `docs/SMPP_SIM_INTEGRATION_REVIEW.md`. Keep vendor-specific ID normalization explicitly opt-in. Library CI does not prove the simulator's 50k physical submit-PDU/s objective or the library's separate Phase 17 reference-machine 100k request-PDU/s release gate.
+PR #8 remains Draft and has not been merged.

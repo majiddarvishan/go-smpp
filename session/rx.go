@@ -55,7 +55,7 @@ func (s *Session) processFrame(frame []byte) error {
 		}
 		s.metrics.decodeFailures.Add(1)
 		s.reportIfPanic(err)
-		s.emitEvent(Event{Kind: EventDecodeFailure, Reason: err.Error()})
+		s.emitEvent(Event{Kind: EventDecodeFailure, Reason: fmt.Sprintf("%T", err)})
 		header, headerErr := codec.DecodeHeader(frame)
 		if headerErr != nil {
 			return headerErr
@@ -161,7 +161,7 @@ func (s *Session) handleRequest(pdu codec.DecodedPDU) error {
 					"event", "smpp_one_way_handler_error",
 					"command_id", fmt.Sprintf("0x%08x", uint32(pdu.Header.CommandID)),
 					"sequence_number", uint32(pdu.Header.SequenceNumber),
-					"error", err)
+					"error_type", fmt.Sprintf("%T", err))
 			}
 		}
 		return nil
