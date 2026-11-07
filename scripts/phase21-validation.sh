@@ -125,10 +125,11 @@ LINTER=""
 if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
   LINTER="$(command -v golangci-lint)"
 else
-  if mkdir -p "$OUT/bin"; then
-    run_gate "golangci-lint-install" env GOTOOLCHAIN=go1.27.0 GOBIN="$OUT/bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-    if [[ -x "$OUT/bin/golangci-lint" ]]; then
-      LINTER="$OUT/bin/golangci-lint"
+  TOOL_DIR="$OUT-tools-$"
+  if mkdir -p "$TOOL_DIR"; then
+    run_gate "golangci-lint-install" env GOTOOLCHAIN=go1.27.1 GOBIN="$TOOL_DIR" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+    if [[ -x "$TOOL_DIR/golangci-lint" ]]; then
+      LINTER="$TOOL_DIR/golangci-lint"
     else
       record BLOCKED "golangci-lint-tool" "pinned golangci-lint v2.14.0 could not be installed; see install log"
     fi
@@ -214,6 +215,9 @@ BLOCKED_COUNT="$(awk -F '\t' '$1=="BLOCKED"{n++} END{print n+0}' "$SUMMARY")"
 echo "PASS=$PASS_COUNT FAIL=$FAIL_COUNT BLOCKED=$BLOCKED_COUNT"
 echo "The Phase 17 invocation above is a 2-second CI smoke only, not the 60-second reference acceptance."
 echo "The .bench directory was not read, deleted, or modified by this script."
+if [[ -n "$TOOL_DIR" && -d "$TOOL_DIR" ]]; then
+  rm -rf "$TOOL_DIR"
+fi
 
 ARCHIVE="$OUT.tar.gz"
 if tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"; then
