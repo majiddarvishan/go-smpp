@@ -17,6 +17,18 @@ if [[ "$BRANCH" != "$EXPECTED_BRANCH" ]]; then
 fi
 cd "$ROOT" || exit 2
 
+LOCAL_HEAD="$(git rev-parse HEAD)"
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
+UPSTREAM_HEAD=""
+if [[ -n "$UPSTREAM" ]]; then
+  UPSTREAM_HEAD="$(git rev-parse "$UPSTREAM" 2>/dev/null)"
+  if [[ "$LOCAL_HEAD" != "$UPSTREAM_HEAD" ]]; then
+    echo "BLOCKED: local HEAD does not match $UPSTREAM; run git pull --ff-only first." >&2
+    echo "local=$LOCAL_HEAD upstream=$UPSTREAM_HEAD" >&2
+    exit 2
+  fi
+fi
+
 OUT="$SMPP_PHASE21_RESULTS_DIR"
 if [[ -z "$OUT" ]]; then
   TMPBASE="$TMPDIR"
@@ -27,6 +39,18 @@ if ! mkdir -p "$OUT"; then
   echo "FAIL: cannot create result directory $OUT" >&2
   exit 2
 fi
+
+{
+  echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "branch=$BRANCH"
+  echo "head=$LOCAL_HEAD"
+  echo "upstream=$UPSTREAM"
+  echo "upstream_head=$UPSTREAM_HEAD"
+  echo "default_go=$(go version 2>&1)"
+  echo "kernel=$(uname -srmo)"
+  echo "git_status:"
+  git status --short --branch
+} > "$OUT/metadata.txt"
 
 SUMMARY="$OUT/summary.tsv"
 printf 'status\tgate\tdetail\n' > "$SUMMARY"
