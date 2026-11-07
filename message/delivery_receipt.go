@@ -26,21 +26,22 @@ var (
 	// ErrInvalidDeliveryReceipt means the receipt has malformed or ambiguous
 	// metadata that must not be silently used for message-ID correlation.
 	ErrInvalidDeliveryReceipt = errors.New("smpp message: invalid delivery receipt")
+	// ErrUnsupportedDeliveryReceiptDataCoding means a recognized receipt carries
+	// text in a data_coding value this parser does not safely decode.
+	ErrUnsupportedDeliveryReceiptDataCoding = errors.New("smpp message: unsupported delivery receipt data_coding")
 )
 
 // DeliveryReceipt is a parsed view of one inbound deliver_sm. IDs remain
-// opaque, case-sensitive, and unchanged (including leading zeroes).
+// opaque, case-sensitive, and unchanged (including leading zeroes). Text
+// counts, dates, error codes and the trailing text field are kept as received;
+// the parser does not infer numeric or timestamp formats from vendor strings.
 //
 // MessageID favors the text id: field over receipted_message_id TLV. State
 // independently favors message_state TLV over text stat:. When both disagree,
 // each original value remains available alongside the conflict flags.
 //
-// State values use the SMPP 3.4 message_state wire numbers:
-// 1=ENROUTE, 2=DELIVERED, 3=EXPIRED, 4=DELETED, 5=UNDELIVERABLE,
-// 6=ACCEPTED, 7=UNKNOWN, 8=REJECTED. A text-only unrecognized stat:
-// remains in TextStatus without inventing a numeric state.
-//
-// This value contains no references to borrowed decoder slices.
+// State values use the SMPP 3.4 message_state wire numbers. Use
+// SMPPMessageState for a typed protocol.MessageState view of the selected value.
 type DeliveryReceipt struct {
 	MessageID         string
 	MessageIDSource   ReceiptFieldSource
@@ -57,29 +58,58 @@ type DeliveryReceipt struct {
 	TLVState      uint8
 	HasTLVState   bool
 	StateConflict bool
+
+	SubmittedCount  string
+	DeliveredCount  string
+	SubmitDate      string
+	DoneDate        string
+	ErrorCode       string
+	Text            string
+
+	NetworkErrorCode        [3]byte
+	HasNetworkErrorCode     bool
+	DeliveryFailureReason   uint8
+	HasDeliveryFailureReason bool
+	AdditionalStatusInfoText string
 }
 
-// ParseDeliveryReceipt extracts receipt metadata without changing the original
-// SMPP PDU or acknowledging it. It does not correlate messages, normalize
-// vendor-specific IDs, or infer a delivery result from submit_sm_resp.
+// SMPPMessageState returns the selected standard SMPP message_state as its
+// protocol type. It returns false when no standard state is available.
+func (r DeliveryReceipt) SMPPMessageState() (protocol.MessageState, bool) {
+	if !r.HasState || r.State < uint8(protocol.MessageStateEnroute) || r.State > uint8(protocol.MessageStateRejected) {
+		return 0, false
+	}
+	return protocol.MessageState(r.State), true
+}
+
+// ParseDeliveryReceipt extracts standard delivery-receipt metadata from one
+// decoded protocol.DeliverSM. It does not acknowledge the PDU, correlate
+// messages, normalize vendor-specific IDs, or infer delivery from submit_sm_resp.
 //
-// It supports the conventional ASCII fields in short_message (or the
-// message_payload TLV when short_message is empty), and strict UCS-2 for
-// data_coding=0x08. The text: field ends metadata parsing: id:/stat: inside
-// echoed message text are not treated as receipt metadata.
+// Text metadata supports the conventional ASCII-compatible receipt template
+// in short_message, or message_payload when short_message is empty. Supported
+// text data_coding values are SMSC default, IA5, Latin-1 and strict UCS-2/BMP.
+// Packed GSM7 and other national alphabets are deliberately not guessed.
 //
-// Conflicting duplicate TLVs or text fields, malformed TLV values and invalid
-// message_state values return ErrInvalidDeliveryReceipt instead of guessing.
-// Duplicate identical TLVs are tolerated. An ordinary deliver_sm without any
-// receipt metadata returns ErrNotDeliveryReceipt, not a synthetic DLR.
+// Text id: takes precedence over receipted_message_id. For status, a valid
+// message_state TLV takes precedence over a recognized stat: value. All
+// original source values and conflicts remain available to the caller.
+//
+// Malformed/contradictory standard TLVs or text fields return
+// ErrInvalidDeliveryReceipt. A recognized receipt using an unsupported text
+// data_coding returns ErrUnsupportedDeliveryReceiptDataCoding. An ordinary
+// deliver_sm without recognizable receipt evidence returns
+// ErrNotDeliveryReceipt.
 func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	var receipt DeliveryReceipt
 	var payload []byte
 	var payloadSeen bool
+	hasTLVReceipt := false
+
 	for _, item := range deliver.Optional {
 		switch item.Tag {
 		case protocol.TLVTagReceiptedMessageID:
-			id, err := receiptTLVMessageID(item.Value)
+			id, err := receiptTLVCString(item.Value, "receipted_message_id")
 			if err != nil {
 				return DeliveryReceipt{}, err
 			}
@@ -87,8 +117,10 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting receipted_message_id TLVs", ErrInvalidDeliveryReceipt)
 			}
 			receipt.TLVMessageID = id
+			hasTLVReceipt = true
+
 		case protocol.TLVTagMessageState:
-			if len(item.Value) != 1 || item.Value[0] < 1 || item.Value[0] > 8 {
+			if len(item.Value) != 1 || item.Value[0] < byte(protocol.MessageStateEnroute) || item.Value[0] > byte(protocol.MessageStateRejected) {
 				return DeliveryReceipt{}, fmt.Errorf("%w: message_state TLV must be one octet in 1..8", ErrInvalidDeliveryReceipt)
 			}
 			if receipt.HasTLVState && receipt.TLVState != item.Value[0] {
@@ -96,6 +128,43 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			}
 			receipt.TLVState = item.Value[0]
 			receipt.HasTLVState = true
+			hasTLVReceipt = true
+
+		case protocol.TLVTagNetworkErrorCode:
+			if len(item.Value) != len(receipt.NetworkErrorCode) {
+				return DeliveryReceipt{}, fmt.Errorf("%w: network_error_code TLV must be exactly 3 octets", ErrInvalidDeliveryReceipt)
+			}
+			var code [3]byte
+			copy(code[:], item.Value)
+			if receipt.HasNetworkErrorCode && receipt.NetworkErrorCode != code {
+				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting network_error_code TLVs", ErrInvalidDeliveryReceipt)
+			}
+			receipt.NetworkErrorCode = code
+			receipt.HasNetworkErrorCode = true
+			hasTLVReceipt = true
+
+		case protocol.TLVTagDeliveryFailureReason:
+			if len(item.Value) != 1 {
+				return DeliveryReceipt{}, fmt.Errorf("%w: delivery_failure_reason TLV must be exactly one octet", ErrInvalidDeliveryReceipt)
+			}
+			if receipt.HasDeliveryFailureReason && receipt.DeliveryFailureReason != item.Value[0] {
+				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting delivery_failure_reason TLVs", ErrInvalidDeliveryReceipt)
+			}
+			receipt.DeliveryFailureReason = item.Value[0]
+			receipt.HasDeliveryFailureReason = true
+			hasTLVReceipt = true
+
+		case protocol.TLVTagAdditionalStatusInfoText:
+			value, err := receiptTLVCString(item.Value, "additional_status_info_text")
+			if err != nil {
+				return DeliveryReceipt{}, err
+			}
+			if receipt.AdditionalStatusInfoText != "" && receipt.AdditionalStatusInfoText != value {
+				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting additional_status_info_text TLVs", ErrInvalidDeliveryReceipt)
+			}
+			receipt.AdditionalStatusInfoText = value
+			hasTLVReceipt = true
+
 		case protocol.TLVTagMessagePayload:
 			if payloadSeen && !bytes.Equal(payload, item.Value) {
 				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting message_payload TLVs", ErrInvalidDeliveryReceipt)
@@ -104,6 +173,7 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			payloadSeen = true
 		}
 	}
+
 	if payloadSeen && len(deliver.ShortMessage) > 0 {
 		return DeliveryReceipt{}, fmt.Errorf("%w: short_message and message_payload both set", ErrInvalidDeliveryReceipt)
 	}
@@ -111,27 +181,55 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	if len(raw) == 0 && payloadSeen {
 		raw = payload
 	}
+	markedReceipt := deliver.ESMClass&0x3c == 0x04
+
 	var text string
 	if len(raw) > 0 {
 		switch deliver.DataCoding {
+		case protocol.DataCodingSMSCDefault:
+			// Conventional DLR templates commonly use ASCII-compatible octets.
+			// Do not guess packed GSM7 because the septet count/padding is not
+			// independently represented by short_message length.
+			text = string(raw)
+
+		case protocol.DataCodingIA5:
+			for _, octet := range raw {
+				if octet > 0x7f {
+					return DeliveryReceipt{}, fmt.Errorf("%w: non-IA5 octet in receipt text", ErrInvalidDeliveryReceipt)
+				}
+			}
+			text = string(raw)
+
+		case protocol.DataCodingLatin1:
+			text = decodeLatin1(raw)
+
 		case protocol.DataCodingUCS2:
-			var err error
-			text, err = smppenc.DecodeUCS2(raw)
+			decoded, err := smppenc.DecodeUCS2(raw)
 			if err != nil {
 				return DeliveryReceipt{}, fmt.Errorf("%w: invalid UCS-2 receipt text: %v", ErrInvalidDeliveryReceipt, err)
 			}
-		case protocol.DataCodingSMSCDefault:
-			// Conventional DLR templates carry ASCII field labels/values
-			// directly as short_message octets. Do not guess whether a peer
-			// packed septets or apply a lossy charset conversion.
-			text = string(raw)
+			text = decoded
+
+		default:
+			if markedReceipt || hasTLVReceipt {
+				return DeliveryReceipt{}, fmt.Errorf("%w: 0x%02x", ErrUnsupportedDeliveryReceiptDataCoding, uint8(deliver.DataCoding))
+			}
 		}
 	}
-	var err error
-	receipt.TextMessageID, receipt.TextStatus, err = extractReceiptTextFields(text)
+
+	fields, err := extractReceiptTextFields(text)
 	if err != nil {
 		return DeliveryReceipt{}, err
 	}
+	receipt.TextMessageID = fields.MessageID
+	receipt.TextStatus = fields.Status
+	receipt.SubmittedCount = fields.SubmittedCount
+	receipt.DeliveredCount = fields.DeliveredCount
+	receipt.SubmitDate = fields.SubmitDate
+	receipt.DoneDate = fields.DoneDate
+	receipt.ErrorCode = fields.ErrorCode
+	receipt.Text = fields.Text
+
 	if receipt.TextMessageID != "" {
 		receipt.MessageID = receipt.TextMessageID
 		receipt.MessageIDSource = ReceiptSourceText
@@ -155,93 +253,160 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	}
 	receipt.StateConflict = receipt.HasTextState && receipt.HasTLVState && receipt.TextState != receipt.TLVState
 
-	// An ordinary SMS may happen to contain "id:123"; do not report it
-	// as a delivery receipt unless the message is marked as an SMSC receipt,
-	// a recognized stat: field is present, or a standard receipt TLV exists.
-	markedReceipt := deliver.ESMClass&0x3c == 0x04
-	hasTLVReceipt := receipt.TLVMessageID != "" || receipt.HasTLVState
-	textReceipt := receipt.TextStatus != "" && (receipt.TextMessageID != "" || receipt.HasTextState)
+	textReceipt := receipt.TextMessageID != "" && receipt.TextStatus != "" ||
+		receipt.TextStatus != "" && receipt.HasTextState
 	if !markedReceipt && !hasTLVReceipt && !textReceipt {
 		return DeliveryReceipt{}, ErrNotDeliveryReceipt
 	}
-	if receipt.MessageID == "" && receipt.TextStatus == "" && !receipt.HasTLVState {
-		return DeliveryReceipt{}, ErrNotDeliveryReceipt
+	if markedReceipt && !hasTLVReceipt && !textReceipt &&
+		receipt.SubmittedCount == "" && receipt.DeliveredCount == "" &&
+		receipt.SubmitDate == "" && receipt.DoneDate == "" &&
+		receipt.ErrorCode == "" && receipt.Text == "" {
+		return DeliveryReceipt{}, fmt.Errorf("%w: receipt marker has no recognizable fields", ErrInvalidDeliveryReceipt)
 	}
 	return receipt, nil
 }
 
-func receiptTLVMessageID(value []byte) (string, error) {
+type receiptTextFields struct {
+	MessageID       string
+	SubmittedCount  string
+	DeliveredCount  string
+	SubmitDate      string
+	DoneDate        string
+	Status          string
+	ErrorCode       string
+	Text            string
+}
+
+func extractReceiptTextFields(text string) (receiptTextFields, error) {
+	var fields receiptTextFields
+	words := strings.Fields(text)
+	for i := 0; i < len(words); i++ {
+		word := words[i]
+		switch {
+		case hasPrefixFold(word, "text:"):
+			value, next := consumeReceiptValue(words, i, strings.TrimPrefix(word, word[:5]))
+			if next+1 < len(words) {
+				value += " " + strings.Join(words[next+1:], " ")
+			}
+			fields.Text = value
+			return fields, nil
+
+		case hasPrefixFold(word, "id:"):
+			value, next := consumeReceiptValue(words, i, word[len("id:"):])
+			if err := setReceiptTextField(&fields.MessageID, value, "id"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case hasPrefixFold(word, "sub:"):
+			value, next := consumeReceiptValue(words, i, word[len("sub:"):])
+			if err := setReceiptTextField(&fields.SubmittedCount, value, "sub"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case hasPrefixFold(word, "dlvrd:"):
+			value, next := consumeReceiptValue(words, i, word[len("dlvrd:"):])
+			if err := setReceiptTextField(&fields.DeliveredCount, value, "dlvrd"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case hasPrefixFold(word, "stat:"):
+			value, next := consumeReceiptValue(words, i, word[len("stat:"):])
+			if err := setReceiptTextField(&fields.Status, value, "stat"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case hasPrefixFold(word, "err:"):
+			value, next := consumeReceiptValue(words, i, word[len("err:"):])
+			if err := setReceiptTextField(&fields.ErrorCode, value, "err"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case strings.EqualFold(word, "submit") && i+1 < len(words) && hasPrefixFold(words[i+1], "date:"):
+			value, next := consumeReceiptValue(words, i+1, words[i+1][len("date:"):])
+			if err := setReceiptTextField(&fields.SubmitDate, value, "submit date"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+
+		case strings.EqualFold(word, "done") && i+1 < len(words) && hasPrefixFold(words[i+1], "date:"):
+			value, next := consumeReceiptValue(words, i+1, words[i+1][len("date:"):])
+			if err := setReceiptTextField(&fields.DoneDate, value, "done date"); err != nil {
+				return receiptTextFields{}, err
+			}
+			i = next
+		}
+	}
+	return fields, nil
+}
+
+func hasPrefixFold(value, prefix string) bool {
+	return len(value) >= len(prefix) && strings.EqualFold(value[:len(prefix)], prefix)
+}
+
+func consumeReceiptValue(words []string, index int, inline string) (string, int) {
+	if inline != "" || index+1 >= len(words) || strings.ContainsRune(words[index+1], ':') {
+		return inline, index
+	}
+	return words[index+1], index + 1
+}
+
+func setReceiptTextField(destination *string, value, field string) error {
+	if value == "" {
+		return nil
+	}
+	if *destination != "" && *destination != value {
+		return fmt.Errorf("%w: conflicting text %s fields", ErrInvalidDeliveryReceipt, field)
+	}
+	*destination = value
+	return nil
+}
+
+func receiptTLVCString(value []byte, field string) (string, error) {
 	if len(value) == 0 {
-		return "", fmt.Errorf("%w: empty receipted_message_id TLV", ErrInvalidDeliveryReceipt)
+		return "", fmt.Errorf("%w: empty %s TLV", ErrInvalidDeliveryReceipt, field)
 	}
 	if value[len(value)-1] == 0 {
-		value = value[:len(value)-1] // C-Octet NULL terminator is not part of ID
+		value = value[:len(value)-1]
 	}
 	if len(value) == 0 || bytes.IndexByte(value, 0) >= 0 {
-		return "", fmt.Errorf("%w: malformed receipted_message_id C-Octet value", ErrInvalidDeliveryReceipt)
+		return "", fmt.Errorf("%w: malformed %s C-Octet value", ErrInvalidDeliveryReceipt, field)
 	}
 	return string(value), nil
 }
 
-func extractReceiptTextFields(text string) (id, status string, err error) {
-	words := strings.Fields(text)
-	for i := 0; i < len(words); i++ {
-		word := words[i]
-		if len(word) >= 5 && strings.EqualFold(word[:5], "text:") {
-			break // echoed original SMS content is not DLR metadata
-		}
-		var field string
-		switch {
-		case len(word) >= 3 && strings.EqualFold(word[:3], "id:"):
-			field = "id"
-			word = word[3:]
-		case len(word) >= 5 && strings.EqualFold(word[:5], "stat:"):
-			field = "stat"
-			word = word[5:]
-		default:
-			continue
-		}
-		if word == "" && i+1 < len(words) && !strings.ContainsRune(words[i+1], ':') {
-			i++
-			word = words[i]
-		}
-		if word == "" {
-			continue
-		}
-		switch field {
-		case "id":
-			if id != "" && id != word {
-				return "", "", fmt.Errorf("%w: conflicting text id fields", ErrInvalidDeliveryReceipt)
-			}
-			id = word
-		case "stat":
-			if status != "" && status != word {
-				return "", "", fmt.Errorf("%w: conflicting text stat fields", ErrInvalidDeliveryReceipt)
-			}
-			status = word
-		}
+func decodeLatin1(data []byte) string {
+	var out strings.Builder
+	out.Grow(len(data) * 2)
+	for _, octet := range data {
+		out.WriteRune(rune(octet))
 	}
-	return id, status, nil
+	return out.String()
 }
 
 func receiptTextState(status string) (uint8, bool) {
 	switch {
 	case strings.EqualFold(status, "ENROUTE"):
-		return 1, true
+		return uint8(protocol.MessageStateEnroute), true
 	case strings.EqualFold(status, "DELIVRD"):
-		return 2, true
+		return uint8(protocol.MessageStateDelivered), true
 	case strings.EqualFold(status, "EXPIRED"):
-		return 3, true
+		return uint8(protocol.MessageStateExpired), true
 	case strings.EqualFold(status, "DELETED"):
-		return 4, true
+		return uint8(protocol.MessageStateDeleted), true
 	case strings.EqualFold(status, "UNDELIV"):
-		return 5, true
+		return uint8(protocol.MessageStateUndeliverable), true
 	case strings.EqualFold(status, "ACCEPTD"):
-		return 6, true
+		return uint8(protocol.MessageStateAccepted), true
 	case strings.EqualFold(status, "UNKNOWN"):
-		return 7, true
+		return uint8(protocol.MessageStateUnknown), true
 	case strings.EqualFold(status, "REJECTD"):
-		return 8, true
+		return uint8(protocol.MessageStateRejected), true
 	default:
 		return 0, false
 	}
