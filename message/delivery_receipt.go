@@ -20,6 +20,11 @@ const (
 	ReceiptSourceTLV  ReceiptFieldSource = "tlv"
 )
 
+const (
+	receiptMaxReceiptedMessageIDOctets   = 65
+	receiptMaxAdditionalStatusInfoOctets = 256
+)
+
 var (
 	// ErrNotDeliveryReceipt means there is no recognizable receipt metadata.
 	ErrNotDeliveryReceipt = errors.New("smpp message: no delivery receipt metadata")
@@ -110,7 +115,7 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	for _, item := range deliver.Optional {
 		switch item.Tag {
 		case protocol.TLVTagReceiptedMessageID:
-			id, err := receiptTLVCString(item.Value, "receipted_message_id", false)
+			id, err := receiptTLVCString(item.Value, "receipted_message_id", receiptMaxReceiptedMessageIDOctets, false)
 			if err != nil {
 				return DeliveryReceipt{}, err
 			}
@@ -156,7 +161,7 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			hasTLVReceipt = true
 
 		case protocol.TLVTagAdditionalStatusInfoText:
-			value, err := receiptTLVCString(item.Value, "additional_status_info_text", true)
+			value, err := receiptTLVCString(item.Value, "additional_status_info_text", receiptMaxAdditionalStatusInfoOctets, true)
 			if err != nil {
 				return DeliveryReceipt{}, err
 			}
@@ -255,8 +260,7 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	}
 	receipt.StateConflict = receipt.HasTextState && receipt.HasTLVState && receipt.TextState != receipt.TLVState
 
-	textReceipt := receipt.TextMessageID != "" && receipt.TextStatus != "" ||
-		receipt.TextStatus != "" && receipt.HasTextState
+	textReceipt := receipt.TextMessageID != "" && receipt.TextStatus != ""
 	if !markedReceipt && !hasTLVReceipt && !textReceipt {
 		return DeliveryReceipt{}, ErrNotDeliveryReceipt
 	}
@@ -282,18 +286,18 @@ type receiptTextFields struct {
 
 func extractReceiptTextFields(text string) (receiptTextFields, error) {
 	var fields receiptTextFields
-	words := strings.Fields(text)
+
+	// text: is a free-form trailing field. Split it before tokenizing metadata
+	// so repeated spaces, tabs and trailing whitespace in its value survive.
+	metadata, textValue, hasText := splitReceiptText(text)
+	if hasText {
+		fields.Text = textValue
+	}
+
+	words := strings.Fields(metadata)
 	for i := 0; i < len(words); i++ {
 		word := words[i]
 		switch {
-		case hasPrefixFold(word, "text:"):
-			value, next := consumeReceiptValue(words, i, word[len("text:"):])
-			if next+1 < len(words) {
-				value += " " + strings.Join(words[next+1:], " ")
-			}
-			fields.Text = strings.TrimSpace(value)
-			return fields, nil
-
 		case hasPrefixFold(word, "id:"):
 			value, next := consumeReceiptValue(words, i, word[len("id:"):])
 			if err := setReceiptTextField(&fields.MessageID, value, "id"); err != nil {
@@ -351,8 +355,49 @@ func hasPrefixFold(value, prefix string) bool {
 	return len(value) >= len(prefix) && strings.EqualFold(value[:len(prefix)], prefix)
 }
 
+// splitReceiptText separates the first text: marker at a token boundary and
+// removes exactly one delimiter whitespace byte after the colon. The rest of
+// the free-form payload is returned byte-for-byte.
+func splitReceiptText(value string) (metadata, textValue string, found bool) {
+	const marker = "text:"
+	for i := 0; i+len(marker) <= len(value); i++ {
+		if i > 0 && !isReceiptWhitespace(value[i-1]) {
+			continue
+		}
+		if !strings.EqualFold(value[i:i+len(marker)], marker) {
+			continue
+		}
+		start := i + len(marker)
+		if start < len(value) && isReceiptWhitespace(value[start]) {
+			start++
+		}
+		return value[:i], value[start:], true
+	}
+	return value, "", false
+}
+
+func isReceiptWhitespace(value byte) bool {
+	switch value {
+	case ' ', '\t', '\n', '\r', '\v', '\f':
+		return true
+	default:
+		return false
+	}
+}
+
+func isReceiptFieldStart(words []string, index int) bool {
+	word := words[index]
+	if hasPrefixFold(word, "id:") || hasPrefixFold(word, "sub:") ||
+		hasPrefixFold(word, "dlvrd:") || hasPrefixFold(word, "stat:") ||
+		hasPrefixFold(word, "err:") {
+		return true
+	}
+	return (strings.EqualFold(word, "submit") || strings.EqualFold(word, "done")) &&
+		index+1 < len(words) && hasPrefixFold(words[index+1], "date:")
+}
+
 func consumeReceiptValue(words []string, index int, inline string) (string, int) {
-	if inline != "" || index+1 >= len(words) || strings.ContainsRune(words[index+1], ':') {
+	if inline != "" || index+1 >= len(words) || isReceiptFieldStart(words, index+1) {
 		return inline, index
 	}
 	return words[index+1], index + 1
@@ -369,16 +414,22 @@ func setReceiptTextField(destination *string, value, field string) error {
 	return nil
 }
 
-func receiptTLVCString(value []byte, field string, allowEmpty bool) (string, error) {
+func receiptTLVCString(value []byte, field string, maxOctets int, allowEmpty bool) (string, error) {
 	if len(value) == 0 {
 		return "", fmt.Errorf("%w: empty %s TLV", ErrInvalidDeliveryReceipt, field)
 	}
-	if value[len(value)-1] == 0 {
-		value = value[:len(value)-1]
+	if len(value) > maxOctets {
+		return "", fmt.Errorf("%w: %s C-Octet value exceeds %d octets", ErrInvalidDeliveryReceipt, field, maxOctets)
 	}
+	if value[len(value)-1] != 0 {
+		return "", fmt.Errorf("%w: unterminated %s C-Octet value", ErrInvalidDeliveryReceipt, field)
+	}
+	value = value[:len(value)-1]
 	if (len(value) == 0 && !allowEmpty) || bytes.IndexByte(value, 0) >= 0 {
 		return "", fmt.Errorf("%w: malformed %s C-Octet value", ErrInvalidDeliveryReceipt, field)
 	}
+	// C-Octet values are retained as opaque octets. Message IDs are not
+	// restricted to UTF-8 or normalized to an assumed character set.
 	return string(value), nil
 }
 
