@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"sync/atomic"
 	"time"
 
@@ -370,6 +371,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}
 
 	bindAttempts := make(chan bindAttempt, 4)
+	bindResponses := make(chan protocol.CommandStatus, 1)
 	submits := make(chan submitObservation, 8)
 	authenticator := server.AuthenticatorFunc(func(_ context.Context, sess *session.Session, mode session.BindMode, request protocol.BindRequest) (server.BindResult, error) {
 		status := protocol.StatusOK
@@ -418,8 +420,16 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 			EnquireLinkInterval: -1,
 			EnquireLinkTimeout:  -1,
 			InactivityTimeout:   -1,
-			PacketTracer:        session.PacketTracerFunc(packetCapture.tracePacket),
-			TraceRawPDU:         true,
+			Observer: session.ObserverFunc(func(event session.Event) {
+				if event.Kind == session.EventResponseSent && event.Command == protocol.CommandBindTransceiverResp {
+					select {
+					case bindResponses <- event.Status:
+					default:
+					}
+				}
+			}),
+			PacketTracer: session.PacketTracerFunc(packetCapture.tracePacket),
+			TraceRawPDU:  true,
 		},
 	})
 	if err != nil {
@@ -440,7 +450,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}()
 	result.addEvent("listen", StatusPass, map[string]string{"transport": "tcp", "tls": "false", "max_sessions": "1"})
 	fmt.Fprintln(output, "READY: go-smpp SMSC listening on", cfg.ESMEListenAddress, "; start or restart the ESME simulator now.")
-	fmt.Fprintln(output, "If the ESME simulator supports an outbound submit_sm action, trigger one while this probe is waiting; otherwise that observation will be NOT_OBSERVED.")
+	fmt.Fprintln(output, "Start or restart the ESME simulator now. Do not issue submit_sm yet; wait until the bind and delivery handshake completes and the OBSERVE prompt appears.")
 
 	peerCtx, cancelPeer := context.WithTimeout(ctx, cfg.PeerWait)
 	defer cancelPeer()
@@ -469,8 +479,14 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
-	if err := waitForBound(peerCtx, attempt.sess); err != nil {
-		result.addEvent("bind_transceiver", StatusFail, safeErrorDetails(err))
+	if err := waitForBindResponse(peerCtx, attempt.sess, bindResponses); err != nil {
+		details := safeErrorDetails(err)
+		details["authenticator_result"] = "accepted"
+		details["bind_mode"] = attempt.mode.String()
+		if closeErr := attempt.sess.Err(); closeErr != nil {
+			details["session_close_cause_type"] = fmt.Sprintf("%T", closeErr)
+		}
+		result.addEvent("bind_transceiver", StatusFail, details)
 		result.setStatus(StatusFail)
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
@@ -519,7 +535,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		})
 	}
 
-	fmt.Fprintf(output, "OBSERVE: trigger one outbound submit_sm from the ESME simulator now (window=%s).\n", cfg.SubmitWait)
+	fmt.Fprintf(output, "OBSERVE: use the ESME simulator CLI to send exactly one submit_sm now (window=%s).\n", cfg.SubmitWait)
 	submitTimer := time.NewTimer(cfg.SubmitWait)
 	select {
 	case observation := <-submits:
@@ -552,21 +568,41 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 }
 
-func waitForBound(ctx context.Context, sess *session.Session) error {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if sess.BindMode() == session.BindTRX {
-			return nil
-		}
-		select {
-		case <-sess.Done():
-			return errors.New("session closed before reaching Bound_TRX")
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
+func waitForBindResponse(ctx context.Context, sess *session.Session, responses <-chan protocol.CommandStatus) error {
+	// Prefer an already-observed successful bind response even if the peer
+	// closes immediately afterward. Polling BindMode can miss the short-lived
+	// Bound_TRX state when a peer closes between two ticker ticks.
+	select {
+	case status := <-responses:
+		return bindResponseStatusError(status)
+	default:
 	}
+
+	select {
+	case status := <-responses:
+		return bindResponseStatusError(status)
+	case <-sess.Done():
+		// The response event is emitted after the response has been written.
+		// Check once more before treating a simultaneous close as a failed bind.
+		select {
+		case status := <-responses:
+			return bindResponseStatusError(status)
+		default:
+		}
+		if cause := sess.Err(); cause != nil {
+			return fmt.Errorf("session closed before bind_transceiver_resp was sent: %w", cause)
+		}
+		return errors.New("session closed before bind_transceiver_resp was sent")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func bindResponseStatusError(status protocol.CommandStatus) error {
+	if status.OK() {
+		return nil
+	}
+	return &session.ResponseError{Command: protocol.CommandBindTransceiverResp, Status: status}
 }
 
 func observeDelivery(deliver protocol.DeliverSM) map[string]string {
@@ -617,6 +653,28 @@ func safeErrorDetails(err error) map[string]string {
 	}
 	if errors.Is(err, context.Canceled) {
 		details["reason"] = "context_canceled"
+	}
+	if errors.Is(err, io.EOF) {
+		details["reason"] = "peer_closed_connection"
+	}
+	if errors.Is(err, syscall.ECONNRESET) {
+		details["reason"] = "peer_reset_connection"
+	}
+	if errors.Is(err, net.ErrClosed) {
+		details["reason"] = "connection_closed"
+	}
+	if errors.Is(err, session.ErrSessionClosed) {
+		details["reason"] = "session_closed"
+	}
+	var fatal *protocol.FatalError
+	if errors.As(err, &fatal) {
+		details["reason"] = "fatal_protocol_error"
+		details["fatal_kind"] = fatal.Kind.String()
+		details["command_id"] = fmt.Sprintf("0x%08x", uint32(fatal.Command))
+		details["sequence_number"] = fmt.Sprint(uint32(fatal.Sequence))
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		details["cause_type"] = fmt.Sprintf("%T", cause)
 	}
 	var opError *net.OpError
 	if errors.As(err, &opError) {
