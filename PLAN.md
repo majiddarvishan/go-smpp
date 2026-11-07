@@ -342,8 +342,9 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
 - [x] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
 - [x] Include only clearly labeled synthetic fixtures until reviewed peer exchanges are available. Never infer vendor behavior or claim deployed-peer interoperability from synthetic data.
-- [ ] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
-- [ ] Review and add the resulting `simulator-peer` fixture candidates to the offline manifest; keep them distinct from `real-peer-anonymized` deployed-peer evidence. Build the strict/compatible behavior matrix from observed behavior.
+- [x] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
+- [ ] Run the probe, review and add approved `simulator-peer` fixture candidates to the offline manifest; keep them distinct from `real-peer-anonymized` deployed-peer evidence.
+- [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
 
 **INT-01 framework verification — 2026-11-07**
 
@@ -352,4 +353,10 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - The manifest currently contains five constructed synthetic SMPP 3.4 PDUs. No real peer or vendor interoperability is claimed.
 - The fixture harness is test-only; it adds no public API or runtime dependency. Bind/outbind frames are rejected, and real-peer entries require reviewed sanitization metadata.
 
-**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until real-peer evidence is added and reviewed.
+**INT-01E verification — 2026-11-07**
+
+- Probe implementation commit `a0f081e78a3f694ad16766c285f0e5c5f5a4f71f` passed [GitHub Actions run 42379969430](https://github.com/majiddarvishan/go-smpp/actions/runs/42379969430) on Go 1.25.x and Go 1.27.x. The opt-in CI step ran sanitizer tests and compiled the CLI without opening external connections.
+- Tracking/docs follow-up head `52b54e5ae280428282c817e40413ec7497dca2b5` passed [run 42380096238](https://github.com/majiddarvishan/go-smpp/actions/runs/42380096238) on both Go versions.
+- No live simulator session has been executed yet; the next step is the user's local run and review of the sanitized archive.
+
+**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until simulator candidates are reviewed and deployed-peer evidence is added and reviewed.
