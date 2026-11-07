@@ -25,7 +25,7 @@ development tooling and is not linked into the library.
 
 ## Current status
 
-Implementation phases through Phase 18 are complete and verified. Phase 19 release-readiness work is in progress. The Phase 17 reference-machine acceptance has passed (713,932 request PDUs/s with a single session, minimum passing session count 1; see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The exact environment and commit are recorded there too. The remaining production-release blocker is the first production-ready tag.
+Implementation phases through Phase 18 and Phase 20 are complete and verified. Phase 17 reference-machine acceptance passed at 713,932 request PDUs/s with one session (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). Phase 21 is auditing product-neutrality and general protocol helpers. Release readiness remains open only for the current-head performance regression and first production-ready tag.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 
@@ -36,7 +36,6 @@ See `PLAN.md` for detailed implementation progress and `.codex/` for architectur
 - [Timeout and liveness semantics](docs/TIMEOUTS_AND_LIVENESS.md)
 - [Interoperability, GSM7 and Unicode/emoji](docs/INTEROPERABILITY.md)
 - [Vendor extensions](docs/VENDOR_EXTENSIONS.md)
-- [SMPP Test Studio integration review and compatible library additions](docs/SMPP_SIM_INTEGRATION_REVIEW.md)
 - [Performance evidence (Phase 17 reference result)](docs/PERFORMANCE.md)
 - [Test coverage floor](docs/COVERAGE.md)
 - [Project decisions](docs/DECISIONS.md)
@@ -129,15 +128,15 @@ Structural/framing corruption is fail-closed: invalid `command_length`, oversize
 
 ## Performance laboratory
 
-Phase 16 adds a minimal SMSC-side simulator plus repeatable Go benchmarks for codec-only, in-memory session, localhost TCP, TLS-over-TCP, timeout/window, and bidirectional traffic paths. The default end-to-end benchmark starts with one SMPP session; additional session counts are selected explicitly with `SMPP_BENCH_SESSIONS` so connection count is increased only when measurement requires it.
+Phase 16 adds a standalone generic SMSC peer for local testing plus repeatable Go benchmarks for codec-only, in-memory session, localhost TCP, TLS-over-TCP, timeout/window, and bidirectional traffic paths. The default end-to-end benchmark starts with one SMPP session; additional session counts are selected explicitly with `SMPP_BENCH_SESSIONS` so connection count is increased only when measurement requires it.
 
-Run the simulator locally with:
+Run the local SMSC peer with:
 
 ```bash
 go run ./cmd/smpp-sim -listen 127.0.0.1:2775
 ```
 
-It accepts transmitter/receiver/transceiver binds and responds to `submit_sm`, `enquire_link`, and `unbind`. Optional TLS is enabled with `-tls-cert` and `-tls-key`. Per-PDU logs remain off; the simulator emits only periodic aggregate statistics and fatal protocol diagnostics.
+It accepts transmitter/receiver/transceiver binds and responds to `submit_sm`, `enquire_link`, and `unbind`. Optional TLS is enabled with `-tls-cert` and `-tls-key`. Per-PDU logs remain off; the peer emits only periodic aggregate statistics and fatal protocol diagnostics.
 
 Run the benchmark laboratory with:
 
