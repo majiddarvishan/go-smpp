@@ -28,15 +28,15 @@ type interopManifest struct {
 }
 
 type interopFixture struct {
-	ID              string                `json:"id"`
-	Source          string                `json:"source"`
-	PeerAlias       string                `json:"peer_alias"`
-	ProtocolVersion string                `json:"protocol_version"`
-	CaptureMethod   string                `json:"capture_method"`
-	CapturedAt      string                `json:"captured_at,omitempty"`
-	EvidenceRef     string                `json:"evidence_ref,omitempty"`
-	Sanitization    *interopSanitization  `json:"sanitization,omitempty"`
-	Frames          []interopFrame        `json:"frames"`
+	ID              string               `json:"id"`
+	Source          string               `json:"source"`
+	PeerAlias       string               `json:"peer_alias"`
+	ProtocolVersion string               `json:"protocol_version"`
+	CaptureMethod   string               `json:"capture_method"`
+	CapturedAt      string               `json:"captured_at,omitempty"`
+	EvidenceRef     string               `json:"evidence_ref,omitempty"`
+	Sanitization    *interopSanitization `json:"sanitization,omitempty"`
+	Frames          []interopFrame       `json:"frames"`
 }
 
 type interopSanitization struct {
@@ -54,14 +54,14 @@ type interopFrame struct {
 }
 
 type interopExpected struct {
-	Outcome        string                   `json:"outcome"`
-	CommandID      string                   `json:"command_id"`
-	CommandStatus  string                   `json:"command_status"`
-	SequenceNumber uint32                   `json:"sequence_number"`
-	BodyType       string                   `json:"body_type,omitempty"`
-	ErrorKind      string                   `json:"error_kind,omitempty"`
-	Reencode       string                   `json:"reencode,omitempty"`
-	Receipt        *interopReceiptExpected  `json:"receipt,omitempty"`
+	Outcome        string                  `json:"outcome"`
+	CommandID      string                  `json:"command_id"`
+	CommandStatus  string                  `json:"command_status"`
+	SequenceNumber uint32                  `json:"sequence_number"`
+	BodyType       string                  `json:"body_type,omitempty"`
+	ErrorKind      string                  `json:"error_kind,omitempty"`
+	Reencode       string                  `json:"reencode,omitempty"`
+	Receipt        *interopReceiptExpected `json:"receipt,omitempty"`
 }
 
 type interopReceiptExpected struct {
