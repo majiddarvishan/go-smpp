@@ -466,6 +466,78 @@ func TestCommandDecoderErrorDoesNotExposeErrorText(t *testing.T) {
 	}
 }
 
+func TestFatalDecoderReasonDoesNotLeakThroughDiagnostics(t *testing.T) {
+	const secret = "FATAL_REASON_SECRET_MARKER"
+	smscRegistry := vendorPanicRegistry(t, func(codec.Header, []byte) (any, error) {
+		return nil, &protocol.FatalError{Kind: protocol.FatalInvalidFieldLength, Reason: secret}
+	}, encodeVendorEmpty, encodeVendorEmpty)
+	peerRegistry := vendorPanicRegistry(t, decodeVendorEmpty, encodeVendorEmpty, encodeVendorEmpty)
+
+	smscConn, peer := net.Pipe()
+	t.Cleanup(func() { _ = peer.Close() })
+	logs := &syncBuffer{}
+	events := make(chan Event, 16)
+	smsc, err := New(smscConn, Config{
+		Role:     RoleSMSC,
+		Registry: smscRegistry,
+		Logger:   slog.New(slog.NewTextHandler(logs, nil)),
+		Observer: ObserverFunc(func(event Event) {
+			select {
+			case events <- event:
+			default:
+			}
+		}),
+		Handler: bindOK(func(InboundPDU) (Response, error) {
+			return Response{Status: protocol.StatusOK, Body: protocol.EmptyBody{}}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = smsc.Close(); smsc.Wait() })
+
+	bindReply := sendRaw(t, peer, peerRegistry, protocol.CommandBindTransceiver, 1,
+		protocol.BindRequest{SystemID: []byte("esme"), InterfaceVersion: protocol.InterfaceVersion34})
+	if bindReply.Header.CommandStatus != protocol.StatusOK {
+		t.Fatalf("bind status = 0x%08x", uint32(bindReply.Header.CommandStatus))
+	}
+	frame, err := codec.EncodePDU(nil, codec.Header{
+		CommandID:      vendorPanicCommand,
+		SequenceNumber: 2,
+	}, protocol.EmptyBody{}, peerRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peer.Write(frame); err != nil {
+		t.Fatalf("write vendor PDU: %v", err)
+	}
+
+	select {
+	case <-smsc.Done():
+	case <-time.After(panicTestTimeout):
+		t.Fatal("fatal decoder error did not terminate the session")
+	}
+	smsc.Wait()
+
+	if out := logs.String(); strings.Contains(out, secret) || !strings.Contains(out, "invalid_field_length") {
+		t.Fatalf("fatal log must expose only the fatal kind, not caller-controlled Reason:\n%s", out)
+	}
+	var fatal *protocol.FatalError
+	if !errors.As(smsc.Err(), &fatal) || fatal.Reason != secret || strings.Contains(smsc.Err().Error(), secret) {
+		t.Fatalf("session error must retain Reason for explicit inspection but omit it from Error(): %v", smsc.Err())
+	}
+	for {
+		select {
+		case event := <-events:
+			if strings.Contains(event.Reason, secret) {
+				t.Fatalf("fatal event leaked caller-controlled Reason: %+v", event)
+			}
+		case <-time.After(10 * time.Millisecond):
+			return
+		}
+	}
+}
+
 func TestCommandDecoderPanicRejectsOnlyThatPDU(t *testing.T) {
 	smscRegistry := vendorPanicRegistry(t, func(codec.Header, []byte) (any, error) { panic("decoder exploded") }, encodeVendorEmpty, encodeVendorEmpty)
 	peerRegistry := vendorPanicRegistry(t, decodeVendorEmpty, encodeVendorEmpty, encodeVendorEmpty)

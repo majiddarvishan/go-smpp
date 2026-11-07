@@ -308,9 +308,9 @@ Development-host and GitHub-hosted-runner measurements are recorded as regressio
 
 ## D-050 — Caller-controlled panic and error text is not automatic diagnostic data
 
-**Decision:** Library-owned logs and Observer events must not format caller-controlled panic values or callback/decoder error strings. `protocol.PanicError.Error()` reports only the panic source and value type; session panic logs report source/type/stack without the panic value; decode-failure events report the error type; and one-way handler failure logs report the error type. `PanicError.Value` remains available for deliberate programmatic inspection and `Unwrap` preserves `errors.Is`/`errors.As` behavior, but the value and any unwrapped error text are untrusted and may contain credentials or message data.
+**Decision:** Library-owned logs, Observer events and default error strings must not format caller-controlled panic values, callback/decoder error strings or arbitrary protocol `Reason` text. `protocol.PanicError.Error()` reports only the panic source and value type; session panic logs report source/type/stack without the panic value; decode-failure events report the error type; one-way handler failure logs report the error type; and fatal logs/events use only the bounded fatal-kind enum. `PanicError.Value`, `SemanticError.Reason` and `FatalError.Reason` remain available for deliberate programmatic inspection and `Unwrap` preserves `errors.Is`/`errors.As` behavior, but these values and any unwrapped error text are untrusted and may contain credentials or message data.
 
-**Reason:** User callbacks, custom registry decoders/encoders and transports can embed passwords, addresses, message bodies or arbitrary TLV values in panic/error text. Automatically copying that text into default logs/events creates a data-exfiltration path unrelated to raw packet capture.
+**Reason:** User callbacks, custom registry decoders/encoders and transports can embed passwords, addresses, message bodies or arbitrary TLV values in panic/error text or protocol Reason fields. Automatically copying that text into default logs/events/error strings creates a data-exfiltration path unrelated to raw packet capture.
 
 ## D-051 — Raw packet capture is exact, opt-in and sensitive
 

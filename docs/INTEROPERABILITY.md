@@ -14,7 +14,7 @@ Structural corruption is fail-closed. Examples include command_length smaller th
 
 After a fatal structural error, the framer is poisoned, a structured diagnostic is emitted, and the offending TCP session is closed. The library never scans forward for a plausible next header or attempts byte-stream resynchronization. Server mode keeps the listener and unrelated sessions healthy.
 
-The default fatal diagnostic contains safe metadata such as reason, state, role, declared length, command id, sequence number, and endpoint addresses. It never includes bind passwords, short_message, message_payload or a full raw PDU. Explicit raw packet tracing is a separate opt-in path and is not appended to fatal diagnostic logs.
+The default fatal diagnostic contains safe metadata such as fatal kind, state, role, declared length, command id, sequence number, and endpoint addresses. It never includes arbitrary decoder Reason text, bind passwords, short_message, message_payload or a full raw PDU. Explicit raw packet tracing is a separate opt-in path and is not appended to fatal diagnostic logs.
 
 ## Packet tracing and raw capture
 
@@ -26,7 +26,7 @@ Prefer metadata-only traces. If a raw capture is essential, use synthetic data w
 
 The tracer callback runs synchronously on the RX or TX session goroutine. It must return promptly and must not perform blocking I/O; the library creates no trace worker or internal queue. A tracer that blocks can stall session processing. A panic in the tracer is recovered, but its panic value is not written to library logs/events.
 
-Library-owned diagnostics also avoid formatting caller-controlled text: recovered panic logs contain source, panic type and stack while Observer events contain source and panic type; neither includes the panic value. Decode-failure events expose the error type rather than arbitrary decoder error text, and one-way handler error logs expose the error type rather than its message. `protocol.PanicError.Value` remains available for explicit inspection and may itself contain sensitive data; do not log or format it.
+Library-owned diagnostics also avoid formatting caller-controlled text: recovered panic logs contain source, panic type and stack while Observer events contain source and panic type; neither includes the panic value. Decode-failure events expose the error type rather than arbitrary decoder error text, and one-way handler error logs expose the error type rather than its message. `protocol.PanicError.Value`, `protocol.SemanticError.Reason` and `protocol.FatalError.Reason` remain available for explicit inspection and may themselves contain sensitive data; their `Error()` methods omit those values, and callers must not log or format them directly.
 
 ## generic_nack status on a semantic/body error
 

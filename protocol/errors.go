@@ -14,16 +14,15 @@ type SemanticError struct {
 	Status   CommandStatus
 	Command  CommandID
 	Sequence SequenceNumber
-	Reason   string
-	Cause    error
+	// Reason is optional diagnostic detail. It may contain caller/peer data
+	// and is deliberately omitted from Error().
+	Reason string
+	Cause  error
 }
 
 func (e *SemanticError) Error() string {
 	if e == nil {
 		return "<nil>"
-	}
-	if e.Reason != "" {
-		return fmt.Sprintf("smpp protocol error: status=0x%08x command=0x%08x sequence=%d reason=%s", uint32(e.Status), uint32(e.Command), uint32(e.Sequence), e.Reason)
 	}
 	return fmt.Sprintf("smpp protocol error: status=0x%08x command=0x%08x sequence=%d", uint32(e.Status), uint32(e.Command), uint32(e.Sequence))
 }
@@ -78,16 +77,15 @@ type FatalError struct {
 	DeclaredLength uint32
 	Command        CommandID
 	Sequence       SequenceNumber
-	Reason         string
-	Cause          error
+	// Reason is optional diagnostic detail. It may contain caller/peer data
+	// and is deliberately omitted from Error().
+	Reason string
+	Cause  error
 }
 
 func (e *FatalError) Error() string {
 	if e == nil {
 		return "<nil>"
-	}
-	if e.Reason != "" {
-		return fmt.Sprintf("fatal smpp protocol error: kind=%s declared_length=%d command=0x%08x sequence=%d reason=%s", e.Kind, e.DeclaredLength, uint32(e.Command), uint32(e.Sequence), e.Reason)
 	}
 	return fmt.Sprintf("fatal smpp protocol error: kind=%s declared_length=%d command=0x%08x sequence=%d", e.Kind, e.DeclaredLength, uint32(e.Command), uint32(e.Sequence))
 }
