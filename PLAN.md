@@ -237,14 +237,16 @@ This file is the source of truth for implementation progress. Every completed ph
 
 > Reference gate status: implementation complete; final throughput/session-count evidence must come from the `smpp-reference` 8-core/10-GB Linux/amd64 runner before the two remaining checkboxes can be closed.
 
-- [ ] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
+- [x] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
-- [ ] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.
+- [x] Determine and document the minimum practical TCP connection/session count for the benchmark scenario.
 - [x] Verify bounded memory under sustained load.
 - [x] Verify no goroutine-per-message growth pattern.
 - [x] Verify configured timeout tracking remains bounded and does not become a throughput bottleneck.
 - [x] Profile before every significant optimization.
 - [x] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
+
+**Reference acceptance evidence:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md) records the 2026-10-06 Linux/amd64 reference run at 713,932 request-PDU/s for 60 seconds with one session. The report documents a local acceptance-script edit caveat; recorded parameters match current defaults, and no library source changed between the measured commit and the subsequent Go directive/docs-only commits. A new combined-HEAD run after later library additions remains a separate pre-release regression task.
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
@@ -273,12 +275,12 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Complete package documentation.
 - [x] Document interoperability quirks and vendor-extension APIs.
 - [x] Document GSM 7-bit and Unicode/emoji interoperability behavior and peer-capability caveats.
-- [ ] Publish reproducible performance results for the reference machine.
+- [x] Publish reproducible performance results for the reference machine.
 - [ ] Tag the first production-ready release.
 
-## Phase 20 — Optional delivery-receipt parsing and Test Studio library readiness
+## Phase 20 — Optional generic delivery-receipt parsing
 
-> Owner authorized **go-smpp library improvements only**, not `smpp_sim` implementation. Task details live in `.codex/TASKS.md`. This additive parser must preserve the SMPP 3.4 wire/session core and existing API.
+> This additive message-layer helper preserves the SMPP 3.4 wire/session core and existing API. It defines protocol parsing only; application correlation and delivery policy remain outside the library.
 
 - [x] **DLR-01:** Publish a pure `message`-package receipt parser for `protocol.DeliverSM`, with explicit no-receipt handling.
 - [x] **DLR-02:** Apply text-first `id:`, TLV-fallback identifier precedence; independently apply TLV-first `message_state`, text `stat:` fallback; preserve conflict evidence and opaque IDs.
