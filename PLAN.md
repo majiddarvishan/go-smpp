@@ -235,7 +235,7 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 17 — Performance acceptance and optimization
 
-> Reference gate status: implementation complete; final throughput/session-count evidence must come from the `smpp-reference` 8-core/10-GB Linux/amd64 runner before the two remaining checkboxes can be closed.
+> Historical reference acceptance passed on the documented `smpp-reference` 8-core/10-GB Linux/amd64 runner. A fresh 60-second run on the combined current HEAD after later library additions remains a separate P1 release-regression gate.
 
 - [x] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
@@ -294,19 +294,26 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 21 — Product-neutral library audit and generic protocol completeness
 
-> This repository is a reusable SMPP library, not an application integration. No downstream product may be imported, named, or used to define library APIs. Task details are registered in `.codex/TASKS.md` before implementation.
+> This repository is a reusable SMPP library, not an application integration. No downstream product may be imported, named, or used to define library APIs. Task details were registered in `.codex/TASKS.md` before implementation.
 
-- [ ] Remove consumer/product-specific material from README, docs, `.codex` and other maintained handoff files; retain only protocol-level facts and generic development-tool descriptions.
-- [ ] Record the product-neutral boundary in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`.
-- [ ] Extend generic DLR parsing with all standard text receipt fields (`id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err`, `text`) while preserving raw values.
-- [ ] Expose standard receipt TLVs: `receipted_message_id`, `message_state`, `network_error_code`, `delivery_failure_reason`, and `additional_status_info_text`, with strict length/duplicate handling.
-- [ ] Support IA5 and Latin-1 DLR text; explicitly report unsupported encodings rather than treating them as an ordinary non-receipt or guessing.
-- [ ] Add a typed accessor for the standard `protocol.MessageState` without changing existing public field types.
-- [ ] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-bit round trips. Document the `0b11` SMSC receipt value as standards-reserved and expose success-only meaning only as an explicitly peer-specific alias.
-- [ ] Reconcile the historical backlog against implemented source/tests and correct stale Phase 12–14/17 status.
-- [ ] Align current status/handoff docs with the published reference acceptance result and remaining release gates.
-- [ ] Add comprehensive table-driven, malformed-input, round-trip, API snapshot and no-panic tests.
-- [ ] Pass the complete Go 1.25.x/1.27.x CI matrix and merge only after final-head evidence is green.
+- [x] Remove consumer/product-specific material from README, docs, `.codex` and other maintained handoff files; retain only protocol-level facts and generic development-tool descriptions.
+- [x] Record the product-neutral boundary in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`.
+- [x] Extend generic DLR parsing with all standard text receipt fields (`id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err`, `text`) while preserving raw values.
+- [x] Parse standard `deliver_sm` receipt TLVs (`receipted_message_id`, `message_state`, optional `network_error_code`) with strict length/duplicate handling. Tolerate response-oriented `delivery_failure_reason` and `additional_status_info_text` as peer-supplied diagnostics without treating either alone as receipt evidence.
+- [x] Support IA5 and Latin-1 DLR text; explicitly report unsupported encodings rather than treating them as an ordinary non-receipt or guessing.
+- [x] Add a typed accessor for the standard `protocol.MessageState` without changing existing public field types.
+- [x] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-bit round trips. Document the `0b11` SMSC receipt value as standards-reserved and expose success-only meaning only as an explicitly peer-specific alias.
+- [x] Reconcile the historical backlog against implemented source/tests and correct stale Phase 12–14/17 status.
+- [x] Align current status/handoff docs with the published reference acceptance result and remaining release gates.
+- [x] Add comprehensive table-driven, malformed-input, round-trip, API snapshot and no-panic tests.
+- [x] Pass the complete Go 1.25.x/1.27.x CI matrix and confirm final-head checks are green. PR #8 remains Draft pending maintainer review; no merge was performed.
+
+**Phase 21 verification — 2026-11-07**
+
+- Local `scripts/phase21-validation.sh` archive on commit `dff70d0968332e9fa78f4a4c80af744d00ab429a`: **37 PASS, 0 FAIL, 0 BLOCKED**, covering Go 1.25.0 and Go 1.27.0. The untracked `.bench/` directory was preserved.
+- Follow-up correctness fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7` prevents response-only TLVs from identifying a `deliver_sm` receipt and adds regression coverage.
+- Final-head GitHub Actions run [42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed both Go 1.25.x and Go 1.27.x jobs, including gofmt, unit, race, fuzz (including DLR fuzz), benchmarks, 2-second resource/performance smoke and no-unsafe; Go 1.27.x also passed lint and coverage.
+- The 2-second CI smoke is not the 60-second current-HEAD reference acceptance. Keep that P1 release gate open.
 
 ## Backlog policy
 

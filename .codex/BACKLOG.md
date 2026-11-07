@@ -13,7 +13,7 @@ This file tracks intentionally deferred, reusable SMPP library work. The impleme
 - [x] `outbind` lifecycle and one-way semantics
 - [x] Standard command-status constants and codec coverage
 - [x] All 44 standard SMPP 3.4 TLV tags and registry coverage
-- [ ] Lossless `registered_delivery` bit-field helpers (Phase 21; implementation present, field-layout correction and final CI pending)
+- [x] Lossless `registered_delivery` bit-field helpers (Phase 21; exhaustive 256-octet round-trip tests and final Go 1.25/1.27 CI pass)
 
 ## Message and encoding
 
@@ -28,8 +28,8 @@ This file tracks intentionally deferred, reusable SMPP library work. The impleme
 - [x] UDH concatenation/segmentation using encoded septet/code-unit lengths
 - [x] SAR TLV segmentation
 - [x] Multipart reassembly
-- [x] Optional generic delivery-receipt parsing (base ID/state parser; Phase 20)
-- [ ] Complete standard DLR metadata extraction: all text fields, related TLVs, IA5/Latin-1 and explicit unsupported-DCS behavior (Phase 21)
+- [x] Optional generic delivery-receipt parsing (Phase 20 base ID/state parser; Phase 21 completes standard text fields, encodings and receipt TLV handling)
+- [x] Complete generic DLR metadata extraction: standard text fields, receipt TLVs, IA5/Latin-1 and explicit unsupported-DCS behavior (Phase 21; response-only TLVs do not identify a DeliverSM receipt)
 - [ ] Delivery-receipt formatting helpers (deferred unless a concrete interoperable representation is required)
 - [x] GSM extension, Unicode BMP, surrogate-pair and multipart boundary tests
 
@@ -51,7 +51,7 @@ Encoding/message logic stays outside the low-level PDU codec.
 - [x] Raw `network_error_code` TLV registration/preservation and generic receipt extraction
 - [ ] Typed network-error classification helpers (only after enum semantics are verified against the specification and peer evidence)
 - [ ] Higher-level USSD workflow helpers (optional; generic `data_sm` plus TLV preservation may already be sufficient)
-- [ ] `registered_delivery` field decode/encode with reserved bits preserved; SMPP 3.4 reserves SMSC receipt value `0b11`; the named success-only alias is peer-specific and awaits Phase 21 test/CI evidence
+- [x] `registered_delivery` field decode/encode with reserved bits preserved; SMPP 3.4 reserves SMSC receipt value `0b11`; the named success-only alias is peer-specific and covered by tests/docs
 
 ## Vendor interoperability
 

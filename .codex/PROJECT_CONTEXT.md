@@ -53,7 +53,7 @@ The public dependency direction is enforced by `architecture_test.go`. Codec/pro
 - Phases 0–18 and 20 are implemented and have corresponding tests/documentation.
 - Phase 17 reference acceptance passed on the documented Linux/amd64 reference host: **713,932 aggregate bidirectional request PDUs/s for 60 seconds, minimum passing session count 1**, with required responses enabled. Exact environment and caveats are in `docs/PERFORMANCE.md`.
 - Phase 19 release readiness is open for the first production-ready version tag. A fresh reference run on the combined current `main` after later library additions remains a release regression gate.
-- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are in progress on `feature/product-neutral-library-dlr-completeness`.
+- Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8, current head `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`; final-head CI run `42369084385` passed Go 1.25.x/1.27.x). PR #8 remains Draft pending maintainer review.
 
 ## Recent generic library improvements
 
@@ -67,12 +67,11 @@ The above are reusable protocol/library capabilities; no downstream product work
 
 ## Current work and next steps
 
-Task-first work is recorded in `.codex/TASKS.md` and `PLAN.md` Phase 21. Current scope:
+Phase 21 P0 work is complete. Remaining work is intentionally P1/release-scoped:
 
-1. Remove downstream-product-specific references from maintained docs and handoff files.
-2. Complete standard DLR text fields and standard receipt TLV extraction.
-3. Add IA5/Latin-1 support and explicit unsupported-DCS errors without guessing packed GSM7.
-4. Add lossless SMPP 3.4 `registered_delivery` field helpers that preserve reserved values.
-5. Reconcile historical backlog/status against source, tests and performance evidence.
-6. Run the full Go 1.25.x/1.27.x CI matrix, merge only after final-head green checks.
-7. Keep real-peer interoperability fixtures, current-head reference performance rerun and release tagging as separate gates.
+1. Add opt-in interoperability fixtures from real, anonymized SMPP peers.
+2. Review raw packet tracing and safe capture/redaction guidance.
+3. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
+4. Create the first production-ready version tag only after the reference regression and release checklist pass.
+
+PR #8 remains Draft and has not been merged.

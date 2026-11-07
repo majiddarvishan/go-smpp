@@ -297,3 +297,10 @@ The standalone `cmd/smpp-sim` is retained solely as a generic SMSC peer for this
 Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
 
 **Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.
+
+
+## D-049 — DeliverSM receipt evidence excludes response-only TLVs
+
+**Decision:** For `deliver_sm`, standard receipt evidence comes from the delivery-receipt ESM class marker, recognized receipt text, and receipt/intermediate-notification TLVs defined for `deliver_sm` (`receipted_message_id`, `message_state`, and optional `network_error_code`). The parser may preserve and validate `delivery_failure_reason` and `additional_status_info_text` if a peer supplies them on `deliver_sm`, but these response-oriented TLVs do not establish receipt identity and neither may make an ordinary `deliver_sm` a receipt by itself.
+
+**Reason:** SMPP 3.4 defines `delivery_failure_reason` for `data_sm_resp`; `additional_status_info_text` describes a response PDU. Treating either as standalone receipt evidence creates false-positive DLR classification. See SMPP 3.4 Issue 1.2, §§4.4, 4.7 and 5.3.2.11/5.3.2.33.

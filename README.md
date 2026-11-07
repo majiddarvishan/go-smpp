@@ -25,7 +25,7 @@ development tooling and is not linked into the library.
 
 ## Current status
 
-Implementation phases through Phase 18 and Phase 20 are complete and verified. Phase 17 reference-machine acceptance passed at 713,932 request PDUs/s with one session (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). Phase 21 is auditing product-neutrality and general protocol helpers. Release readiness remains open only for the current-head performance regression and first production-ready tag.
+Implementation phases through Phase 18, Phase 20 and Phase 21 are complete and verified. Phase 17 reference-machine acceptance passed at 713,932 request PDUs/s with one session (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). Phase 21 product-neutrality and generic DLR/`registered_delivery` work is verified on PR #8; final-head Go 1.25.x/1.27.x CI passed. Release readiness remains open for the 60-second current-HEAD performance regression and first production-ready tag.
 
 See `PLAN.md` for detailed implementation progress and `.codex/` for architecture decisions, performance targets, backlog, and session handoff notes.
 

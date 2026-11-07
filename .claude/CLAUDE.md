@@ -47,27 +47,35 @@ go run ./cmd/smpp-sim -listen :2775 -window 4096 -tx-queue 4096
 
 ## Verification status
 
-Current host: WSL2 Linux, go1.27.1 linux/amd64, `CGO_ENABLED=1`, gcc present, golangci-lint v2.14.0
-(`~/golib/bin`). Last full run 2026-11-01, on `main` at `dc6ce65` (tree identical to `1ad865b`):
+Latest full local Phase 21 validation archive: 2026-11-07, branch
+`feature/product-neutral-library-dlr-completeness`, commit
+`dff70d0968332e9fa78f4a4c80af744d00ab429a`. Host metadata recorded WSL2/Linux amd64,
+default Go 1.27.0, and the pinned golangci-lint v2.14.0.
 
 | Check | Result |
 | --- | --- |
-| `go build ./...` | clean |
-| `go vet ./...` | clean |
-| `gofmt -l .` | clean (prints nothing) |
-| `go test -race -count=1 ./...` | **all packages pass** |
-| `golangci-lint run ./...` | 0 issues |
-| `scripts/coverage.sh` | every floor passes; total 78.5 |
-| fuzz smokes (2 s each) | pass |
+| Go 1.25.0 toolchain and gofmt | PASS |
+| Go 1.25.0 unit/API/no-panic/race | PASS |
+| Go 1.25.0 five fuzz smokes | PASS |
+| Go 1.25.0 protocol/codec/session/perflab benchmark smokes | PASS |
+| Go 1.25.0 no-unsafe and coverage floor | PASS |
+| Go 1.27.0 toolchain and gofmt | PASS |
+| Go 1.27.0 unit/API/no-panic/race | PASS |
+| Go 1.27.0 five fuzz smokes | PASS |
+| Go 1.27.0 protocol/codec/session/perflab benchmark smokes | PASS |
+| Go 1.27.0 lint, no-unsafe and coverage floor | PASS |
+| Overall local script | **37 PASS, 0 FAIL, 0 BLOCKED** |
 
-The race detector runs on this host, so check concurrency claims with `-race` rather than calling
-them unverifiable. The host has 4 CPUs and 7 GiB, below the Phase 17 reference contract (8 CPUs,
-10 GiB), so `scripts/acceptance.sh` refuses to run here. Throughput evidence must come from the
-reference machine.
+The archive recorded total coverage of 84.4% on Go 1.25.0 and 84.3% on Go 1.27.0.
+The untracked `.bench/` directory was preserved.
 
-History: the original review ran on go1.26.5 windows/amd64 with no cgo, so `-race` could not run and
-12 files failed `gofmt`. Both have been fixed since. CI (`.github/workflows/ci.yml`) runs `-race`,
-lint and the coverage floor on a Go 1.25.x / 1.27.x matrix.
+A follow-up parser correctness fix is on commit
+`ce14ae06a3d9096937c5c54a99a93aa8f695ece7`. Final-head GitHub Actions run
+[42369084385](https://github.com/majiddarvishan/go-smpp/actions/runs/42369084385) passed
+both Go 1.25.x and Go 1.27.x jobs, including DLR fuzz smoke. The 2-second Phase 17 CI
+smoke is not the 60-second reference acceptance; a current-HEAD 60-second run remains
+open before release.
+
 
 ---
 
@@ -130,9 +138,7 @@ Adding an import outside this table fails the test. Keep it that way.
 ## Known local gaps
 
 - No git tags yet. (`LICENSE`, `.gitignore`, and `.golangci.yml` landed in Phase 0.)
-- `main` is the only branch (2026-11-01). Every earlier branch was merged into its history and then
-  deleted; `TASKS.md` → "Repository state" records how, including the `codex/*` branches merged
-  with `-s ours`. Fetch before reporting status.
+- Active Phase 21 work branch on 2026-11-07: `feature/product-neutral-library-dlr-completeness` (PR #8, Draft). Fetch current remote refs before reporting branch state.
 - Left before `v1.0.0`: the maintainer reviews the interface-compatibility bullet in
   `docs/API_COMPATIBILITY.md`; Phase 17 acceptance is re-run on the commit to be tagged (the
   published run is from `c0f699c`); then the tag, which the maintainer is holding.

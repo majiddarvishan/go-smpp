@@ -20,17 +20,17 @@ This repository is a **general-purpose, product-neutral SMPP library**. It must 
 Work branch: `feature/product-neutral-library-dlr-completeness`.
 Task registration was committed before source or documentation cleanup.
 
-- [ ] **BOUNDARY-01:** Remove all references to downstream products, consumer-specific requirements, and integration instructions from library docs and `.codex` state. Keep protocol facts and generic development-tool notes.
-- [ ] **BOUNDARY-02:** Record the product-neutral dependency/documentation rule in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`. State explicitly that no downstream product may be imported or named in the library.
-- [ ] **DLR-08:** Extend the generic DLR parser to expose standard text fields `sub`, `dlvrd`, `submit date`, `done date`, `err`, and `text` while preserving their raw string values and leading zeroes.
-- [ ] **DLR-09:** Parse standard `deliver_sm` receipt TLVs (`receipted_message_id`, `message_state`, and optional `network_error_code`) with strict length/duplicate handling. Tolerate and validate `delivery_failure_reason` and `additional_status_info_text` if peer-supplied on `deliver_sm`, but do not treat these response-oriented TLVs as standard receipt evidence or let either alone identify a DLR.
-- [ ] **DLR-10:** Support ASCII-compatible SMPP `data_coding` values IA5 and Latin-1 for receipt text. Return a distinct unsupported-data-coding error for a marked receipt whose text cannot safely be decoded; do not guess packed GSM7 or other national alphabets.
-- [ ] **DLR-11:** Add an additive typed accessor returning `protocol.MessageState` from the selected standard state without changing existing exported field types.
-- [ ] **PROTO-01:** Complete and verify general-purpose `registered_delivery` bit-field parse/encode helpers. Preserve every reserved bit on round-trip. Document that SMSC receipt value `0b11` is reserved by SMPP 3.4 while `SMSCReceiptModeSuccessOnly` is only a peer-agreed, non-portable alias; decode/encode must not infer peer semantics.
-- [ ] **AUDIT-01:** Reconcile the historical backlog against implemented Phase 12–14/17 evidence. Mark completed items only where source/tests/docs prove them; retain genuinely unsupported SMPP 5.0/vendor features as open.
-- [ ] **DOC-01:** Align `PLAN.md`, `README.md`, `.codex/PROJECT_CONTEXT.md`, and `.codex/SESSION.md` with the published Phase 17 reference evidence and current release gate. Keep the exact evidence caveat in `docs/PERFORMANCE.md`.
-- [ ] **TEST-01:** Add table-driven DLR and exhaustive 256-octet registered_delivery tests; update API snapshots and no-panic coverage for additive exports.
-- [ ] **CI-01:** Pass gofmt, lint, unit, race, coverage, fuzz, API/no-panic and benchmark smoke on Go 1.25.x and Go 1.27.x; review and merge only after final-head CI passes.
+- [x] **BOUNDARY-01:** Remove all references to downstream products, consumer-specific requirements, and integration instructions from library docs and `.codex` state. Keep protocol facts and generic development-tool notes.
+- [x] **BOUNDARY-02:** Record the product-neutral dependency/documentation rule in `AGENTS.md`, `.codex/DECISIONS.md`, and `.codex/ARCHITECTURE.md`. State explicitly that no downstream product may be imported or named in the library.
+- [x] **DLR-08:** Extend the generic DLR parser to expose standard text fields `sub`, `dlvrd`, `submit date`, `done date`, `err`, and `text` while preserving their raw string values and leading zeroes.
+- [x] **DLR-09:** Parse standard `deliver_sm` receipt TLVs (`receipted_message_id`, `message_state`, and optional `network_error_code`) with strict length/duplicate handling. Tolerate and validate `delivery_failure_reason` and `additional_status_info_text` if peer-supplied on `deliver_sm`, but do not treat these response-oriented TLVs as standard receipt evidence or let either alone identify a DLR.
+- [x] **DLR-10:** Support ASCII-compatible SMPP `data_coding` values IA5 and Latin-1 for receipt text. Return a distinct unsupported-data-coding error for a marked receipt whose text cannot safely be decoded; do not guess packed GSM7 or other national alphabets.
+- [x] **DLR-11:** Add an additive typed accessor returning `protocol.MessageState` from the selected standard state without changing existing exported field types.
+- [x] **PROTO-01:** Complete and verify general-purpose `registered_delivery` bit-field parse/encode helpers. Preserve every reserved bit on round-trip. Document that SMSC receipt value `0b11` is reserved by SMPP 3.4 while `SMSCReceiptModeSuccessOnly` is only a peer-agreed, non-portable alias; decode/encode must not infer peer semantics.
+- [x] **AUDIT-01:** Reconcile the historical backlog against implemented Phase 12–14/17 evidence. Mark completed items only where source/tests/docs prove them; retain genuinely unsupported SMPP 5.0/vendor features as open.
+- [x] **DOC-01:** Align `PLAN.md`, `README.md`, `.codex/PROJECT_CONTEXT.md`, and `.codex/SESSION.md` with the published Phase 17 reference evidence and current release gate. Keep the exact evidence caveat in `docs/PERFORMANCE.md`.
+- [x] **TEST-01:** Add table-driven DLR and exhaustive 256-octet registered_delivery tests; update API snapshots and no-panic coverage for additive exports.
+- [x] **CI-01:** Pass gofmt, lint, unit, race, coverage, fuzz, API/no-panic and benchmark smoke on Go 1.25.x and Go 1.27.x. Final-head PR run `42369084385` passed both jobs; PR #8 remains Draft pending maintainer review and has not been merged.
 
 ## P1 — Generic library follow-ups
 
