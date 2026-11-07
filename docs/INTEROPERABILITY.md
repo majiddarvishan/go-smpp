@@ -92,6 +92,33 @@ For SMPP interoperability, strict UCS-2 and surrogate-enabled UTF-16BE use the S
 Multipart Unicode sizing uses 16-bit code units and never splits a surrogate pair across parts.
 
 
+## Local simulator interoperability probe
+
+The repository includes an opt-in, build-tagged local probe for testing the library against separate SMPP 3.4 simulator components. It exercises both roles sequentially:
+
+1. go-smpp as an ESME connects to an external SMSC at `127.0.0.1:3000`, binds TRX, sends enquire_link and submit_sm with `registered_delivery=0x03`, and observes any returned deliver_sm/DLR.
+2. go-smpp as an SMSC listens at `127.0.0.1:4000`, accepts one external ESME TRX bind, sends enquire_link and a synthetic deliver_sm receipt, and observes the deliver_sm_resp and any ESME-originated submit_sm.
+
+Run from the Linux host where both simulator components are running:
+
+```bash
+scripts/interop-local.sh all
+```
+
+The SMSC simulator must be running before the probe starts. Keep the ESME simulator stopped until the runner prints `READY`; then start or restart it so it connects to the go-smpp listener. Each phase uses at most one connection, and the phases do not overlap. Use `scripts/interop-local.sh smsc` or `scripts/interop-local.sh esme` to run one direction only.
+
+The script asks for each bind password using a hidden terminal prompt. For non-interactive use, the corresponding environment variables are `SMPP_INTEROP_SMSC_PASSWORD` and `SMPP_INTEROP_ESME_PASSWORD`; never put passwords in command-line arguments or committed config. The default System IDs are `client_0` and `smpp_client_0`, System Type is `smpp`, and the bind type is TRX. Endpoints, IDs, System Type, synthetic test addresses/text and operation timeouts can be overridden with the `SMPP_INTEROP_*` environment variables or probe flags.
+
+The probe sends only synthetic test addresses/text. The SMSC phase deliberately sends registered_delivery octet `0x03`, which SMPP 3.4 reserves; the library's success-only label is a peer-specific interpretation, not a portable protocol meaning.
+
+### Capture safety
+
+The probe enables raw tracing only inside the opt-in local test process. Bind receiver/transmitter/transceiver and outbind frames are discarded before body decoding. Only a narrow command allowlist is decoded and re-encoded for export. Source/destination addresses and message IDs are replaced; message content is removed or replaced with a synthetic receipt; only a small receipt-TLV allowlist is retained with identifiers replaced; all other optional TLVs and unsupported commands are dropped. Raw frames remain in memory only and are never written to the report, archive or ordinary logs.
+
+The script writes a permission-restricted archive under the system temporary directory containing the sanitized report, sanitized fixture candidate and run log. The candidate uses source `simulator-peer` and has `sanitization.reviewed=false`. It is not ready to add to the manifest until a maintainer reviews the exported bytes and explicitly marks the declaration reviewed. Simulator evidence is not deployed SMSC/ESME vendor evidence and does not close the deployed-peer compatibility matrix.
+
+The tool is compiled only with the `interop` build tag, adds no public API or runtime dependency, and is tested in CI without opening external connections.
+
 ## Offline interoperability fixtures
 
 The repository keeps peer interoperability evidence in a versioned, test-only manifest at `testdata/interop/manifest.json`. The fixture harness is part of the repository's external test package; it does not add an exported API, runtime dependency, or product-specific behavior.
@@ -102,11 +129,13 @@ Run the offline fixture suite with:
 go test . -run '^TestInteroperabilityFixtures$' -count=1
 ```
 
-The manifest uses schema version 1. Each fixture identifies its source (`synthetic` or `real-peer-anonymized`), an opaque peer alias, SMPP profile, capture method, and ordered frames. Each frame records its TCP direction, exact PDU bytes as hexadecimal, expected command/status/sequence/body type, decode outcome, and whether exact re-encoding is expected. Frames in opposite directions are replayed as separate TCP byte streams; deterministic chunk sizes exercise both fragmentation and coalescing.
+The manifest uses schema version 1. Each fixture identifies its source (`synthetic`, `simulator-peer`, or `real-peer-anonymized`), an opaque peer alias, SMPP profile, capture method, and ordered frames. Each frame records its TCP direction, exact PDU bytes as hexadecimal, expected command/status/sequence/body type, decode outcome, and whether exact re-encoding is expected. Frames in opposite directions are replayed as separate TCP byte streams; deterministic chunk sizes exercise both fragmentation and coalescing.
 
 Synthetic fixtures must use `peer_alias=synthetic` and `capture_method=constructed`. They are useful for validating the harness and protocol vectors only. **They are not evidence of interoperability with a deployed SMSC/ESME.**
 
-A real fixture must use an opaque alias such as `peer-001`, an RFC3339 capture timestamp, an opaque `INT-01-PEER-NNN-NNN` evidence reference, and a reviewed `peer-aware-allowlist-v1` sanitization declaration. The declaration must attest that bind/outbind frames were excluded, sensitive values were replaced, and unknown TLVs were removed or individually reviewed safe. The test harness enforces these metadata requirements and rejects bind/outbind command IDs, but it cannot independently prove that a human sanitizer removed every secret; the maintainer must review the bytes before committing them.
+A `simulator-peer` fixture must use `capture_method=wire-capture-sanitized`, an opaque alias such as `peer-001`, an RFC3339 capture timestamp, an opaque `INT-01-PEER-NNN-NNN` evidence reference, and a reviewed `peer-aware-allowlist-v1` sanitization declaration with bind/outbind exclusion, replaced sensitive values, and `unknown_tlvs=removed`. The local probe deliberately emits this candidate with `reviewed=false`; review it before adding it to the manifest.
+
+A deployed real-peer fixture must use an opaque alias such as `peer-001`, an RFC3339 capture timestamp, an opaque `INT-01-PEER-NNN-NNN` evidence reference, and a reviewed `peer-aware-allowlist-v1` sanitization declaration. The declaration must attest that bind/outbind frames were excluded, sensitive values were replaced, and unknown TLVs were removed or individually reviewed safe. The test harness enforces these metadata requirements and rejects bind/outbind command IDs, but it cannot independently prove that a human sanitizer removed every secret; the maintainer must review the bytes before committing them.
 
 ### Capture and fixture safety
 
@@ -117,4 +146,4 @@ A real fixture must use an opaque alias such as `peer-001`, an RFC3339 capture t
 - Use `reencode=exact` only when the peer's observed wire form is expected to round-trip byte-for-byte. Use `reencode=decode-only` for an accepted peer form whose decode behavior is under test but whose canonical encoder output is intentionally different.
 - Use `outcome=reject` with `error_kind=fatal|semantic|other` when the expected library behavior is to reject a recorded frame. A rejection is evidence about the library's handling of that frame, not proof that the peer itself is non-conformant.
 
-The initial manifest contains only constructed synthetic SMPP 3.4 vectors (enquire_link, submit_sm/submit_sm_resp, and a synthetic deliver_sm receipt). **INT-01 remains open until anonymized real-peer exchanges are supplied, reviewed, and added.**
+The initial manifest still contains only constructed synthetic SMPP 3.4 vectors (enquire_link, submit_sm/submit_sm_resp, and a synthetic deliver_sm receipt); the local simulator probe produces reviewed-candidate evidence separately. **INT-01 remains open until simulator candidates are reviewed and added, and deployed-peer exchanges are supplied for the vendor compatibility matrix.**

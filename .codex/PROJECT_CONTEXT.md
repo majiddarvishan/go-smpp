@@ -30,6 +30,7 @@ Transport: TCP, with optional TLS-over-TCP. X.25 is out of scope.
 - `encoding` and `message`: GSM 03.38, UCS-2/UTF-16BE, binary, UDH/SAR segmentation/reassembly and optional receipt parsing.
 - `internal/perflab`: private performance acceptance/benchmark harness.
 - `cmd/smpp-sim`: standalone generic SMSC peer for local development/performance measurements only; it is not a public package or a dependency of the library.
+- `cmd/interop-probe`: build-tagged (`interop`) local two-way peer probe; it is not part of normal builds or a library dependency.
 - `examples/`: generic ESME and SMSC usage examples.
 
 The public dependency direction is enforced by `architecture_test.go`. Codec/protocol must not depend on session/network packages. Message encoding stays outside the low-level PDU codec.
@@ -54,7 +55,7 @@ The public dependency direction is enforced by `architecture_test.go`. Codec/pro
 - Phase 17 reference acceptance passed on the documented Linux/amd64 reference host: **713,932 aggregate bidirectional request PDUs/s for 60 seconds, minimum passing session count 1**, with required responses enabled. Exact environment and caveats are in `docs/PERFORMANCE.md`.
 - Phase 19 release readiness is open for the first production-ready version tag. A fresh reference run on the combined current `main` after later library additions remains a release regression gate.
 - Phase 21 product-neutrality cleanup and generic DLR/protocol helper completeness are implemented and verified on `feature/product-neutral-library-dlr-completeness` (PR #8; source fix `ce14ae06a3d9096937c5c54a99a93aa8f695ece7`). The final Phase 21 source/test head and subsequent documentation heads passed Go 1.25.x/1.27.x CI; PR #8 remains Draft pending maintainer review.
-- INT-01 offline fixture framework is implemented in test-only code at PR head `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`. CI run `42375378458` passed Go 1.25.x/1.27.x. The current manifest contains only five synthetic SMPP 3.4 PDUs; real-peer evidence and the representative-peer behavior matrix remain open.
+- INT-01 offline fixture framework is implemented in test-only code at PR head `9fc5ed44830365f8c9b24f5e1c2f3a4c9c261b40`; CI run `42375378458` passed Go 1.25.x/1.27.x. The manifest still contains five synthetic SMPP 3.4 PDUs. A separate opt-in two-way simulator probe is being validated on the current PR branch; it exports only sanitized `simulator-peer` candidates and does not claim deployed-peer/vendor compatibility.
 
 ## Recent generic library improvements
 
@@ -70,8 +71,9 @@ The above are reusable protocol/library capabilities; no downstream product work
 
 Phase 21 P0 work and OBS-01 safe observability/packet-capture audit are complete. Remaining work is intentionally P1/release-scoped:
 
-1. Add reviewed, anonymized real-peer exchanges to the new offline fixture harness and build the representative-peer strict/compatible behavior matrix from observed behavior only. Synthetic fixtures do not close INT-01.
-2. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
-3. Create the first production-ready version tag only after the reference regression and release checklist pass.
+1. Validate the opt-in local simulator probe on the Linux host: run `scripts/interop-local.sh all`, review the sanitized archive, and add approved `simulator-peer` fixtures. Keep this evidence distinct from deployed-peer/vendor evidence.
+2. Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior only. Synthetic and simulator fixtures alone do not close the deployed-peer portion of INT-01.
+3. Re-run the 60-second Phase 17 reference acceptance on the combined current HEAD after post-acceptance library additions; a 2-second CI smoke is not a substitute.
+4. Create the first production-ready version tag only after the reference regression and release checklist pass.
 
 PR #8 remains Draft and has not been merged.

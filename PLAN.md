@@ -342,8 +342,8 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
 - [x] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
 - [x] Include only clearly labeled synthetic fixtures until reviewed peer exchanges are available. Never infer vendor behavior or claim deployed-peer interoperability from synthetic data.
-- [ ] Add an opt-in, product-neutral local integration probe for independent SMPP 3.4 simulator peers in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. Add no public API or runtime dependency.
-- [ ] Add reviewed, anonymized independent-simulator exchanges to the offline fixture manifest and build the strict/compatible behavior matrix from observed behavior. Keep simulator evidence distinct from deployed SMSC/ESME vendor evidence.
+- [ ] Add an opt-in, product-neutral local integration probe for separate SMPP 3.4 simulator components in both roles: go-smpp ESME to external SMSC, and go-smpp SMSC to external ESME. Execute sequentially with one connection per simulator; read credentials only from hidden prompts/environment; keep all raw frames in memory and export only allowlisted, sanitized frames plus safe metadata. The probe is build-tagged and adds no public API or runtime dependency.
+- [ ] Review and add the resulting `simulator-peer` fixture candidates to the offline manifest; keep them distinct from `real-peer-anonymized` deployed-peer evidence. Build the strict/compatible behavior matrix from observed behavior.
 
 **INT-01 framework verification — 2026-11-07**
 
