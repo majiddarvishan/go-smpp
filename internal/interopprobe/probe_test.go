@@ -4,8 +4,11 @@ package interopprobe
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
+	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -276,5 +279,63 @@ func TestUnbindEventDetailsRecognizesSMSCInitiatedResponse(t *testing.T) {
 	}
 	if details["peer_response"] != "" {
 		t.Fatalf("successful Unbind was reported as missing peer response: %v", details)
+	}
+}
+
+
+func newProbeTestSession(t *testing.T) (*session.Session, net.Conn) {
+	t.Helper()
+	serverConn, peerConn := net.Pipe()
+	sess, err := session.New(serverConn, session.Config{
+		Role:                session.RoleSMSC,
+		SessionInitTimeout:  -1,
+		EnquireLinkInterval: -1,
+		EnquireLinkTimeout:  -1,
+		InactivityTimeout:   -1,
+	})
+	if err != nil {
+		_ = serverConn.Close()
+		_ = peerConn.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = sess.Close()
+		_ = peerConn.Close()
+		sess.Wait()
+	})
+	return sess, peerConn
+}
+
+func TestWaitForBindResponsePrefersWrittenResponseAfterSessionClose(t *testing.T) {
+	sess, _ := newProbeTestSession(t)
+	responses := make(chan protocol.CommandStatus, 1)
+	responses <- protocol.StatusOK
+
+	_ = sess.Close()
+	sess.Wait()
+
+	if err := waitForBindResponse(context.Background(), sess, responses); err != nil {
+		t.Fatalf("waitForBindResponse() = %v, want success for already-written bind response", err)
+	}
+}
+
+func TestWaitForBindResponsePreservesPeerCloseCause(t *testing.T) {
+	sess, peerConn := newProbeTestSession(t)
+	responses := make(chan protocol.CommandStatus, 1)
+	if err := peerConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-sess.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session did not close after peer EOF")
+	}
+
+	err := waitForBindResponse(context.Background(), sess, responses)
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("waitForBindResponse() error = %v, want wrapped io.EOF", err)
+	}
+	if got := safeErrorDetails(err)["reason"]; got != "peer_closed_connection" {
+		t.Fatalf("safe error reason = %q, want peer_closed_connection", got)
 	}
 }
