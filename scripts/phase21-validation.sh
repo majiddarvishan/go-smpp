@@ -15,6 +15,7 @@ if [[ "$BRANCH" != "$EXPECTED_BRANCH" ]]; then
   echo "Switch to the feature branch and pull its latest commit, then run this script again." >&2
   exit 2
 fi
+cd "$ROOT" || exit 2
 
 OUT="$SMPP_PHASE21_RESULTS_DIR"
 if [[ -z "$OUT" ]]; then
