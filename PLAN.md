@@ -335,3 +335,12 @@ This file is the source of truth for implementation progress. Every completed ph
 ## Backlog policy
 
 Items intentionally deferred from the first submit/deliver milestone are tracked in `.codex/BACKLOG.md`. Moving an item out of backlog requires adding it to the appropriate phase here; completion is still recorded only by changing its checkbox to `[x]`.
+
+## P1 — Interoperability fixture framework (INT-01)
+
+- [ ] Define a versioned, product-neutral fixture manifest distinguishing constructed synthetic examples from anonymized real-peer evidence.
+- [ ] Validate provenance, opaque peer aliases, SMPP profile, direction, expected decode outcome, and required sanitization attestations for real-peer fixtures.
+- [ ] Add deterministic offline stream replay through the existing framer/codec; assert command/header/body expectations and exact wire round-trip where explicitly declared.
+- [ ] Include only clearly labeled synthetic fixtures until real, reviewed, anonymized peer exchanges are available. Never infer vendor behavior or claim real-peer interoperability from synthetic data.
+
+**Scope constraints:** test-only tooling and repository testdata; no public API, runtime dependency, product-specific behavior, raw PCAP persistence, bind/outbind credential frames, or unsanitized real traffic. Keep INT-01 open until real-peer evidence is added and reviewed.
