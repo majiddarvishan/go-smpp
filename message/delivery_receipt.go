@@ -285,7 +285,7 @@ func extractReceiptTextFields(text string) (receiptTextFields, error) {
 		word := words[i]
 		switch {
 		case hasPrefixFold(word, "text:"):
-			value, next := consumeReceiptValue(words, i, strings.TrimPrefix(word, word[:5]))
+			value, next := consumeReceiptValue(words, i, word[len("text:"):])
 			if next+1 < len(words) {
 				value += " " + strings.Join(words[next+1:], " ")
 			}
