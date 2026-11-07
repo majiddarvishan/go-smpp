@@ -663,7 +663,7 @@ func unbindEventDetails(err error, packetCapture *capture) map[string]string {
 		requestDirection, responseDirection = responseDirection, requestDirection
 	}
 	details := map[string]string{
-		"request_sent":       fmt.Sprint(packetCapture.hasCommand(requestDirection, protocol.CommandUnbind)),
+		"request_sent":      fmt.Sprint(packetCapture.hasCommand(requestDirection, protocol.CommandUnbind)),
 		"response_observed": fmt.Sprint(packetCapture.hasCommand(responseDirection, protocol.CommandUnbindResp)),
 	}
 	for key, value := range safeErrorDetails(err) {

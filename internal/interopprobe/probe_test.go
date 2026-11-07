@@ -209,38 +209,72 @@ func TestSanitizeRawPDUExcludesMalformedConflictingReceiptTLVs(t *testing.T) {
 
 func TestUnbindEventDetailsReportsMissingPeerResponse(t *testing.T) {
 	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
-	if err != nil { t.Fatal(err) }
-	raw, err := codec.EncodePDU(nil, codec.Header{CommandID: protocol.CommandUnbind, CommandStatus: protocol.StatusOK, SequenceNumber: 4}, protocol.EmptyBody{}, registry)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := codec.EncodePDU(nil, codec.Header{
+		CommandID: protocol.CommandUnbind, CommandStatus: protocol.StatusOK, SequenceNumber: 4,
+	}, protocol.EmptyBody{}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
 	frame, ok := sanitizeRawPDU(raw, registry)
-	if !ok { t.Fatal("sanitizer rejected unbind request") }
+	if !ok {
+		t.Fatal("sanitizer rejected unbind request")
+	}
 	frame.Direction = "esme_to_smsc"
 	packetCapture := &capture{localRole: "esme", registry: registry, frames: []capturedFrame{{frame: frame}}}
-	timeout := &session.TimeoutError{Kind: session.TimeoutResponse, Command: protocol.CommandUnbind, Sequence: 4, After: 8 * time.Second}
+	timeout := &session.TimeoutError{
+		Kind: session.TimeoutResponse, Command: protocol.CommandUnbind, Sequence: 4, After: 8 * time.Second,
+	}
 	details := unbindEventDetails(timeout, packetCapture)
 	for key, want := range map[string]string{
 		"request_sent": "true", "response_observed": "false", "peer_response": "not_observed",
 		"timeout_kind": "response", "command_id": "0x00000006", "sequence_number": "4", "timeout": "8s",
 	} {
-		if details[key] != want { t.Fatalf("%s = %q, want %q (all=%v)", key, details[key], want, details) }
+		if details[key] != want {
+			t.Fatalf("%s = %q, want %q (all=%v)", key, details[key], want, details)
+		}
 	}
 }
 
 func TestUnbindEventDetailsRecognizesSMSCInitiatedResponse(t *testing.T) {
 	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
-	if err != nil { t.Fatal(err) }
-	requestRaw, err := codec.EncodePDU(nil, codec.Header{CommandID: protocol.CommandUnbind, CommandStatus: protocol.StatusOK, SequenceNumber: 9}, protocol.EmptyBody{}, registry)
-	if err != nil { t.Fatal(err) }
-	responseRaw, err := codec.EncodePDU(nil, codec.Header{CommandID: protocol.CommandUnbindResp, CommandStatus: protocol.StatusOK, SequenceNumber: 9}, protocol.EmptyBody{}, registry)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestRaw, err := codec.EncodePDU(nil, codec.Header{
+		CommandID: protocol.CommandUnbind, CommandStatus: protocol.StatusOK, SequenceNumber: 9,
+	}, protocol.EmptyBody{}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseRaw, err := codec.EncodePDU(nil, codec.Header{
+		CommandID: protocol.CommandUnbindResp, CommandStatus: protocol.StatusOK, SequenceNumber: 9,
+	}, protocol.EmptyBody{}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
 	request, ok := sanitizeRawPDU(requestRaw, registry)
-	if !ok { t.Fatal("sanitizer rejected unbind request") }
+	if !ok {
+		t.Fatal("sanitizer rejected unbind request")
+	}
 	response, ok := sanitizeRawPDU(responseRaw, registry)
-	if !ok { t.Fatal("sanitizer rejected unbind response") }
+	if !ok {
+		t.Fatal("sanitizer rejected unbind response")
+	}
 	request.Direction = "smsc_to_esme"
 	response.Direction = "esme_to_smsc"
-	packetCapture := &capture{localRole: "smsc", registry: registry, frames: []capturedFrame{{frame: request}, {frame: response}}}
+	packetCapture := &capture{
+		localRole: "smsc",
+		registry:  registry,
+		frames:    []capturedFrame{{frame: request}, {frame: response}},
+	}
 	details := unbindEventDetails(nil, packetCapture)
-	if details["request_sent"] != "true" || details["response_observed"] != "true" { t.Fatalf("Unbind exchange was not recognized: %v", details) }
-	if details["peer_response"] != "" { t.Fatalf("successful Unbind was reported as missing peer response: %v", details) }
+	if details["request_sent"] != "true" || details["response_observed"] != "true" {
+		t.Fatalf("Unbind exchange was not recognized: %v", details)
+	}
+	if details["peer_response"] != "" {
+		t.Fatalf("successful Unbind was reported as missing peer response: %v", details)
+	}
 }
