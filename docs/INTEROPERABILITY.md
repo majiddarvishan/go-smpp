@@ -38,7 +38,13 @@ Malformed/contradictory duplicate TLVs and text fields return `ErrInvalidDeliver
 
 ## registered_delivery bit fields
 
-PDU structs continue to expose the raw `registered_delivery` octet as `uint8`. `protocol.DecodeRegisteredDelivery` provides a lossless field-level view and `RegisteredDelivery.Encode()` reconstructs the original octet. The two-bit subfields retain reserved encodings, and bits 6-7 are preserved in `ReservedBits`. No value is rejected or silently normalized, so applications can inspect standard semantics while maintaining peer/vendor interoperability.
+PDU structs continue to expose the raw `registered_delivery` octet as `uint8`. `protocol.DecodeRegisteredDelivery` provides a lossless field-level view and `RegisteredDelivery.Encode()` reconstructs the original octet.
+
+The field layout is: bits 0-1 are the SMSC delivery-receipt request; bits 2-3 are the SME acknowledgement request; bit 4 requests intermediate notification; bits 5-7 are reserved and are preserved in `ReservedBits`.
+
+For the SMSC receipt field, `SMSCReceiptModeNone`, `SMSCReceiptModeFinalOutcome` and `SMSCReceiptModeFailureOnly` represent the standard SMPP 3.4 encodings. SMPP 3.4 reserves the value `0b11`. The library also exposes `SMSCReceiptModeSuccessOnly` as a named, peer-specific interpretation of that same wire value for SMSCs that explicitly document or negotiate it as success-only. It is not a portable SMPP 3.4 meaning and must not be assumed without peer agreement. `SMSCReceiptModeReserved` remains available as the standards-oriented alias for the same raw value.
+
+The decoder and encoder preserve every wire bit. They do not infer whether a peer implements the success-only convention and do not reject or normalize reserved/vendor values.
 
 ## deliver_sm_resp
 
