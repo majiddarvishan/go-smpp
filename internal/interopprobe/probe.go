@@ -449,7 +449,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		serveErrors <- srv.Serve(ctx)
 	}()
 	result.addEvent("listen", StatusPass, map[string]string{"transport": "tcp", "tls": "false", "max_sessions": "1"})
-	fmt.Fprintln(output, "READY: go-smpp SMSC listening on", cfg.ESMEListenAddress, "; start or restart the ESME simulator now.")
+	fmt.Fprintln(output, "READY: go-smpp SMSC listening on", cfg.ESMEListenAddress, "; ESME simulator may now connect.")
 	fmt.Fprintln(output, "Start or restart the ESME simulator now. Do not issue submit_sm yet; wait until the bind and delivery handshake completes and the OBSERVE prompt appears.")
 
 	peerCtx, cancelPeer := context.WithTimeout(ctx, cfg.PeerWait)
