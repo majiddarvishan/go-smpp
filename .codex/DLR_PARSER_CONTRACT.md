@@ -1,26 +1,51 @@
-# Delivery Receipt Parser — Library Contract
+# Delivery Receipt Parsing — Generic Library Contract
 
-**Scope:** `go-smpp` `message` package only, Phase 20 / DLR-01..07. Approved library improvement; **not simulator implementation**.
+**Scope:** reusable `go-smpp/message` API. This document defines protocol-level parsing only; it does not define application correlation, charging, scheduling, retention or retry policy.
 
 ## Public API
 
 `message.ParseDeliveryReceipt(protocol.DeliverSM) (message.DeliveryReceipt, error)`
 
-- Pure optional parsing over an already decoded `protocol.DeliverSM`. No networking, ACK behavior, queues, retries, timers, stateful correlation or goroutines. Session Handler still controls `deliver_sm_resp`.
-- Exact opaque `MessageID`: text `id:` field first, `receipted_message_id` TLV fallback. Case and leading zeros **are significant**. Both `TextMessageID` and `TLVMessageID` remain visible; `MessageIDConflict` reports disagreement.
-- Numeric `State` follows SMPP 3.4 `message_state` TLV (values 1..8) first, recognized text `stat:` fallback. `HasState` is false when there is no recognized state. `TextStatus` keeps unknown labels for vendor adapters; `StateConflict` records disagreement between two recognized statuses.
-- TLV IDs may include one terminal C-Octet NUL or no terminal NUL. Empty IDs, embedded NULs, conflicting duplicate values and malformed/unknown `message_state` are **errors**; identical duplicate values are tolerated. Neither conflict flag silently chooses a new normalization.
-- Text metadata parses ASCII-compatible `short_message`, or optional `message_payload` when `short_message` is empty; `data_coding=0x08` is strictly UCS-2/BMP decoded. Parsing stops at `text:` to avoid accidentally treating echoed SMS content as receipt metadata. Unsupported payload codecs are not guessed.
-- Ordinary `deliver_sm` with no recognizable receipt metadata yields `ErrNotDeliveryReceipt`. Malformed/ambiguous receipt fields yield `ErrInvalidDeliveryReceipt`. The caller should log/categorize those outcomes without fabricating message delivery status.
+The parser is pure over an already decoded `deliver_sm`. It performs no network I/O, acknowledgement, request correlation, queueing, timers, retries or goroutine creation. The Session handler remains responsible for the `deliver_sm_resp` lifecycle.
 
-## Boundaries
+## Identifier and status selection
 
-1. This helper does **not** determine whether a requested DLR is missing, delivered, late, duplicated or expired in a Test Run. Those decisions require the simulator's separately bounded correlation store and D-033/D-039 policy.
-2. An accepted `submit_sm_resp` is not a delivered status.
-3. A textual `id:` and TLV ID are not interpreted as interchangeable decimal/hex strings; vendor normalization must be opt-in, separately reviewed and tested.
-4. Do not enable raw-PDU tracing by default. PDU payloads may contain phone numbers, message content and credentials.
-5. If new external SMSC samples conflict with this baseline, add focused fixtures and an explicit compatible parser option rather than silently changing the defaults.
+- The text `id:` field is selected before the `receipted_message_id` TLV.
+- IDs remain opaque and case/leading-zero sensitive; no decimal/hex normalization is applied.
+- Both original values remain available. `MessageIDConflict` reports disagreement.
+- Numeric state independently selects valid `message_state` TLV before recognized text `stat:`.
+- Both original state sources remain available; `StateConflict` reports disagreement.
+- `SMPPMessageState()` exposes the selected standard value as `protocol.MessageState` without changing the existing raw numeric fields.
+- Unknown text status labels remain in `TextStatus`; no standard state is invented.
 
-## Verification and handoff
+## Standard receipt metadata
 
-See `PLAN.md` Phase 20 and `.codex/TASKS.md`. Require a clean Go 1.25/1.27 CI matrix (format/unit/race/API/no-panic/fuzz). Store PR link, verification outcome and exact next work in `.codex/SESSION.md`. Neither the library's formal reference-machine throughput goal nor the independent `smpp_sim` 50k throughput objective is closed by these tests.
+The parser preserves the conventional textual fields as raw strings: `id`, `sub`, `dlvrd`, `submit date`, `done date`, `stat`, `err` and the trailing `text` content. Counts, dates and error codes are not numerically or calendrically normalized because deployed peer formats vary.
+
+It also exposes the standard receipt-related TLVs:
+
+- `receipted_message_id`: C-Octet string.
+- `message_state`: exactly one octet, standard values 1..8.
+- `network_error_code`: exactly three octets, preserved byte-for-byte.
+- `delivery_failure_reason`: exactly one octet, preserved without vendor-specific interpretation.
+- `additional_status_info_text`: C-Octet string.
+
+Identical duplicate TLVs are tolerated; conflicting duplicates and malformed lengths/strings are errors. Unknown optional TLVs remain available on the original decoded PDU.
+
+## Text encodings
+
+The parser supports conventional ASCII-compatible receipt text for `data_coding=0x00`, strict IA5 (`0x01`), Latin-1 (`0x03`) and strict UCS-2/BMP (`0x08`). Unsupported data coding on a recognized receipt returns `ErrUnsupportedDeliveryReceiptDataCoding`; invalid IA5/UCS-2 returns `ErrInvalidDeliveryReceipt`.
+
+Packed GSM7 and other national alphabets are not guessed. In particular, `short_message` octet length alone does not reliably provide the original packed-GSM7 septet count and padding. Add support only with a sound protocol-level length source and interoperable fixtures.
+
+## Error semantics
+
+- `ErrNotDeliveryReceipt`: no recognizable receipt marker, standard receipt TLV or text receipt pattern.
+- `ErrInvalidDeliveryReceipt`: malformed or contradictory receipt metadata.
+- `ErrUnsupportedDeliveryReceiptDataCoding`: a recognized receipt carries text in a coding the parser deliberately does not decode.
+
+The parser is not a delivery guarantee and does not determine whether a receipt is late, duplicated, missing, billable or correlated to a particular application request. Those policies belong to each consuming application.
+
+## Compatibility and verification
+
+The parser is additive. Existing `protocol.DeliverSM`, Session ACK behavior and public raw fields remain unchanged. API snapshots and no-panic probes cover all exported additions. See `PLAN.md` Phase 21 and `.codex/TASKS.md` for implementation and verification status.
