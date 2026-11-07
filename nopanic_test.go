@@ -229,7 +229,7 @@ var noPanicFuncs = map[string]any{
 	"message.SegmentTextUDH":               message.SegmentTextUDH,
 	"message.SegmentTextUDH16Unpacked":     message.SegmentTextUDH16Unpacked,
 	"protocol.CongestionStateFromOptional": protocol.CongestionStateFromOptional,
-	"protocol.DecodeRegisteredDelivery":     protocol.DecodeRegisteredDelivery,
+	"protocol.DecodeRegisteredDelivery":    protocol.DecodeRegisteredDelivery,
 	"protocol.NegotiatePeerCapabilities":   protocol.NegotiatePeerCapabilities,
 	"protocol.PutUint32":                   protocol.PutUint32,
 	"protocol.ReadUint32":                  protocol.ReadUint32,

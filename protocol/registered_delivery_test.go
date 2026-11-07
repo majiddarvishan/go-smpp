@@ -12,7 +12,7 @@ func TestRegisteredDeliveryRoundTripsEveryOctet(t *testing.T) {
 }
 
 func TestRegisteredDeliveryFieldExtraction(t *testing.T) {
-	got := DecodeRegisteredDelivery(0x3f)
+	got := DecodeRegisteredDelivery(0x1f)
 	if got.SMSCReceipt != SMSCReceiptModeSuccessOnly {
 		t.Fatalf("SMSC receipt mode = %d, want peer-specific success-only", got.SMSCReceipt)
 	}

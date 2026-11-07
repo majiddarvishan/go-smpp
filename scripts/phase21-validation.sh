@@ -121,18 +121,25 @@ run_fuzz_gate() {
 }
 
 # Use the CI-pinned linter. Install it outside the repository if needed.
+# Never disable checksum verification to make a toolchain or module download work.
 TOOL_DIR=""
 LINTER=""
+GOSUMDB_VALUE="$(go env GOSUMDB 2>/dev/null || true)"
+LOCAL_GO_VERSION="$(env GOTOOLCHAIN=local go version 2>&1 || true)"
 if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -q '2\.14\.0'; then
   LINTER="$(command -v golangci-lint)"
 else
-  TOOL_DIR="$OUT-tools-$"
-  if mkdir -p "$TOOL_DIR"; then
-    run_gate "golangci-lint-install" env GOTOOLCHAIN=go1.27.1 GOBIN="$TOOL_DIR" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+  TOOL_DIR="$OUT/tools"
+  if [[ "$GOSUMDB_VALUE" == "off" || -z "$GOSUMDB_VALUE" ]]; then
+    record BLOCKED "golangci-lint-tool" "checksum database is disabled or unavailable (GOSUMDB=$GOSUMDB_VALUE); set GOSUMDB=sum.golang.org or unset GOSUMDB, then rerun"
+  elif [[ "$LOCAL_GO_VERSION" != *"go1.27.0"* ]]; then
+    record BLOCKED "golangci-lint-tool" "pinned golangci-lint v2.14.0 installation requires local Go 1.27.0; found: $LOCAL_GO_VERSION"
+  elif mkdir -p "$TOOL_DIR"; then
+    run_gate "golangci-lint-install" env GOTOOLCHAIN=local GOBIN="$TOOL_DIR" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
     if [[ -x "$TOOL_DIR/golangci-lint" ]]; then
       LINTER="$TOOL_DIR/golangci-lint"
     else
-      record BLOCKED "golangci-lint-tool" "pinned golangci-lint v2.14.0 could not be installed; see install log"
+      record BLOCKED "golangci-lint-tool" "pinned golangci-lint v2.14.0 could not be installed; see install log; checksum verification was not disabled"
     fi
   else
     record BLOCKED "golangci-lint-tool" "cannot create temporary tool directory"
@@ -146,7 +153,11 @@ for version in go1.25.0 go1.27.0; do
   version_log="$OUT/$version-version.log"
   if ! env GOTOOLCHAIN="$version" go version > "$version_log" 2>&1; then
     cat "$version_log"
-    record BLOCKED "$version-toolchain" "toolchain unavailable or automatic download failed"
+    if [[ "$version" == "go1.25.0" && ( "$GOSUMDB_VALUE" == "off" || -z "$GOSUMDB_VALUE" ) ]]; then
+      record BLOCKED "$version-toolchain" "Go 1.25.0 is unavailable and checksum verification cannot be completed while GOSUMDB is disabled or unset; set GOSUMDB=sum.golang.org (or unset GOSUMDB) and rerun"
+    else
+      record BLOCKED "$version-toolchain" "toolchain unavailable or secure automatic download failed; check the log and ensure GOSUMDB is enabled"
+    fi
     continue
   fi
   cat "$version_log"

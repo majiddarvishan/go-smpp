@@ -71,11 +71,11 @@ type DeliveryReceipt struct {
 	ErrorCode       string
 	Text            string
 
-	NetworkErrorCode        [3]byte
-	HasNetworkErrorCode     bool
-	DeliveryFailureReason   uint8
-	HasDeliveryFailureReason bool
-	AdditionalStatusInfoText string
+	NetworkErrorCode            [3]byte
+	HasNetworkErrorCode         bool
+	DeliveryFailureReason       uint8
+	HasDeliveryFailureReason    bool
+	AdditionalStatusInfoText    string
 	HasAdditionalStatusInfoText bool
 }
 

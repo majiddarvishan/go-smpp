@@ -42,7 +42,7 @@ func TestParseDeliveryReceiptPrecedenceAndConflicts(t *testing.T) {
 
 func TestParseDeliveryReceiptStandardTextFields(t *testing.T) {
 	got, err := ParseDeliveryReceipt(protocol.DeliverSM{
-		ESMClass: 0x04,
+		ESMClass:     0x04,
 		ShortMessage: []byte("id:000AbC sub:001 dlvrd:000 submit date:2411070900 done date:2411070901 stat:UNDELIV err:005 text:destination unavailable"),
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func TestParseDeliveryReceiptStandardTextFields(t *testing.T) {
 
 func TestParseDeliveryReceiptSplitStandardFieldValues(t *testing.T) {
 	got, err := ParseDeliveryReceipt(protocol.DeliverSM{
-		ESMClass: 0x04,
+		ESMClass:     0x04,
 		ShortMessage: []byte("ID: ABC123 SUB: 002 DLVRD: 001 SUBMIT DATE: 2411070900 DONE DATE: 2411070901 STAT: DELIVRD ERR: 000 TEXT: delivery complete for 123"),
 	})
 	if err != nil {

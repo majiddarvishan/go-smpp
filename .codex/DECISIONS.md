@@ -276,14 +276,6 @@ The following remain to be decided in later phases and recorded here:
 
 - Exact public package naming/API conventions after the first API sketch stabilizes.
 
-## D-042 — Performance laboratory results are not acceptance results
-
-**Decision:** Phase 16 provides repeatable codec/session/TCP/TLS benchmarks, profiling scripts, and a minimal SMPP peer simulator. End-to-end benchmarks default to one SMPP session and accept explicit additional session counts through `SMPP_BENCH_SESSIONS`; the lab must not silently assume that more connections are better.
-
-Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
-
-**Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.
-
 ## D-046 — Product-neutral reusable library boundary
 
 **Decision:** `go-smpp` is a general-purpose SMPP 3.4 / 5.0 Go library. Its source, public API, examples, documentation, CI and maintained agent handoff files must not import, name, or encode assumptions for any downstream application or product. Public capabilities are added only when they are reusable protocol, transport, session, encoding, messaging, or observability primitives. Application workflows, test-run state, workload controllers, billing policy, application-level correlation/retention and product UI/CLI behavior remain outside the library.
@@ -297,3 +289,11 @@ The standalone `cmd/smpp-sim` is retained solely as a generic SMSC peer for this
 **Decision:** Keep the SMPP 3.4 wire interpretation explicit: the SMSC delivery-receipt subfield value `0b11` is reserved by the standard. Expose `SMSCReceiptModeSuccessOnly` as a named peer-specific alias for that same raw value when an SMSC explicitly documents or negotiates success-only semantics. Retain `SMSCReceiptModeReserved` as the standards-oriented alias. The library never assumes the peer-specific meaning, rewrites the octet, or treats it as portable SMPP behavior. The remaining `registered_delivery` layout is decoded according to its actual bit widths: two-bit SMSC receipt, two-bit SME acknowledgement, one-bit intermediate notification, and three reserved high bits.
 
 **Reason:** Some peers may assign operational meaning to a standards-reserved encoding. A reusable library can name that convention without claiming it is standardized or silently applying it to unrelated peers; lossless decode/encode remains the invariant.
+
+## D-048 — Performance laboratory results are not acceptance results
+
+**Decision:** Phase 16 provides repeatable codec/session/TCP/TLS benchmarks, profiling scripts, and a minimal SMPP peer simulator. End-to-end benchmarks default to one SMPP session and accept explicit additional session counts through `SMPP_BENCH_SESSIONS`; the lab must not silently assume that more connections are better.
+
+Development-host and GitHub-hosted-runner measurements are recorded as regression/diagnostic baselines only. The 100,000 aggregate bidirectional request-PDU/s claim and minimum practical connection count are made only by Phase 17 on the documented Linux/amd64 8-core / 10-GB reference machine.
+
+**Reason:** Throughput is highly dependent on CPU count, scheduler behavior, RTT, TLS cost, peer window limits, and kernel/network environment. Separating the reusable lab from formal acceptance prevents a fast or slow CI runner from being mistaken for the product performance contract.

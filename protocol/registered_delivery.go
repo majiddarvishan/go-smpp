@@ -55,7 +55,7 @@ const (
 type RegisteredDelivery struct {
 	SMSCReceipt               SMSCReceiptMode
 	SMEAcknowledgement        SMEDeliveryAcknowledgementMode
-	IntermediateNotification IntermediateNotificationMode
+	IntermediateNotification  IntermediateNotificationMode
 	ReservedBits              uint8
 }
 
@@ -65,7 +65,7 @@ func DecodeRegisteredDelivery(value uint8) RegisteredDelivery {
 	return RegisteredDelivery{
 		SMSCReceipt:               SMSCReceiptMode(value & 0x03),
 		SMEAcknowledgement:        SMEDeliveryAcknowledgementMode((value >> 2) & 0x03),
-		IntermediateNotification: IntermediateNotificationMode((value >> 4) & 0x01),
+		IntermediateNotification:  IntermediateNotificationMode((value >> 4) & 0x01),
 		ReservedBits:              value & 0xE0,
 	}
 }
