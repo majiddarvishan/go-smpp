@@ -181,6 +181,33 @@ func TestInteropFixtureValidationRequiresReviewedRealPeerEvidence(t *testing.T) 
 	}
 }
 
+func TestInteropFixtureValidationRequiresReviewedSimulatorEvidence(t *testing.T) {
+	manifest, err := loadInteropManifest(interopManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := manifest.Fixtures[0]
+	fixture.Source = "simulator-peer"
+	fixture.PeerAlias = "peer-001"
+	fixture.CaptureMethod = "wire-capture-sanitized"
+	fixture.CapturedAt = "2026-11-07T13:00:00Z"
+	fixture.EvidenceRef = "INT-01-PEER-001-001"
+	fixture.Sanitization = &interopSanitization{
+		Reviewed:                false,
+		Policy:                  "peer-aware-allowlist-v1",
+		BindFramesExcluded:      true,
+		SensitiveValuesReplaced: true,
+		UnknownTLVs:             "removed",
+	}
+	if err := validateInteropFixture(fixture); err == nil {
+		t.Fatal("unreviewed simulator evidence was accepted")
+	}
+	fixture.Sanitization.Reviewed = true
+	if err := validateInteropFixture(fixture); err != nil {
+		t.Fatalf("reviewed simulator evidence was rejected: %v", err)
+	}
+}
+
 func TestInteropFixtureValidationRejectsBindCredentialFrames(t *testing.T) {
 	manifest, err := loadInteropManifest(interopManifestPath)
 	if err != nil {
@@ -281,6 +308,27 @@ func validateInteropFixture(fixture interopFixture) error {
 			!sanitization.SensitiveValuesReplaced ||
 			(sanitization.UnknownTLVs != "removed" && sanitization.UnknownTLVs != "reviewed-safe") {
 			return errors.New("real-peer fixtures require reviewed peer-aware sanitization, excluded bind frames, replaced sensitive values, and removed or reviewed-safe unknown TLVs")
+		}
+	case "simulator-peer":
+		if !interopPeerAliasPattern.MatchString(fixture.PeerAlias) {
+			return errors.New("simulator-peer fixtures require an opaque peer alias such as peer-001")
+		}
+		if fixture.CaptureMethod != "wire-capture-sanitized" {
+			return errors.New("simulator-peer capture_method must be wire-capture-sanitized")
+		}
+		if _, err := time.Parse(time.RFC3339, fixture.CapturedAt); err != nil {
+			return fmt.Errorf("simulator-peer captured_at must be RFC3339: %w", err)
+		}
+		if !interopEvidencePattern.MatchString(fixture.EvidenceRef) {
+			return errors.New("simulator-peer evidence_ref must be an opaque INT-01 reference")
+		}
+		sanitization := fixture.Sanitization
+		if sanitization == nil || !sanitization.Reviewed ||
+			sanitization.Policy != "peer-aware-allowlist-v1" ||
+			!sanitization.BindFramesExcluded ||
+			!sanitization.SensitiveValuesReplaced ||
+			sanitization.UnknownTLVs != "removed" {
+			return errors.New("simulator-peer fixtures require reviewed allowlist sanitization, excluded bind frames, replaced sensitive values, and removed unknown TLVs")
 		}
 	default:
 		return fmt.Errorf("unsupported source %q", fixture.Source)

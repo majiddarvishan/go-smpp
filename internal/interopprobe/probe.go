@@ -707,8 +707,12 @@ func (c *capture) fixture(id, peerAlias, evidenceRef string) *Fixture {
 }
 
 func sanitizeRawPDU(raw []byte, registry *codec.Registry) (FixtureFrame, bool) {
+	header, err := codec.DecodeHeader(raw)
+	if err != nil || isCredentialCommand(header.CommandID) {
+		return FixtureFrame{}, false
+	}
 	decoded, err := codec.DecodePDU(raw, registry)
-	if err != nil || isCredentialCommand(decoded.Header.CommandID) {
+	if err != nil {
 		return FixtureFrame{}, false
 	}
 
