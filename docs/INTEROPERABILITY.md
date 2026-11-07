@@ -105,7 +105,9 @@ Run from the Linux host where both simulator components are running:
 scripts/interop-local.sh all
 ```
 
-The SMSC simulator must be running before the probe starts. Keep the ESME simulator stopped until the runner prints `READY`; then start or restart it so it connects to the go-smpp listener. Each phase uses at most one connection, and the phases do not overlap. Use `scripts/interop-local.sh smsc` or `scripts/interop-local.sh esme` to run one direction only.
+For `all` or `smsc` mode, the SMSC simulator must be running before the probe starts. For `all` or `esme` mode, keep the ESME simulator stopped until the runner prints `READY`; then start or restart it so it connects to the go-smpp listener. In `esme` mode, go-smpp acts as the SMSC on its configured listener, so no external SMSC simulator is needed. Each phase uses at most one connection, and the phases do not overlap. Use `scripts/interop-local.sh smsc` or `scripts/interop-local.sh esme` to run one direction only.
+
+The ESME simulator is operator-controlled through its CLI; it does not originate `submit_sm` automatically. Do not issue the CLI submit command when `READY` appears. First allow the TRX bind, `enquire_link`, and synthetic `deliver_sm` / `deliver_sm_resp` exchange to complete. Only when the probe prints `OBSERVE`, use the ESME simulator CLI to send exactly one `submit_sm` within the displayed observation window. The probe observes this command; it does not generate it.
 
 The script asks for each bind password using a hidden terminal prompt. For non-interactive use, the corresponding environment variables are `SMPP_INTEROP_SMSC_PASSWORD` and `SMPP_INTEROP_ESME_PASSWORD`; never put passwords in command-line arguments or committed config. The default System IDs are `client_0` and `smpp_client_0`, System Type is `smpp`, and the bind type is TRX. Endpoints, IDs, System Type, synthetic test addresses/text and operation timeouts can be overridden with the `SMPP_INTEROP_*` environment variables or probe flags. The ESME-originated `submit_sm` observation window defaults to 15 seconds and can be changed with `SMPP_INTEROP_SUBMIT_WAIT` (for example, `30s`).
 
