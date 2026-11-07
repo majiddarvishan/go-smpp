@@ -291,3 +291,9 @@ Development-host and GitHub-hosted-runner measurements are recorded as regressio
 The standalone `cmd/smpp-sim` is retained solely as a generic SMSC peer for this repository's development/performance lab. It is not a public library package, is not imported by public packages, and does not define library behavior or API requirements.
 
 **Reason:** A reusable protocol library must serve independent ESME/SMSC applications without knowing their names, architectures, workload policies or product-specific requirements. This keeps the dependency direction one-way and prevents the core from accumulating special-purpose behavior.
+
+## D-047 — Peer-specific success-only alias for reserved registered_delivery value
+
+**Decision:** Keep the SMPP 3.4 wire interpretation explicit: the SMSC delivery-receipt subfield value `0b11` is reserved by the standard. Expose `SMSCReceiptModeSuccessOnly` as a named peer-specific alias for that same raw value when an SMSC explicitly documents or negotiates success-only semantics. Retain `SMSCReceiptModeReserved` as the standards-oriented alias. The library never assumes the peer-specific meaning, rewrites the octet, or treats it as portable SMPP behavior. The remaining `registered_delivery` layout is decoded according to its actual bit widths: two-bit SMSC receipt, two-bit SME acknowledgement, one-bit intermediate notification, and three reserved high bits.
+
+**Reason:** Some peers may assign operational meaning to a standards-reserved encoding. A reusable library can name that convention without claiming it is standardized or silently applying it to unrelated peers; lossless decode/encode remains the invariant.
