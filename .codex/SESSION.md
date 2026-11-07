@@ -53,6 +53,15 @@ Tasks were registered before implementation in `.codex/TASKS.md` and `PLAN.md`.
 - The duplicate decision identifier was corrected: the performance-laboratory decision is now D-048; the original SMPP one-way decision remains D-042.
 - These are source/documentation repairs, **not validation evidence**. No local Go test or CI run is recorded for this commit; all Phase 21 tasks remain open. `main` is unchanged and no PR has been opened.
 
+### Latest local validation evidence — 2026-11-07
+
+- The user ran `scripts/phase21-validation.sh` on branch HEAD `e60258af93dd67efe8b3984e6b57ad5556e6dd4d`.
+- Result: **35 PASS, 2 FAIL, 0 BLOCKED**. The only failures were `go1.25.0-gofmt` and `go1.27.0-gofmt`; both identify only `message/delivery_receipt.go` and `protocol/registered_delivery.go`.
+- Both Go versions passed unit, API snapshot, no-panic, race, all fuzz smoke gates, protocol/codec/session/perflab benchmark smoke, no-unsafe, lint, and coverage-floor gates.
+- Phase 17 was a 2-second CI smoke only, not the 60-second reference acceptance.
+- Git status showed an untracked `.bench/` directory. The validation script explicitly did not read, delete, or modify it; preserve it.
+- The next corrective patch re-aligns all `DeliveryReceipt` struct fields after its DLR expansion, and the `RegisteredDelivery` struct/composite literal. This is formatting-only; rerun the full validation script before marking any Phase 21 task complete.
+
 ## Verification still required
 
-No local Go execution has been performed for the Phase 21 branch edits yet. Do not mark Phase 21 tasks complete until the PR CI passes on both supported Go lines, including gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke. Keep P1 real-peer interoperability, current-head reference performance and release-tag gates open until their own evidence exists.
+Local Phase 21 validation has now been executed on both supported Go lines. The latest run passed 35 gates and failed only the gofmt gate on `message/delivery_receipt.go` and `protocol/registered_delivery.go`; a formatting-only correction is being applied. Do not mark Phase 21 tasks complete until the full local validation rerun passes and final-head PR CI passes on both supported Go lines, including gofmt, lint, unit, API/no-panic, race, coverage, fuzz and performance smoke. Keep P1 real-peer interoperability, the 60-second current-head reference performance acceptance, and release-tag gates open until their own evidence exists. Preserve the untracked `.bench/` directory.

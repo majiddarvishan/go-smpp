@@ -48,28 +48,28 @@ var (
 // State values use the SMPP 3.4 message_state wire numbers. Use
 // SMPPMessageState for a typed protocol.MessageState view of the selected value.
 type DeliveryReceipt struct {
-	MessageID         string
-	MessageIDSource   ReceiptFieldSource
-	TextMessageID     string
-	TLVMessageID      string
-	MessageIDConflict bool
+	MessageID                   string
+	MessageIDSource             ReceiptFieldSource
+	TextMessageID               string
+	TLVMessageID                string
+	MessageIDConflict           bool
 
-	State         uint8
-	HasState      bool
-	StateSource   ReceiptFieldSource
-	TextStatus    string
-	TextState     uint8
-	HasTextState  bool
-	TLVState      uint8
-	HasTLVState   bool
-	StateConflict bool
+	State                       uint8
+	HasState                    bool
+	StateSource                 ReceiptFieldSource
+	TextStatus                  string
+	TextState                   uint8
+	HasTextState                bool
+	TLVState                    uint8
+	HasTLVState                 bool
+	StateConflict               bool
 
-	SubmittedCount  string
-	DeliveredCount  string
-	SubmitDate      string
-	DoneDate        string
-	ErrorCode       string
-	Text            string
+	SubmittedCount              string
+	DeliveredCount              string
+	SubmitDate                  string
+	DoneDate                    string
+	ErrorCode                   string
+	Text                        string
 
 	NetworkErrorCode            [3]byte
 	HasNetworkErrorCode         bool

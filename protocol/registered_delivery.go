@@ -53,20 +53,20 @@ const (
 // DecodeRegisteredDelivery to inspect that octet and Encode to reconstruct it.
 // No reserved or vendor-defined bit is rejected or normalized.
 type RegisteredDelivery struct {
-	SMSCReceipt               SMSCReceiptMode
-	SMEAcknowledgement        SMEDeliveryAcknowledgementMode
-	IntermediateNotification  IntermediateNotificationMode
-	ReservedBits              uint8
+	SMSCReceipt              SMSCReceiptMode
+	SMEAcknowledgement       SMEDeliveryAcknowledgementMode
+	IntermediateNotification IntermediateNotificationMode
+	ReservedBits             uint8
 }
 
 // DecodeRegisteredDelivery splits a registered_delivery octet into its
 // standard fields without rejecting or normalizing reserved values.
 func DecodeRegisteredDelivery(value uint8) RegisteredDelivery {
 	return RegisteredDelivery{
-		SMSCReceipt:               SMSCReceiptMode(value & 0x03),
-		SMEAcknowledgement:        SMEDeliveryAcknowledgementMode((value >> 2) & 0x03),
-		IntermediateNotification:  IntermediateNotificationMode((value >> 4) & 0x01),
-		ReservedBits:              value & 0xE0,
+		SMSCReceipt:              SMSCReceiptMode(value & 0x03),
+		SMEAcknowledgement:       SMEDeliveryAcknowledgementMode((value >> 2) & 0x03),
+		IntermediateNotification: IntermediateNotificationMode((value >> 4) & 0x01),
+		ReservedBits:             value & 0xE0,
 	}
 }
 
