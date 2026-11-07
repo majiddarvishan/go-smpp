@@ -87,7 +87,7 @@ func TestSanitizeRawPDUExcludesBindCredentialFrames(t *testing.T) {
 		SequenceNumber: 3,
 	}, protocol.BindRequest{
 		SystemID:         []byte("secret-system"),
-		Password:         []byte("secret-password"),
+		Password:         []byte("secretpw"),
 		SystemType:       []byte("smpp"),
 		InterfaceVersion: protocol.InterfaceVersion34,
 	}, registry)
