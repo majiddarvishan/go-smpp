@@ -62,7 +62,7 @@ Before continuing:
 EOF
 
 set +e
-go run ./cmd/interop-probe -mode "$MODE" 2>&1 | tee "$RUN_DIR/run.log"
+go run -tags=interop ./cmd/interop-probe -mode "$MODE" 2>&1 | tee "$RUN_DIR/run.log"
 RUN_STATUS=${PIPESTATUS[0]}
 set -e
 

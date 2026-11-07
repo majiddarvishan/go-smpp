@@ -1,3 +1,5 @@
+//go:build interop
+
 package main
 
 import (
