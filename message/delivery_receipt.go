@@ -71,6 +71,7 @@ type DeliveryReceipt struct {
 	DeliveryFailureReason   uint8
 	HasDeliveryFailureReason bool
 	AdditionalStatusInfoText string
+	HasAdditionalStatusInfoText bool
 }
 
 // SMPPMessageState returns the selected standard SMPP message_state as its
@@ -109,7 +110,7 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 	for _, item := range deliver.Optional {
 		switch item.Tag {
 		case protocol.TLVTagReceiptedMessageID:
-			id, err := receiptTLVCString(item.Value, "receipted_message_id")
+			id, err := receiptTLVCString(item.Value, "receipted_message_id", false)
 			if err != nil {
 				return DeliveryReceipt{}, err
 			}
@@ -155,14 +156,15 @@ func ParseDeliveryReceipt(deliver protocol.DeliverSM) (DeliveryReceipt, error) {
 			hasTLVReceipt = true
 
 		case protocol.TLVTagAdditionalStatusInfoText:
-			value, err := receiptTLVCString(item.Value, "additional_status_info_text")
+			value, err := receiptTLVCString(item.Value, "additional_status_info_text", true)
 			if err != nil {
 				return DeliveryReceipt{}, err
 			}
-			if receipt.AdditionalStatusInfoText != "" && receipt.AdditionalStatusInfoText != value {
+			if receipt.HasAdditionalStatusInfoText && receipt.AdditionalStatusInfoText != value {
 				return DeliveryReceipt{}, fmt.Errorf("%w: conflicting additional_status_info_text TLVs", ErrInvalidDeliveryReceipt)
 			}
 			receipt.AdditionalStatusInfoText = value
+			receipt.HasAdditionalStatusInfoText = true
 			hasTLVReceipt = true
 
 		case protocol.TLVTagMessagePayload:
@@ -367,14 +369,14 @@ func setReceiptTextField(destination *string, value, field string) error {
 	return nil
 }
 
-func receiptTLVCString(value []byte, field string) (string, error) {
+func receiptTLVCString(value []byte, field string, allowEmpty bool) (string, error) {
 	if len(value) == 0 {
 		return "", fmt.Errorf("%w: empty %s TLV", ErrInvalidDeliveryReceipt, field)
 	}
 	if value[len(value)-1] == 0 {
 		value = value[:len(value)-1]
 	}
-	if len(value) == 0 || bytes.IndexByte(value, 0) >= 0 {
+	if (len(value) == 0 && !allowEmpty) || bytes.IndexByte(value, 0) >= 0 {
 		return "", fmt.Errorf("%w: malformed %s C-Octet value", ErrInvalidDeliveryReceipt, field)
 	}
 	return string(value), nil
