@@ -302,7 +302,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [ ] Expose standard receipt TLVs: `receipted_message_id`, `message_state`, `network_error_code`, `delivery_failure_reason`, and `additional_status_info_text`, with strict length/duplicate handling.
 - [ ] Support IA5 and Latin-1 DLR text; explicitly report unsupported encodings rather than treating them as an ordinary non-receipt or guessing.
 - [ ] Add a typed accessor for the standard `protocol.MessageState` without changing existing public field types.
-- [ ] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-value round trips.
+- [ ] Add generic SMPP 3.4 `registered_delivery` parse/encode helpers with lossless reserved-bit round trips. Document the `0b11` SMSC receipt value as standards-reserved and expose success-only meaning only as an explicitly peer-specific alias.
 - [ ] Reconcile the historical backlog against implemented source/tests and correct stale Phase 12–14/17 status.
 - [ ] Align current status/handoff docs with the published reference acceptance result and remaining release gates.
 - [ ] Add comprehensive table-driven, malformed-input, round-trip, API snapshot and no-panic tests.
