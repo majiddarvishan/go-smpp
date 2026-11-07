@@ -90,3 +90,31 @@ Strict UCS-2 and UTF-16BE-with-surrogates are intentionally separate modes.
 For SMPP interoperability, strict UCS-2 and surrogate-enabled UTF-16BE use the SMPP data_coding value associated with UCS-2. Not every SMSC/carrier accepts surrogate pairs under that value, so applications should enable emoji only for peers/routes known to preserve them.
 
 Multipart Unicode sizing uses 16-bit code units and never splits a surrogate pair across parts.
+
+
+## Offline interoperability fixtures
+
+The repository keeps peer interoperability evidence in a versioned, test-only manifest at `testdata/interop/manifest.json`. The fixture harness is part of the repository's external test package; it does not add an exported API, runtime dependency, or product-specific behavior.
+
+Run the offline fixture suite with:
+
+```bash
+go test . -run '^TestInteroperabilityFixtures$' -count=1
+```
+
+The manifest uses schema version 1. Each fixture identifies its source (`synthetic` or `real-peer-anonymized`), an opaque peer alias, SMPP profile, capture method, and ordered frames. Each frame records its TCP direction, exact PDU bytes as hexadecimal, expected command/status/sequence/body type, decode outcome, and whether exact re-encoding is expected. Frames in opposite directions are replayed as separate TCP byte streams; deterministic chunk sizes exercise both fragmentation and coalescing.
+
+Synthetic fixtures must use `peer_alias=synthetic` and `capture_method=constructed`. They are useful for validating the harness and protocol vectors only. **They are not evidence of interoperability with a deployed SMSC/ESME.**
+
+A real fixture must use an opaque alias such as `peer-001`, an RFC3339 capture timestamp, an opaque `INT-01-PEER-NNN-NNN` evidence reference, and a reviewed `peer-aware-allowlist-v1` sanitization declaration. The declaration must attest that bind/outbind frames were excluded, sensitive values were replaced, and unknown TLVs were removed or individually reviewed safe. The test harness enforces these metadata requirements and rejects bind/outbind command IDs, but it cannot independently prove that a human sanitizer removed every secret; the maintainer must review the bytes before committing them.
+
+### Capture and fixture safety
+
+- Do not commit PCAPs, raw capture files, bind/outbind frames, passwords, system IDs, subscriber addresses, message IDs, message bodies, IP addresses, hostnames, account names, or identifying vendor/customer labels.
+- Capture only in an authorized isolated test environment. Keep original raw evidence outside the repository in restricted storage and delete it according to the applicable retention policy.
+- Before adding a real fixture, replace sensitive mandatory-field values with synthetic values while preserving valid C-Octet boundaries and lengths. Remove unknown/vendor TLVs unless their semantics and values have been reviewed safe; if a vendor extension is required for a test, retain only the minimum safe, anonymized bytes and record the peer-specific evidence reference.
+- Never assume the fixture harness performs redaction. It validates declarations and protocol framing; it is not a sanitizer.
+- Use `reencode=exact` only when the peer's observed wire form is expected to round-trip byte-for-byte. Use `reencode=decode-only` for an accepted peer form whose decode behavior is under test but whose canonical encoder output is intentionally different.
+- Use `outcome=reject` with `error_kind=fatal|semantic|other` when the expected library behavior is to reject a recorded frame. A rejection is evidence about the library's handling of that frame, not proof that the peer itself is non-conformant.
+
+The initial manifest contains only constructed synthetic SMPP 3.4 vectors (enquire_link, submit_sm/submit_sm_resp, and a synthetic deliver_sm receipt). **INT-01 remains open until anonymized real-peer exchanges are supplied, reviewed, and added.**

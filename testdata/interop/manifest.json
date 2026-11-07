@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "synthetic-smpp34-basic-exchange",
+      "source": "synthetic",
+      "peer_alias": "synthetic",
+      "protocol_version": "3.4",
+      "capture_method": "constructed",
+      "frames": [
+        {
+          "direction": "esme_to_smsc",
+          "hex": "00000010000000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000010800000150000000000000001",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000015",
+            "command_status": "0x00000000",
+            "sequence_number": 1,
+            "body_type": "protocol.EmptyBody",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "esme_to_smsc",
+          "hex": "0000002f00000004000000000000000700010131323300010134353600000000000001000000024869020c00021234",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000004",
+            "command_status": "0x00000000",
+            "sequence_number": 7,
+            "body_type": "protocol.SubmitSM",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "0000001d800000040000000000000007666978747572652d3030303100",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x80000004",
+            "command_status": "0x00000000",
+            "sequence_number": 7,
+            "body_type": "protocol.SubmitSMResp",
+            "reencode": "exact"
+          }
+        },
+        {
+          "direction": "smsc_to_esme",
+          "hex": "00000043000000050000000000000009000101313233000101343536000400000000000000001c69643a73796e7468657469632d303120737461743a44454c49565244",
+          "expect": {
+            "outcome": "accept",
+            "command_id": "0x00000005",
+            "command_status": "0x00000000",
+            "sequence_number": 9,
+            "body_type": "protocol.DeliverSM",
+            "reencode": "exact",
+            "receipt": {
+              "message_id": "synthetic-01",
+              "text_status": "DELIVRD"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
