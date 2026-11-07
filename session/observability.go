@@ -34,9 +34,10 @@ const (
 	// point on, though the session keeps running.
 	EventWindowUnderflow
 	// EventPanicRecovered is emitted when the session recovered a panic instead
-	// of letting it crash the process. Reason holds the *protocol.PanicError
-	// text, which names the source; the stack is in the session's log. An
-	// Observer that itself panicked is not told about its own panic.
+	// of letting it crash the process. Reason holds the sanitized
+	// protocol.PanicError text (source and value type, never the panic value);
+	// the stack is in the session's log. An Observer that itself panicked is not
+	// told about its own panic.
 	EventPanicRecovered
 )
 

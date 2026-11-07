@@ -26,9 +26,9 @@ import (
 
 const (
 	// 8 octets: the longest password SMPP 3.4 allows.
-	leakMarker = "Zq7!pwXk"
+	leakMarker      = "Zq7!pwXk"
 	// Sent over-long and unterminated to drive the malformed-PDU (fatal) path.
-	longLeakMarker = "LONGSECRETPASSWORD"
+	longLeakMarker  = "LONGSECRETPASSWORD"
 	panicLeakMarker = "P4n!cKey"
 )
 
