@@ -140,3 +140,10 @@ Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep
   - Explicitly close the server and join active sessions before the final report/candidate snapshot; apply the same cleanup to early-return paths.
 - Added tests for same-session/replacement-session classification, peer EOF cause retention, and safe broken-pipe classification. Updated interoperability docs, PLAN and TASKS. INT-01L remains open until final CI passes and one repeat live ESME run verifies the diagnostic output. No public library semantics have been changed.
 - INT-01I and INT-01K remain complete based on the earlier valid run and Unbind capability decision. INT-01G deployed-peer evidence, PERF-01 reference acceptance and REL-01 release remain open. PR #8 stays Draft/open and unmerged.
+
+
+### INT-01L CI completion — 2026-11-08
+
+- Final source head `4deb2e1a13497b42de721fb74318a503c7ea92b5` passed [GitHub Actions run 42476774013](https://github.com/majiddarvishan/go-smpp/actions/runs/42476774013) on Go 1.25.x and Go 1.27.x.
+- Both versions passed gofmt, unit tests, opt-in interoperability probe tests, race tests, fuzz smoke, protocol/codec benchmarks, Phase 17 performance smoke, sustained resource-bound smoke, and no-unsafe. Go 1.27.x lint and coverage floor also passed.
+- INT-01L now needs only one repeat live ESME-mode run to establish whether the original connection is locally closed or encounters a peer/OS write-side error. No public library behavior has been changed.
