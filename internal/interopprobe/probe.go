@@ -1168,11 +1168,15 @@ func esmeUnbindEvent(attempt bool, unbind func() error, packetCapture *capture) 
 			Name:   "unbind",
 			Status: StatusUnsupported,
 			Details: map[string]string{
-				"reason":            "peer_capability_not_supported",
-				"operation":         "not_attempted",
-				"peer_capability":   "unbind",
-				"request_sent":      "false",
-				"response_observed": "false",
+				"reason":             "peer_capability_not_supported",
+				"operation":          "not_attempted",
+				"operation_kind":     "server_initiated_unbind",
+				"initiator_role":     "smsc",
+				"peer_role":          "esme",
+				"request_direction":  "smsc_to_esme",
+				"peer_capability":    "server_initiated_unbind",
+				"request_sent":       "false",
+				"response_observed":  "false",
 			},
 		}
 	}
@@ -1198,6 +1202,15 @@ func unbindEventDetails(err error, packetCapture *capture) map[string]string {
 	details := map[string]string{
 		"request_sent":      fmt.Sprint(packetCapture.hasCommand(requestDirection, protocol.CommandUnbind)),
 		"response_observed": fmt.Sprint(packetCapture.hasCommand(responseDirection, protocol.CommandUnbindResp)),
+		"request_direction": requestDirection,
+		"operation_kind":    "esme_initiated_unbind",
+		"initiator_role":    "esme",
+		"peer_role":         "smsc",
+	}
+	if packetCapture != nil && packetCapture.localRole == "smsc" {
+		details["operation_kind"] = "server_initiated_unbind"
+		details["initiator_role"] = "smsc"
+		details["peer_role"] = "esme"
 	}
 	for key, value := range safeErrorDetails(err) {
 		details[key] = value
