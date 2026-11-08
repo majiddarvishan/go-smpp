@@ -143,6 +143,15 @@ The first two-way local run was reviewed from its sanitized archive. No password
 - The server's `ErrUnknownSession` means the original session was no longer owned by the server when `DeliverSM` was called. The old probe's submit handler did not retain the session pointer, so the later submit could have arrived on a replacement connection. The report's frame count (1) also differed from the later candidate's two frames because the final snapshot happened before deferred server shutdown. Therefore this run does **not** prove that the initial TRX connection stayed open through submit.
 - The initiating transport write error is not yet attributed to local close versus peer/OS transport failure. The new probe emits `session_health_after_enquire_link` with the original session's terminal cause and safe network-error class, correlates submit to the original session, blocks stale-session DeliverSM, and shuts down/joins the server before final capture. Library transport/session semantics are unchanged pending evidence.
 
+The follow-up archive `go-smpp-interop.WgVM1N.tar.gz` recorded a read-side TCP `ECONNRESET`, followed by the original Session being closed/removed and a later Submit on a replacement Session. The archive contains no PCAP or TCP flags, so it cannot identify the reset sender. A read-side reset means the local TCP stack reported a reset while reading; the Session then closes the socket during terminal-error handling. The previous `peer_reset_connection` wording was too specific and is now reported as `tcp_reset_received`.
+
+The build-tagged ESME probe now wraps accepted sockets with a metadata-only lifecycle trace. It records a per-connection ID, complete SMPP header metadata (direction, command ID/status, sequence number and PDU length), read/write error classes, and the order of local `Close` calls relative to prior I/O errors. Bind-response correlation is tied to the exact accepted socket, and Submit reports its connection ID as well as the Session identity check. No PDU body, credentials, addresses, raw TCP bytes or PCAP are persisted. This instrumentation is test-only and does not change public library/session behavior.
+
+Interpret the next trace conservatively:
+- `tcp_read_error` with `network_error=connection_reset` before `tcp_local_close` means go-smpp closed the socket after the reset was observed; it does not prove which remote process/component sent the reset.
+- `tcp_local_close` before the read error means a local close was initiated first; inspect the caller/shutdown path.
+- A packet capture on loopback showing TCP RST source/destination ports is still required to attribute the reset to the remote TCP endpoint with packet-level certainty.
+
 The reviewed sanitized exchanges are retained as `simulator-peer` fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002`. They validate observed wire forms and decode behavior only; they do not claim full peer conformance or deployed-vendor interoperability.
 
 ## Offline interoperability fixtures
