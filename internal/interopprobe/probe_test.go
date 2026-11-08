@@ -5,6 +5,7 @@ package interopprobe
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -442,5 +443,71 @@ func TestWaitForBindResponsePreservesPeerCloseCause(t *testing.T) {
 	}
 	if got := safeErrorDetails(err)["reason"]; got != "peer_closed_connection" {
 		t.Fatalf("safe error reason = %q, want peer_closed_connection", got)
+	}
+}
+
+
+type probeReadErrorConn struct {
+	net.Conn
+	readErr error
+}
+
+func (c *probeReadErrorConn) Read([]byte) (int, error) {
+	return 0, c.readErr
+}
+
+func TestTCPTraceCorrelatesBindResponseAndOrdersResetBeforeLocalClose(t *testing.T) {
+	trace := newTCPTrace()
+	local, peer := net.Pipe()
+	defer peer.Close()
+	tracked := trace.track(local)
+	tracked.Conn = &probeReadErrorConn{Conn: local, readErr: syscall.ECONNRESET}
+
+	// Feed a bind_transceiver_resp in two fragments to exercise stream framing.
+	frame := make([]byte, 16)
+	binary.BigEndian.PutUint32(frame[0:4], uint32(len(frame)))
+	binary.BigEndian.PutUint32(frame[4:8], uint32(protocol.CommandBindTransceiverResp))
+	binary.BigEndian.PutUint32(frame[8:12], uint32(protocol.StatusOK))
+	binary.BigEndian.PutUint32(frame[12:16], 77)
+	tracked.observeBytes("smsc_to_peer", frame[:5])
+	tracked.observeBytes("smsc_to_peer", frame[5:])
+
+	select {
+	case status := <-tracked.bindResponses:
+		if status != protocol.StatusOK {
+			t.Fatalf("bind response status = 0x%08x, want OK", uint32(status))
+		}
+	default:
+		t.Fatal("complete bind_transceiver_resp was not correlated to this TCP connection")
+	}
+
+	if _, err := tracked.Read(make([]byte, 32)); !errors.Is(err, syscall.ECONNRESET) {
+		t.Fatalf("tracked Read error = %v, want ECONNRESET", err)
+	}
+	if err := tracked.Close(); err != nil {
+		t.Fatalf("tracked Close: %v", err)
+	}
+
+	events := trace.reportEvents()
+	wantNames := []string{"tcp_accepted", "tcp_pdu_written", "tcp_read_error", "tcp_local_close"}
+	if len(events) != len(wantNames) {
+		t.Fatalf("trace event count = %d, want %d: %+v", len(events), len(wantNames), events)
+	}
+	for i, want := range wantNames {
+		if events[i].Name != want {
+			t.Fatalf("trace event[%d] = %q, want %q", i, events[i].Name, want)
+		}
+		if events[i].Details["connection_id"] != "1" {
+			t.Fatalf("trace event[%d] connection_id = %q, want 1", i, events[i].Details["connection_id"])
+		}
+	}
+	if events[1].Details["command_id"] != "0x80000009" || events[1].Details["sequence_number"] != "77" {
+		t.Fatalf("bind response metadata = %v", events[1].Details)
+	}
+	if events[2].Details["network_error"] != "connection_reset" {
+		t.Fatalf("read error metadata = %v", events[2].Details)
+	}
+	if events[3].Details["prior_io_error"] != "read:connection_reset" {
+		t.Fatalf("local close ordering = %v, want read reset before local close", events[3].Details)
 	}
 }
