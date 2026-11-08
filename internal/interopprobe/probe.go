@@ -518,9 +518,9 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	result.addEvent("session_health_after_enquire_link", healthStatus, health)
 
 	dlrText := []byte("id:interop-001 sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe")
-	if sessionIsDone(attempt.sess) {
+	if sessionIsDone(attempt.sess) || health["server_owns_session"] != "true" {
 		details := sessionHealthDetails(srv, attempt.sess)
-		details["reason"] = "session_closed_before_deliver_sm"
+		details["reason"] = "session_unavailable_before_deliver_sm"
 		result.addEvent("deliver_sm", StatusBlocked, details)
 		result.setStatus(StatusBlocked)
 	} else {
