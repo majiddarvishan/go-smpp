@@ -181,19 +181,19 @@ type tcpTrace struct {
 }
 
 type tcpTraceEvent struct {
-	order         uint64
-	at            string
-	connectionID  uint64
-	name          string
-	direction     string
-	commandID     uint32
-	commandStatus uint32
-	sequence      uint32
-	length        int
-	errorType     string
-	networkError  string
-	priorIOError  string
-	probeShutdown bool
+	order                  uint64
+	at                     string
+	connectionID           uint64
+	name                   string
+	direction              string
+	commandID              uint32
+	commandStatus          uint32
+	sequence               uint32
+	length                 int
+	errorType              string
+	networkError           string
+	priorIOError           string
+	probeShutdown          bool
 	attemptedCommandID     uint32
 	attemptedCommandStatus uint32
 	attemptedSequence      uint32
