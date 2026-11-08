@@ -1202,15 +1202,21 @@ func unbindEventDetails(err error, packetCapture *capture) map[string]string {
 	details := map[string]string{
 		"request_sent":      fmt.Sprint(packetCapture.hasCommand(requestDirection, protocol.CommandUnbind)),
 		"response_observed": fmt.Sprint(packetCapture.hasCommand(responseDirection, protocol.CommandUnbindResp)),
-		"request_direction": requestDirection,
-		"operation_kind":    "esme_initiated_unbind",
-		"initiator_role":    "esme",
-		"peer_role":         "smsc",
+		"operation_kind":    "unknown",
+		"initiator_role":    "unknown",
+		"peer_role":         "unknown",
+		"request_direction": "unknown",
 	}
 	if packetCapture != nil && packetCapture.localRole == "smsc" {
 		details["operation_kind"] = "server_initiated_unbind"
 		details["initiator_role"] = "smsc"
 		details["peer_role"] = "esme"
+		details["request_direction"] = "smsc_to_esme"
+	} else if packetCapture != nil && packetCapture.localRole == "esme" {
+		details["operation_kind"] = "esme_initiated_unbind"
+		details["initiator_role"] = "esme"
+		details["peer_role"] = "smsc"
+		details["request_direction"] = "esme_to_smsc"
 	}
 	for key, value := range safeErrorDetails(err) {
 		details[key] = value
