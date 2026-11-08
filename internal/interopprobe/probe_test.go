@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -333,6 +334,57 @@ func TestESMEUnbindOptInPreservesMissingResponseFailure(t *testing.T) {
 	}
 	if event.Details["timeout_kind"] != "response" || event.Details["command_id"] != "0x00000006" {
 		t.Fatalf("Unbind response timeout details were not preserved: %v", event.Details)
+	}
+}
+
+func TestSubmitObservationEventRequiresTheOriginalSession(t *testing.T) {
+	original := &session.Session{}
+	replacement := &session.Session{}
+	observation := submitObservation{
+		sess:    original,
+		details: map[string]string{"data_coding": "0x00"},
+	}
+
+	event := submitObservationEvent(observation, original)
+	if event.Status != StatusPass || event.Details["session_match"] != "true" {
+		t.Fatalf("same-session event = %+v, want PASS with session_match=true", event)
+	}
+
+	observation.sess = replacement
+	event = submitObservationEvent(observation, original)
+	if event.Status != StatusFail || event.Details["session_match"] != "false" {
+		t.Fatalf("replacement-session event = %+v, want FAIL with session_match=false", event)
+	}
+	if event.Details["reason"] != "submit_received_on_replacement_session" {
+		t.Fatalf("replacement-session reason = %q", event.Details["reason"])
+	}
+}
+
+func TestSessionHealthDetailsPreservesPeerCloseCause(t *testing.T) {
+	sess, peerConn := newProbeTestSession(t)
+	if err := peerConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-sess.Done():
+	case <-time.After(time.Second):
+		t.Fatal("session did not close after peer EOF")
+	}
+
+	details := sessionHealthDetails(nil, sess)
+	if details["session_closed"] != "true" {
+		t.Fatalf("session_closed = %q, want true", details["session_closed"])
+	}
+	if details["close_cause_reason"] != "peer_closed_connection" {
+		t.Fatalf("close cause reason = %q, want peer_closed_connection (details=%v)", details["close_cause_reason"], details)
+	}
+}
+
+func TestSafeErrorDetailsClassifiesBrokenPipe(t *testing.T) {
+	err := &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}
+	details := safeErrorDetails(err)
+	if details["network_operation"] != "write" || details["network_error"] != "broken_pipe" {
+		t.Fatalf("broken pipe classification = %v", details)
 	}
 }
 
