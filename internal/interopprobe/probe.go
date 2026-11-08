@@ -150,6 +150,7 @@ type deliveryObservation struct {
 }
 
 type submitObservation struct {
+	sess    *session.Session
 	details map[string]string
 }
 
@@ -397,8 +398,8 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		}
 		return server.BindResult{Status: status, SystemID: []byte("go-smpp-interop")}, nil
 	})
-	submitHandler := server.SubmitHandlerFunc(func(_ context.Context, _ *session.Session, request protocol.SubmitSM) (server.SubmitResult, error) {
-		observation := submitObservation{details: observeSubmit(request)}
+	submitHandler := server.SubmitHandlerFunc(func(_ context.Context, sess *session.Session, request protocol.SubmitSM) (server.SubmitResult, error) {
+		observation := submitObservation{sess: sess, details: observeSubmit(request)}
 		select {
 		case submits <- observation:
 		default:
@@ -462,11 +463,13 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	case serveErr := <-serveErrors:
 		result.addEvent("peer_bind", StatusBlocked, map[string]string{"reason": "server_stopped_before_bind", "error_type": fmt.Sprintf("%T", serveErr)})
 		result.setStatus(StatusBlocked)
+		closeProbeServer(srv)
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	case <-peerCtx.Done():
 		result.addEvent("peer_bind", StatusBlocked, map[string]string{"reason": "no_esme_bind_received", "wait": cfg.PeerWait.String()})
 		result.setStatus(StatusBlocked)
+		closeProbeServer(srv)
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
@@ -478,6 +481,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 			"bind_mode_code": fmt.Sprint(attempt.mode),
 		})
 		result.setStatus(StatusFail)
+		closeProbeServer(srv)
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
@@ -490,6 +494,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		}
 		result.addEvent("bind_transceiver", StatusFail, details)
 		result.setStatus(StatusFail)
+		closeProbeServer(srv)
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
@@ -504,44 +509,62 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	} else {
 		result.addEvent("enquire_link", StatusPass, nil)
 	}
+	health := sessionHealthDetails(srv, attempt.sess)
+	healthStatus := StatusPass
+	if health["session_closed"] == "true" || health["server_owns_session"] != "true" {
+		healthStatus = StatusFail
+		result.setStatus(StatusFail)
+	}
+	result.addEvent("session_health_after_enquire_link", healthStatus, health)
 
 	dlrText := []byte("id:interop-001 sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe")
-	deliverCtx, cancelDeliver := context.WithTimeout(ctx, cfg.RequestTimeout)
-	_, deliverErr := srv.DeliverSM(deliverCtx, attempt.sess, protocol.DeliverSM{
-		SourceAddrTON:   protocol.TONUnknown,
-		SourceAddrNPI:   protocol.NPIUnknown,
-		SourceAddr:      []byte(cfg.SourceAddress),
-		DestAddrTON:     protocol.TONUnknown,
-		DestAddrNPI:     protocol.NPIUnknown,
-		DestinationAddr: []byte(cfg.DestinationAddress),
-		ESMClass:        0x04,
-		DataCoding:      protocol.DataCodingSMSCDefault,
-		ShortMessage:    dlrText,
-	})
-	cancelDeliver()
-	if deliverErr != nil {
-		var responseError *session.ResponseError
-		if errors.As(deliverErr, &responseError) {
-			result.addEvent("deliver_sm_resp", StatusPass, map[string]string{
-				"command_status":   fmt.Sprintf("0x%08x", uint32(responseError.Status)),
-				"message_accepted": "false",
-			})
-		} else {
-			result.addEvent("deliver_sm", StatusFail, safeErrorDetails(deliverErr))
-			result.setStatus(StatusFail)
-		}
+	if sessionIsDone(attempt.sess) {
+		details := sessionHealthDetails(srv, attempt.sess)
+		details["reason"] = "session_closed_before_deliver_sm"
+		result.addEvent("deliver_sm", StatusBlocked, details)
+		result.setStatus(StatusBlocked)
 	} else {
-		result.addEvent("deliver_sm_resp", StatusPass, map[string]string{
-			"command_status":   "0x00000000",
-			"message_accepted": "true",
+		deliverCtx, cancelDeliver := context.WithTimeout(ctx, cfg.RequestTimeout)
+		_, deliverErr := srv.DeliverSM(deliverCtx, attempt.sess, protocol.DeliverSM{
+			SourceAddrTON:   protocol.TONUnknown,
+			SourceAddrNPI:   protocol.NPIUnknown,
+			SourceAddr:      []byte(cfg.SourceAddress),
+			DestAddrTON:     protocol.TONUnknown,
+			DestAddrNPI:     protocol.NPIUnknown,
+			DestinationAddr: []byte(cfg.DestinationAddress),
+			ESMClass:        0x04,
+			DataCoding:      protocol.DataCodingSMSCDefault,
+			ShortMessage:    dlrText,
 		})
+		cancelDeliver()
+		if deliverErr != nil {
+			var responseError *session.ResponseError
+			if errors.As(deliverErr, &responseError) {
+				result.addEvent("deliver_sm_resp", StatusPass, map[string]string{
+					"command_status":   fmt.Sprintf("0x%08x", uint32(responseError.Status)),
+					"message_accepted": "false",
+				})
+			} else {
+				result.addEvent("deliver_sm", StatusFail, safeErrorDetails(deliverErr))
+				result.setStatus(StatusFail)
+			}
+		} else {
+			result.addEvent("deliver_sm_resp", StatusPass, map[string]string{
+				"command_status":   "0x00000000",
+				"message_accepted": "true",
+			})
+		}
 	}
 
 	fmt.Fprintf(output, "OBSERVE: use the ESME simulator CLI to send exactly one submit_sm now (window=%s).\n", cfg.SubmitWait)
 	submitTimer := time.NewTimer(cfg.SubmitWait)
 	select {
 	case observation := <-submits:
-		result.addEvent("submit_sm_from_esme", StatusPass, observation.details)
+		event := submitObservationEvent(observation, attempt.sess)
+		result.Events = append(result.Events, event)
+		if event.Status == StatusFail {
+			result.setStatus(StatusFail)
+		}
 	case <-submitTimer.C:
 		result.addEvent("submit_sm_from_esme", StatusNotSeen, map[string]string{"observation_window": cfg.SubmitWait.String()})
 	case <-ctx.Done():
@@ -565,9 +588,93 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}
 	_ = attempt.sess.Close()
 	attempt.sess.Wait()
+	closeProbeServer(srv)
 
 	result.finish(packetCapture)
-	return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
+	fixture := packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
+	for _, event := range result.Events {
+		if event.Name == "submit_sm_from_esme" && event.Details["session_match"] == "false" {
+			fixture = nil // Never emit a fixture that mixes multiple TCP sessions.
+			break
+		}
+	}
+	return result, fixture
+}
+
+func sessionIsDone(sess *session.Session) bool {
+	if sess == nil {
+		return true
+	}
+	select {
+	case <-sess.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func sessionHealthDetails(srv *server.Server, sess *session.Session) map[string]string {
+	details := map[string]string{
+		"session_closed": "true",
+		"session_state":  protocol.StateClosed.String(),
+	}
+	if sess == nil {
+		details["reason"] = "missing_session"
+		return details
+	}
+	details["session_state"] = sess.State().String()
+	if !sessionIsDone(sess) {
+		details["session_closed"] = "false"
+	}
+	if srv == nil {
+		details["server_owns_session"] = "unknown"
+		details["server_active_sessions"] = "unknown"
+	} else {
+		active := srv.Sessions()
+		details["server_active_sessions"] = fmt.Sprint(len(active))
+		owned := false
+		for _, current := range active {
+			if current == sess {
+				owned = true
+				break
+			}
+		}
+		details["server_owns_session"] = fmt.Sprint(owned)
+	}
+	if closeErr := sess.Err(); closeErr != nil {
+		details["close_cause_type"] = fmt.Sprintf("%T", closeErr)
+		for key, value := range safeErrorDetails(closeErr) {
+			details["close_cause_"+key] = value
+		}
+	}
+	return details
+}
+
+func submitObservationEvent(observation submitObservation, expected *session.Session) Event {
+	details := make(map[string]string, len(observation.details)+2)
+	for key, value := range observation.details {
+		details[key] = value
+	}
+	if expected == nil || observation.sess != expected {
+		details["session_match"] = "false"
+		details["reason"] = "submit_received_on_replacement_session"
+		return Event{Name: "submit_sm_from_esme", Status: StatusFail, Details: details}
+	}
+	details["session_match"] = "true"
+	return Event{Name: "submit_sm_from_esme", Status: StatusPass, Details: details}
+}
+
+func closeProbeServer(srv *server.Server) {
+	if srv == nil {
+		return
+	}
+	_ = srv.Close()
+	// Server.Close closes every active session. Sessions removed by the
+	// server's watcher have already been joined; join any still in its snapshot
+	// before the report/candidate capture takes its final snapshot.
+	for _, sess := range srv.Sessions() {
+		sess.Wait()
+	}
 }
 
 func waitForBindResponse(ctx context.Context, sess *session.Session, responses <-chan protocol.CommandStatus) error {
@@ -663,9 +770,23 @@ func safeErrorDetails(err error) map[string]string {
 	}
 	if errors.Is(err, syscall.ECONNRESET) {
 		details["reason"] = "peer_reset_connection"
+		details["network_error"] = "connection_reset"
+	}
+	if errors.Is(err, syscall.EPIPE) {
+		details["network_error"] = "broken_pipe"
+	}
+	if errors.Is(err, syscall.ECONNABORTED) {
+		details["network_error"] = "connection_aborted"
+	}
+	if errors.Is(err, syscall.ETIMEDOUT) {
+		details["network_error"] = "network_timeout"
 	}
 	if errors.Is(err, net.ErrClosed) {
 		details["reason"] = "connection_closed"
+		details["network_error"] = "local_connection_closed"
+	}
+	if errors.Is(err, server.ErrUnknownSession) {
+		details["reason"] = "session_not_owned_by_server"
 	}
 	if errors.Is(err, session.ErrSessionClosed) {
 		details["reason"] = "session_closed"
