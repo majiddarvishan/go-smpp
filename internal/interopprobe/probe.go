@@ -41,7 +41,7 @@ const (
 // unrelated synthetic delivery receipt use distinct IDs. SMPP still encodes
 // message_id as a NUL-terminated C-Octet String.
 const (
-	interopSubmitResponseMessageID = "12345678901234567890"
+	interopSubmitResponseMessageID  = "12345678901234567890"
 	interopDeliveryReceiptMessageID = "9876543210987654321"
 )
 
