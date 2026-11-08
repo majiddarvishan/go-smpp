@@ -466,6 +466,27 @@ func (c *probeReadErrorConn) Read([]byte) (int, error) {
 	return 0, c.readErr
 }
 
+func TestTCPTraceDoesNotCorrelateBindResponseWhenSocketWriteFails(t *testing.T) {
+	trace := newTCPTrace()
+	local, peer := net.Pipe()
+	defer local.Close()
+	defer peer.Close()
+	tracked := trace.track(local)
+
+	frame := make([]byte, 16)
+	binary.BigEndian.PutUint32(frame[0:4], uint32(len(frame)))
+	binary.BigEndian.PutUint32(frame[4:8], uint32(protocol.CommandBindTransceiverResp))
+	binary.BigEndian.PutUint32(frame[8:12], uint32(protocol.StatusOK))
+	binary.BigEndian.PutUint32(frame[12:16], 78)
+	tracked.observeBytes("smsc_to_peer", frame, false)
+
+	select {
+	case status := <-tracked.bindResponses:
+		t.Fatalf("failed socket write was correlated as bind response status 0x%08x", uint32(status))
+	default:
+	}
+}
+
 func TestTCPTraceCorrelatesBindResponseAndOrdersResetBeforeLocalClose(t *testing.T) {
 	trace := newTCPTrace()
 	local, peer := net.Pipe()
