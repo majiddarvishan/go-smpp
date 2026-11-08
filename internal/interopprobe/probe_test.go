@@ -325,17 +325,26 @@ func TestESMEUnbindUnsupportedSkipsRequest(t *testing.T) {
 }
 
 func TestESMEUnbindCanBeOptedIn(t *testing.T) {
+	packetCapture := &capture{localRole: "smsc"}
 	called := false
 	event := esmeUnbindEvent(true, func() error {
 		called = true
 		return nil
-	}, nil)
+	}, packetCapture)
 
 	if !called {
 		t.Fatal("Unbind operation was not called when explicitly enabled")
 	}
 	if event.Name != "unbind" || event.Status != StatusPass {
 		t.Fatalf("event = %+v, want unbind PASS", event)
+	}
+	for key, want := range map[string]string{
+		"operation_kind": "server_initiated_unbind", "initiator_role": "smsc",
+		"peer_role": "esme", "request_direction": "smsc_to_esme",
+	} {
+		if event.Details[key] != want {
+			t.Fatalf("%s = %q, want %q (details=%v)", key, event.Details[key], want, event.Details)
+		}
 	}
 }
 
