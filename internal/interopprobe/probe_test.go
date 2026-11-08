@@ -479,8 +479,8 @@ func TestTCPTraceCorrelatesBindResponseAndOrdersResetBeforeLocalClose(t *testing
 	binary.BigEndian.PutUint32(frame[4:8], uint32(protocol.CommandBindTransceiverResp))
 	binary.BigEndian.PutUint32(frame[8:12], uint32(protocol.StatusOK))
 	binary.BigEndian.PutUint32(frame[12:16], 77)
-	tracked.observeBytes("smsc_to_peer", frame[:5])
-	tracked.observeBytes("smsc_to_peer", frame[5:])
+	tracked.observeBytes("smsc_to_peer", frame[:5], true)
+	tracked.observeBytes("smsc_to_peer", frame[5:], true)
 
 	select {
 	case status := <-tracked.bindResponses:
