@@ -126,3 +126,17 @@ Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep
 - Final source head `4657d5e6c239c3abfd54fcf13e5804cb1310a018` passed [GitHub Actions run 42474275074](https://github.com/majiddarvishan/go-smpp/actions/runs/42474275074) on both Go 1.25.x and Go 1.27.x. Passed gofmt, lint (Go 1.27.x), unit tests, opt-in interoperability probe tests, coverage floor, race tests, fuzz smoke, protocol/codec benchmarks, Phase 17 performance smoke, sustained resource-bound smoke, and no-unsafe.
 - INT-01I (live CLI-triggered submit/submit response and peer capability characterization) and INT-01K (default skip + strict opt-in for unsupported ESME Unbind) are complete. INT-01G deployed-peer evidence, PERF-01 dedicated 60-second reference acceptance, and REL-01 release remain open.
 - PR #8 remains Draft/open and unmerged. No release tag was created.
+
+
+## ESME session continuity and premature loss investigation — 2026-11-08
+
+- Reviewed uploaded `go-smpp-interop.g7u649.tar.gz`. The run completed TRX bind, then `enquire_link` failed with `*session.LossError` caused by `*net.OpError` with operation `write`. `deliver_sm` returned `server.ErrUnknownSession`, meaning the original `attempt.sess` was no longer in the server's active-session map when DeliverSM was attempted.
+- The ESME `submit_sm` and matching `submit_sm_resp` were captured later, but the old `submitHandler` discarded its `*session.Session` argument. It could therefore report a Submit from a replacement TCP session as PASS for the original bind. The report/candidate also disagreed on frame count (1 vs 2): `result.finish(packetCapture)` ran before deferred `srv.Close()`, while the shared tracer could still receive frames from a replacement session. Do not treat this run as proof of connection continuity.
+- User confirmed their ESME simulator does not intentionally close the connection. The archive alone does not identify the underlying write errno, so the close initiator is not yet proven. The new safe close-cause classification distinguishes broken pipe, reset, aborted connection, timeout and local closed-connection errors without printing raw error strings, credentials or PDU bytes.
+- Probe-only changes on the existing feature branch:
+  - Retain the session pointer in every Submit observation; PASS only when it matches the session that completed the first TRX bind. A replacement-session Submit is FAIL with `submit_received_on_replacement_session`, and no mixed-session fixture is emitted.
+  - Add `session_health_after_enquire_link` with session state, closed flag, server ownership, active-session count and sanitized terminal-cause metadata.
+  - If the original session is already closed, report DeliverSM as BLOCKED rather than issuing it against a stale session.
+  - Explicitly close the server and join active sessions before the final report/candidate snapshot; apply the same cleanup to early-return paths.
+- Added tests for same-session/replacement-session classification, peer EOF cause retention, and safe broken-pipe classification. Updated interoperability docs, PLAN and TASKS. INT-01L remains open until final CI passes and one repeat live ESME run verifies the diagnostic output. No public library semantics have been changed.
+- INT-01I and INT-01K remain complete based on the earlier valid run and Unbind capability decision. INT-01G deployed-peer evidence, PERF-01 reference acceptance and REL-01 release remain open. PR #8 stays Draft/open and unmerged.
