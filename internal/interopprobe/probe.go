@@ -300,7 +300,7 @@ func (t *tcpTrace) reportEvents() []Event {
 	return result
 }
 
-func (c *trackedConn) observeBytes(direction string, data []byte) {
+func (c *trackedConn) observeBytes(direction string, data []byte, allowBindResponse bool) {
 	if c == nil || c.trace == nil || len(data) == 0 {
 		return
 	}
@@ -331,7 +331,7 @@ func (c *trackedConn) observeBytes(direction string, data []byte) {
 			commandID: commandID, commandStatus: commandStatus,
 			sequence: sequence, length: length,
 		})
-		if direction == "smsc_to_peer" && commandID == uint32(protocol.CommandBindTransceiverResp) {
+		if allowBindResponse && direction == "smsc_to_peer" && commandID == uint32(protocol.CommandBindTransceiverResp) {
 			select {
 			case c.bindResponses <- protocol.CommandStatus(commandStatus):
 			default:
@@ -345,7 +345,7 @@ func (c *trackedConn) observeBytes(direction string, data []byte) {
 func (c *trackedConn) Read(buffer []byte) (int, error) {
 	n, err := c.Conn.Read(buffer)
 	if n > 0 {
-		c.observeBytes("peer_to_smsc", buffer[:n])
+		c.observeBytes("peer_to_smsc", buffer[:n], false)
 	}
 	if err != nil {
 		c.recordIOError("read", err)
@@ -356,7 +356,7 @@ func (c *trackedConn) Read(buffer []byte) (int, error) {
 func (c *trackedConn) Write(buffer []byte) (int, error) {
 	n, err := c.Conn.Write(buffer)
 	if n > 0 {
-		c.observeBytes("smsc_to_peer", buffer[:n])
+		c.observeBytes("smsc_to_peer", buffer[:n], err == nil)
 	}
 	if err != nil {
 		c.recordIOError("write", err)
