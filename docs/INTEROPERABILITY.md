@@ -182,3 +182,28 @@ A deployed real-peer fixture must use an opaque alias such as `peer-001`, an RFC
 - Use `outcome=reject` with `error_kind=fatal|semantic|other` when the expected library behavior is to reject a recorded frame. A rejection is evidence about the library's handling of that frame, not proof that the peer itself is non-conformant.
 
 The manifest contains the constructed synthetic SMPP 3.4 vectors plus the two reviewed `simulator-peer` exchanges described above. **INT-01 remains open until anonymized deployed-peer exchanges are supplied and the representative-peer strict/compatible behavior matrix is built.**
+
+
+### ESME closes TCP before Bind Response — 2026-11-08
+
+The sanitized archive `go-smpp-interop.wvS2vr.tar.gz` records the following:
+
+- TCP connection 1 is accepted.
+- The peer sends a complete 45-byte `bind_transceiver` request (`command_id=0x00000009`, sequence `1006632970`); the configured authenticator accepts the TRX credentials.
+- Before a successful `bind_transceiver_resp` write is observed, the next server-side read returns EOF (`peer_closed_connection`).
+- go-smpp then closes the original Session/socket. The local Close event records `prior_io_error=read:peer_closed_connection`.
+- A second connection is accepted just after the EOF and locally closed about 38 microseconds later. The old trace did not identify whether this close was caused by probe cleanup or another path.
+- A later write on connection 1 fails with `local_connection_closed` after its local Close. This is a secondary error and not the initiating event. No submit/deliver exchange occurred, no sanitized fixture was captured, and the candidate manifest is empty.
+
+This differs from the earlier `ECONNRESET` case: the current evidence is an orderly EOF observed while reading. It proves the remote TCP peer closed its stream before the Bind Response was observed, but it does not explain why the ESME simulator did so. The report's `authenticator_result=accepted` means the request passed the probe's credential/mode checks; it does not mean the bind handshake completed.
+
+The test-only probe now:
+- marks local socket closes that occur after probe shutdown begins (`probe_shutdown_started=true`), to identify connection-2 cleanup;
+- records only the attempted SMPP header (command ID/status/sequence/length) when a socket Write fails, without persisting the PDU body;
+- retains the per-socket accepted/read/written/error/close event ordering.
+
+For the next run, a `tcp_write_error` with `attempted_command_id=0x80000009` will confirm that the failed write was a `bind_transceiver_resp`; because the write error follows the read EOF and local Close, it remains a consequence of the already-closed Session. The `probe_shutdown_started` field should identify whether connection 2 was closed during early-return cleanup.
+
+The interop probe now uses decimal-only `MessageID=12345678901234567890` in its application-supplied `submit_sm_resp` and the matching synthetic DLR. The SMPP field remains a NUL-terminated C-Octet String. This is a test fixture requirement, not a generic library restriction: applications supply `server.SubmitResult.MessageID`, and the generic DLR parser preserves external peer IDs as opaque strings.
+
+To explain why the ESME closes immediately after Bind, collect the ESME simulator's local log around the bind attempt. If that is insufficient, capture only FIN/RST packet headers on loopback (no payload), because bind requests carry credentials. Do not export a raw PCAP or packet payload into the repository.
