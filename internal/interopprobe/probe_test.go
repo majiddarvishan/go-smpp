@@ -489,19 +489,47 @@ func (c *probeReadErrorConn) Read([]byte) (int, error) {
 	return 0, c.readErr
 }
 
-func TestInteropMessageIDIsNumericAndMatchesReceipt(t *testing.T) {
-	if interopMessageID == "" || strings.Trim(interopMessageID, "0123456789") != "" {
-		t.Fatalf("interop MessageID %q is not decimal-only", interopMessageID)
+func TestInteropMessageIDsAreNumericAndDistinct(t *testing.T) {
+	for label, id := range map[string]string{
+		"submit_sm_resp": interopSubmitResponseMessageID,
+		"deliver_sm DLR": interopDeliveryReceiptMessageID,
+	} {
+		if id == "" || strings.Trim(id, "0123456789") != "" {
+			t.Fatalf("%s MessageID %q is not decimal-only", label, id)
+		}
 	}
+	if interopSubmitResponseMessageID == interopDeliveryReceiptMessageID {
+		t.Fatal("unrelated submit response and delivery receipt reused the same MessageID")
+	}
+
+	registry, err := codec.NewSMPP34Registry(codec.RegistryCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := codec.EncodePDU(nil, codec.Header{
+		CommandID: protocol.CommandSubmitSMResp, CommandStatus: protocol.StatusOK, SequenceNumber: 7,
+	}, protocol.SubmitSMResp{MessageID: []byte(interopSubmitResponseMessageID)}, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := codec.DecodePDU(raw, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, ok := decoded.Body.(protocol.SubmitSMResp)
+	if !ok || string(response.MessageID) != interopSubmitResponseMessageID {
+		t.Fatalf("SubmitSMResp MessageID = %q, want %q", response.MessageID, interopSubmitResponseMessageID)
+	}
+
 	receipt, err := message.ParseDeliveryReceipt(protocol.DeliverSM{
 		ESMClass:     0x04,
-		ShortMessage: []byte("id:" + interopMessageID + " stat:DELIVRD"),
+		ShortMessage: []byte("id:" + interopDeliveryReceiptMessageID + " stat:DELIVRD"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.MessageID != interopMessageID {
-		t.Fatalf("DLR MessageID = %q, want submit_sm_resp MessageID %q", receipt.MessageID, interopMessageID)
+	if receipt.MessageID != interopDeliveryReceiptMessageID {
+		t.Fatalf("DLR MessageID = %q, want %q", receipt.MessageID, interopDeliveryReceiptMessageID)
 	}
 }
 
