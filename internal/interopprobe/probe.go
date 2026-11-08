@@ -513,7 +513,11 @@ func runSMSC(ctx context.Context, cfg Config) (PhaseResult, *Fixture) {
 	err = c.EnquireLink(linkCtx)
 	cancelLink()
 	if err != nil {
-		result.addEvent("enquire_link", StatusFail, safeErrorDetails(err))
+		details := safeErrorDetails(err)
+		if attempt.connectionID > 0 {
+			details["connection_id"] = fmt.Sprint(attempt.connectionID)
+		}
+		result.addEvent("enquire_link", StatusFail, details)
 		result.setStatus(StatusFail)
 	} else {
 		result.addEvent("enquire_link", StatusPass, nil)
@@ -773,6 +777,9 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	dlrText := []byte("id:interop-001 sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe")
 	if sessionIsDone(attempt.sess) || health["server_owns_session"] != "true" {
 		details := sessionHealthDetails(srv, attempt.sess)
+		if attempt.connectionID > 0 {
+			details["connection_id"] = fmt.Sprint(attempt.connectionID)
+		}
 		details["reason"] = "session_unavailable_before_deliver_sm"
 		result.addEvent("deliver_sm", StatusBlocked, details)
 		result.setStatus(StatusBlocked)
@@ -1028,7 +1035,7 @@ func safeErrorDetails(err error) map[string]string {
 		details["reason"] = "peer_closed_connection"
 	}
 	if errors.Is(err, syscall.ECONNRESET) {
-		details["reason"] = "peer_reset_connection"
+		details["reason"] = "tcp_reset_received"
 		details["network_error"] = "connection_reset"
 	}
 	if errors.Is(err, syscall.EPIPE) {
