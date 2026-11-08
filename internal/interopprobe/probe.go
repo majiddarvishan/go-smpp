@@ -605,8 +605,8 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		return result, nil
 	}
 
+	connectionTrace := newTCPTrace()
 	bindAttempts := make(chan bindAttempt, 4)
-	bindResponses := make(chan protocol.CommandStatus, 1)
 	submits := make(chan submitObservation, 8)
 	authenticator := server.AuthenticatorFunc(func(_ context.Context, sess *session.Session, mode session.BindMode, request protocol.BindRequest) (server.BindResult, error) {
 		status := protocol.StatusOK
@@ -623,7 +623,12 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		case request.InterfaceVersion != protocol.InterfaceVersion34:
 			status, reason = protocol.StatusBindFailed, "interface_version_mismatch"
 		}
+		tracked := connectionTrace.connectionFor(sess)
 		attempt := bindAttempt{sess: sess, mode: mode, status: status, reason: reason}
+		if tracked != nil {
+			attempt.connectionID = tracked.id
+			attempt.bindResponses = tracked.bindResponses
+		}
 		select {
 		case bindAttempts <- attempt:
 		default:
@@ -631,7 +636,11 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		return server.BindResult{Status: status, SystemID: []byte("go-smpp-interop")}, nil
 	})
 	submitHandler := server.SubmitHandlerFunc(func(_ context.Context, sess *session.Session, request protocol.SubmitSM) (server.SubmitResult, error) {
+		tracked := connectionTrace.connectionFor(sess)
 		observation := submitObservation{sess: sess, details: observeSubmit(request)}
+		if tracked != nil {
+			observation.connectionID = tracked.id
+		}
 		select {
 		case submits <- observation:
 		default:
@@ -639,9 +648,18 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte("interop-submit-001")}, nil
 	})
 
-	srv, err := server.Listen(ctx, server.Config{
-		Network:       "tcp",
-		Address:       cfg.ESMEListenAddress,
+	listener, err := transport.ListenTCP(ctx, "tcp", cfg.ESMEListenAddress, nil)
+	if err != nil {
+		status := StatusFail
+		if isNetworkUnavailable(err) {
+			status = StatusBlocked
+		}
+		result.addEvent("listen", status, safeErrorDetails(err))
+		result.setStatus(status)
+		result.finish(packetCapture)
+		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
+	}
+	srv := server.NewWithConfig(&tcpTraceListener{Listener: listener, trace: connectionTrace}, server.Config{
 		MaxSessions:   1,
 		Authenticator: authenticator,
 		SubmitHandler: submitHandler,
@@ -655,29 +673,15 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 			EnquireLinkInterval: -1,
 			EnquireLinkTimeout:  -1,
 			InactivityTimeout:   -1,
-			Observer: session.ObserverFunc(func(event session.Event) {
-				if event.Kind == session.EventResponseSent && event.Command == protocol.CommandBindTransceiverResp {
-					select {
-					case bindResponses <- event.Status:
-					default:
-					}
-				}
-			}),
-			PacketTracer: session.PacketTracerFunc(packetCapture.tracePacket),
-			TraceRawPDU:  true,
+			PacketTracer:        session.PacketTracerFunc(packetCapture.tracePacket),
+			TraceRawPDU:         true,
 		},
 	})
-	if err != nil {
-		status := StatusFail
-		if isNetworkUnavailable(err) {
-			status = StatusBlocked
-		}
-		result.addEvent("listen", status, safeErrorDetails(err))
-		result.setStatus(status)
-		result.finish(packetCapture)
-		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
-	}
 	defer srv.Close()
+	closeAndTrace := func() {
+		closeAndTrace()
+		result.Events = append(result.Events, connectionTrace.reportEvents()...)
+	}
 
 	serveErrors := make(chan error, 1)
 	go func() {
@@ -695,13 +699,13 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	case serveErr := <-serveErrors:
 		result.addEvent("peer_bind", StatusBlocked, map[string]string{"reason": "server_stopped_before_bind", "error_type": fmt.Sprintf("%T", serveErr)})
 		result.setStatus(StatusBlocked)
-		closeProbeServer(srv)
+		closeAndTrace()
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	case <-peerCtx.Done():
 		result.addEvent("peer_bind", StatusBlocked, map[string]string{"reason": "no_esme_bind_received", "wait": cfg.PeerWait.String()})
 		result.setStatus(StatusBlocked)
-		closeProbeServer(srv)
+		closeAndTrace()
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
@@ -713,24 +717,38 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 			"bind_mode_code": fmt.Sprint(attempt.mode),
 		})
 		result.setStatus(StatusFail)
-		closeProbeServer(srv)
+		closeAndTrace()
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
-	if err := waitForBindResponse(peerCtx, attempt.sess, bindResponses); err != nil {
+	if attempt.bindResponses == nil {
+		result.addEvent("bind_transceiver", StatusFail, map[string]string{"reason": "accepted_connection_trace_missing"})
+		result.setStatus(StatusFail)
+		closeAndTrace()
+		result.finish(packetCapture)
+		return result, nil
+	}
+	if err := waitForBindResponse(peerCtx, attempt.sess, attempt.bindResponses); err != nil {
 		details := safeErrorDetails(err)
 		details["authenticator_result"] = "accepted"
 		details["bind_mode"] = attempt.mode.String()
+		if attempt.connectionID > 0 {
+			details["connection_id"] = fmt.Sprint(attempt.connectionID)
+		}
 		if closeErr := attempt.sess.Err(); closeErr != nil {
 			details["session_close_cause_type"] = fmt.Sprintf("%T", closeErr)
 		}
 		result.addEvent("bind_transceiver", StatusFail, details)
 		result.setStatus(StatusFail)
-		closeProbeServer(srv)
+		closeAndTrace()
 		result.finish(packetCapture)
 		return result, packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
 	}
-	result.addEvent("bind_transceiver", StatusPass, map[string]string{"bind_type": "TRX", "interface_version": "3.4"})
+	bindDetails := map[string]string{"bind_type": "TRX", "interface_version": "3.4"}
+	if attempt.connectionID > 0 {
+		bindDetails["connection_id"] = fmt.Sprint(attempt.connectionID)
+	}
+	result.addEvent("bind_transceiver", StatusPass, bindDetails)
 
 	linkCtx, cancelLink := context.WithTimeout(ctx, cfg.RequestTimeout)
 	err = attempt.sess.EnquireLink(linkCtx)
@@ -742,6 +760,9 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		result.addEvent("enquire_link", StatusPass, nil)
 	}
 	health := sessionHealthDetails(srv, attempt.sess)
+	if attempt.connectionID > 0 {
+		health["connection_id"] = fmt.Sprint(attempt.connectionID)
+	}
 	healthStatus := StatusPass
 	if health["session_closed"] == "true" || health["server_owns_session"] != "true" {
 		healthStatus = StatusFail
@@ -820,7 +841,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}
 	_ = attempt.sess.Close()
 	attempt.sess.Wait()
-	closeProbeServer(srv)
+	closeAndTrace()
 
 	result.finish(packetCapture)
 	fixture := packetCapture.fixture("simulator-esme-peer-002", "peer-002", "INT-01-PEER-002-001")
@@ -889,10 +910,16 @@ func submitObservationEvent(observation submitObservation, expected *session.Ses
 	}
 	if expected == nil || observation.sess != expected {
 		details["session_match"] = "false"
+		if observation.connectionID > 0 {
+			details["connection_id"] = fmt.Sprint(observation.connectionID)
+		}
 		details["reason"] = "submit_received_on_replacement_session"
 		return Event{Name: "submit_sm_from_esme", Status: StatusFail, Details: details}
 	}
 	details["session_match"] = "true"
+	if observation.connectionID > 0 {
+		details["connection_id"] = fmt.Sprint(observation.connectionID)
+	}
 	return Event{Name: "submit_sm_from_esme", Status: StatusPass, Details: details}
 }
 
