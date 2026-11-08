@@ -331,8 +331,8 @@ func TestESMEUnbindOptInPreservesMissingResponseFailure(t *testing.T) {
 	if event.Status != StatusFail {
 		t.Fatalf("event status = %q, want FAIL", event.Status)
 	}
-	if event.Details["timeout_kind"] != "response" || event.Details["peer_response"] != "not_observed" {
-		t.Fatalf("missing response details were not preserved: %v", event.Details)
+	if event.Details["timeout_kind"] != "response" || event.Details["command_id"] != "0x00000006" {
+		t.Fatalf("Unbind response timeout details were not preserved: %v", event.Details)
 	}
 }
 
