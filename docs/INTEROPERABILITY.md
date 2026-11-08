@@ -207,3 +207,30 @@ For the next run, a `tcp_write_error` with `attempted_command_id=0x80000009` wil
 The interop probe now uses decimal-only `MessageID=12345678901234567890` in its application-supplied `submit_sm_resp` and the matching synthetic DLR. The SMPP field remains a NUL-terminated C-Octet String. This is a test fixture requirement, not a generic library restriction: applications supply `server.SubmitResult.MessageID`, and the generic DLR parser preserves external peer IDs as opaque strings.
 
 To explain why the ESME closes immediately after Bind, collect the ESME simulator's local log around the bind attempt. If that is insufficient, capture only FIN/RST packet headers on loopback (no payload), because bind requests carry credentials. Do not export a raw PCAP or packet payload into the repository.
+
+
+### Successful ESME/server repeat and graceful shutdown — 2026-11-08
+
+The reviewed archive `go-smpp-interop.2KhVNK.tar.gz` confirms a complete single-session SMPP 3.4 exchange:
+
+| Direction | Command | Sequence | Result |
+|---|---|---:|---|
+| ESME → SMSC | `bind_transceiver` | 2218786818 | received |
+| SMSC → ESME | `bind_transceiver_resp` | 2218786818 | written, status 0 |
+| SMSC → ESME | `enquire_link` | 1 | written |
+| ESME → SMSC | `enquire_link_resp` | 1 | received |
+| SMSC → ESME | `deliver_sm` | 2 | written |
+| ESME → SMSC | `deliver_sm_resp` | 2 | received, status 0 |
+| ESME → SMSC | `submit_sm` | 1912602627 | received on original connection |
+| SMSC → ESME | `submit_sm_resp` | 1912602627 | written, status 0 |
+
+All eight PDU headers are associated with `connection_id=1`. The bind request/response are excluded from the sanitized fixture; the remaining six frames are captured. The Submit observation reports `session_match=true`, so this is not a replacement-session exchange. The candidate fixture was manually reviewed and added separately as `simulator-esme-peer-002-submit` (`INT-01-PEER-002-002)); the earlier peer-002 fixture remains unchanged because it records a different run and the earlier strict Unbind attempt.
+
+**Do not confuse Submit with Unbind:** SMPP command ID `0x00000004` is `submit_sm`, and `0x80000004` is `submit_sm_resp`. The last PDU pair in this successful trace is the ESME-originated Submit and its response. No Unbind PDU (`0x00000006`) or Unbind Response (`0x80000006`) appears in this archive.
+
+The report's `unbind=UNSUPPORTED` event is a separate test-control result: because this ESME simulator does not support **server-initiated Unbind**, the probe did not send an Unbind from the SMSC to the ESME. It then closed the local session after the message observation completed. The event now explicitly identifies `operation_kind=server_initiated_unbind`, `initiator_role=smsc`, `peer_role=esme`, and `request_direction=smsc_to_esme`. `request_sent=false` and `response_observed=false` mean the operation was skipped, not that a peer response was lost. The optional `SMPP_INTEROP_ATTEMPT_ESME_UNBIND=true` switch is only for peers that support this server-initiated exchange.
+
+The accompanying loopback capture used local time UTC+03:30. Its FIN exchange at `16:43:51.816897` (server port 4000 to client port 46662), followed by the peer FIN at `16:43:51.816946`, aligns with the report's `tcp_local_close` at `13:13:51.816872Z`. This is the expected orderly TCP shutdown after the probe finishes; there is no RST on this active connection. The other RST/ACK packets target different ephemeral ports. Their timing (before the listener starts or after it exits, plus a connection attempt immediately after shutdown) is consistent with connection attempts arriving while no listener is accepting; they are not evidence that the active connection 46662 was reset. The filtered capture omitted SYN packets and the trace does not record remote ports, so it cannot identify which local process made those separate attempts.
+
+The earlier `wvS2vr` archive remains useful evidence of a different, non-reproduced event: the ESME peer sent Bind and then returned EOF before a Bind Response was observed; go-smpp closed only after that EOF. The successful repeat demonstrates that the same simulator pair can complete the handshake and message exchange. No public Session/Transport behavior change was made.
+
