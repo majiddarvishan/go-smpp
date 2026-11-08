@@ -234,3 +234,22 @@ The accompanying loopback capture used local time UTC+03:30. Its FIN exchange at
 
 The earlier `wvS2vr` archive remains useful evidence of a different, non-reproduced event: the ESME peer sent Bind and then returned EOF before a Bind Response was observed; go-smpp closed only after that EOF. The successful repeat demonstrates that the same simulator pair can complete the handshake and message exchange. No public Session/Transport behavior change was made.
 
+
+
+### Intermittent peer EOF reproduced — 2026-11-08 (`nmFaln`)
+
+The archive `go-smpp-interop.nmFaln.tar.gz` contains `run.log`, `report.json`, and an empty candidate manifest only; it contains no PCAP or ESME-side diagnostic log.
+
+The report shows the following on the first accepted connection:
+
+| UTC timestamp | Observation |
+|---|---|
+| `13:41:15.970402535Z` | TCP connection 1 accepted |
+| `13:41:15.971049832Z` | 45-byte `bind_transceiver`, sequence `276824068`, read from peer |
+| `13:41:15.971342852Z` | Read returned peer EOF (293 µs after Bind was read) |
+| `13:41:15.971363176Z` | go-smpp locally closed the session after the read error |
+| `13:41:15.971533186Z` | Attempted `bind_transceiver_resp` (`0x80000009`) failed because the local session was already closed |
+
+The authenticator explicitly reports `accepted`; this is not a credential or Bind-status rejection. No BindResp bytes were written. The local close and failed write are downstream of the peer EOF. The second connection was accepted during probe shutdown and immediately closed without a PDU; the archive does not identify its initiator.
+
+This reproduces the earlier `wvS2vr` peer-EOF symptom after the successful `2KhVNK` same-pair run. The failure is intermittent. It does not establish a go-smpp Session/Transport defect, and no public behavior change is warranted. The next useful evidence is the ESME simulator's own log for this bind attempt; if unavailable, collect only FIN/RST packet summaries on loopback. Do not capture or share raw SMPP payloads because Bind contains credentials.
