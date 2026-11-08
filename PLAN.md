@@ -346,8 +346,9 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - [x] Run the probe against the two local SMPP 3.4 simulator components, review the sanitized archive, and add only the two approved `simulator-peer` fixtures (`simulator-smsc-peer-001`, `simulator-esme-peer-002`) to the manifest; keep them distinct from deployed-peer evidence.
 - [ ] Add reviewed, anonymized deployed-peer exchanges and build the representative-peer strict/compatible behavior matrix from observed behavior.
 - [x] Improve the opt-in probe's ESME-originated `submit_sm` observation workflow with a longer configurable window, an explicit just-in-time prompt, and sanitized Unbind request/response diagnostics; keep it build-tagged and outside the public API. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
-- [ ] Re-run the ESME phase using the operator-controlled ESME CLI: after `OBSERVE`, issue exactly one outbound `submit_sm` within the configured window; verify `submit_sm_resp` and characterize `unbind_resp` behavior. Missing `unbind_resp` remains a peer-compatibility finding, not library success.
+- [x] Re-run the ESME phase using the operator-controlled ESME CLI: after `OBSERVE`, issue exactly one outbound `submit_sm` within the configured window; verify `submit_sm_resp` and characterize `unbind_resp` behavior. The 2026-11-08 archive shows TRX bind, enquire_link, deliver_sm_resp, ESME-originated submit_sm and submit_sm_resp all observed successfully; the operator confirmed this ESME simulator does not support Unbind.
 - [x] Make the test-only bind gate observe the actual successful `bind_transceiver_resp` write rather than polling transient session state; preserve a safe, allowlisted session-close cause when the response is not written. Cover the response/close race and peer EOF with regression tests. Final head `0cf19df7fe3dd145a07b839745a3be5bd4870358` passed full CI on Go 1.25.x and Go 1.27.x in [run 42393189702](https://github.com/majiddarvishan/go-smpp/actions/runs/42393189702).
+- [ ] Respect a known ESME peer that does not support Unbind: default to an explicit `UNSUPPORTED` event without sending the request, close the local session, and provide a strict opt-in for capable peers. Add regression tests; do not alter the library Unbind implementation.
 
 **INT-01 framework verification — 2026-11-07**
 
@@ -370,6 +371,15 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 - Added reviewed fixtures `simulator-smsc-peer-001` and `simulator-esme-peer-002` to `testdata/interop/manifest.json`. Both remain explicitly `source=simulator-peer`; they do not establish deployed-peer/vendor compatibility.
 - Probe follow-up: default ESME submit observation window increased to 15 seconds and is configurable through `SMPP_INTEROP_SUBMIT_WAIT`; a just-in-time prompt and safe Unbind request/response diagnostics were added for both client and server roles. Final code commit `ca5dfad5df1afdd9d80f8d742634149b59a6fd7e` passed Go 1.25.x/1.27.x CI in [run 42386492884](https://github.com/majiddarvishan/go-smpp/actions/runs/42386492884).
 - SMPP 3.4 permits Unbind from either role and expects the matching `unbind_resp`; the missing response is retained as an observed simulator compatibility gap, not normalized away.
+
+
+
+**ESME CLI-driven simulator run — 2026-11-08**
+
+- Reviewed sanitized archive `go-smpp-interop.avJydg.tar.gz`. It contains the report, run log and sanitized manifest candidate only; no password or raw PDU files.
+- The live run passed `listen`, TRX `bind_transceiver` (SMPP 3.4), `enquire_link`, synthetic `deliver_sm_resp`, and the operator-triggered ESME `submit_sm`. The candidate contains the matching successful `submit_sm_resp` with the same sequence number.
+- The probe sent server-initiated Unbind and observed no `unbind_resp` within 8 seconds. The operator then confirmed the ESME simulator does not support Unbind. This is a peer test-harness capability limitation, not a go-smpp library failure; do not infer Unbind success.
+- Probe follow-up adds an explicit `UNSUPPORTED` event and skips server-initiated Unbind by default in the ESME/server phase, closing the local session afterward. Strict Unbind exchange is opt-in via `SMPP_INTEROP_ATTEMPT_ESME_UNBIND=true` or `-attempt-esme-unbind=true` for peers that support it. The library's Unbind semantics remain unchanged. Regression tests cover default skip, strict opt-in success, and strict timeout failure. CI validation pending.
 
 **Follow-up ESME CLI run analysis — 2026-11-07**
 
