@@ -236,6 +236,8 @@ func TestUnbindEventDetailsReportsMissingPeerResponse(t *testing.T) {
 	for key, want := range map[string]string{
 		"request_sent": "true", "response_observed": "false", "peer_response": "not_observed",
 		"timeout_kind": "response", "command_id": "0x00000006", "sequence_number": "4", "timeout": "8s",
+		"operation_kind": "esme_initiated_unbind", "initiator_role": "esme", "peer_role": "smsc",
+		"request_direction": "esme_to_smsc",
 	} {
 		if details[key] != want {
 			t.Fatalf("%s = %q, want %q (all=%v)", key, details[key], want, details)
@@ -279,6 +281,14 @@ func TestUnbindEventDetailsRecognizesSMSCInitiatedResponse(t *testing.T) {
 	if details["request_sent"] != "true" || details["response_observed"] != "true" {
 		t.Fatalf("Unbind exchange was not recognized: %v", details)
 	}
+	for key, want := range map[string]string{
+		"operation_kind": "server_initiated_unbind", "initiator_role": "smsc",
+		"peer_role": "esme", "request_direction": "smsc_to_esme",
+	} {
+		if details[key] != want {
+			t.Fatalf("%s = %q, want %q (details=%v)", key, details[key], want, details)
+		}
+	}
 	if details["peer_response"] != "" {
 		t.Fatalf("successful Unbind was reported as missing peer response: %v", details)
 	}
@@ -298,11 +308,15 @@ func TestESMEUnbindUnsupportedSkipsRequest(t *testing.T) {
 		t.Fatalf("event = %+v, want unbind UNSUPPORTED", event)
 	}
 	for key, want := range map[string]string{
-		"reason":            "peer_capability_not_supported",
-		"operation":         "not_attempted",
-		"peer_capability":   "unbind",
-		"request_sent":      "false",
-		"response_observed": "false",
+		"reason":             "peer_capability_not_supported",
+		"operation":          "not_attempted",
+		"operation_kind":     "server_initiated_unbind",
+		"initiator_role":     "smsc",
+		"peer_role":          "esme",
+		"request_direction":  "smsc_to_esme",
+		"peer_capability":    "server_initiated_unbind",
+		"request_sent":       "false",
+		"response_observed":  "false",
 	} {
 		if event.Details[key] != want {
 			t.Fatalf("%s = %q, want %q (details=%v)", key, event.Details[key], want, event.Details)
