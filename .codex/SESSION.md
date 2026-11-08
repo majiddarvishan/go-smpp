@@ -109,3 +109,12 @@ Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep
 - The hosted CI 2-second resource smoke is not the dedicated 60-second reference acceptance. PERF-01 remains open.
 - Final test-only bind-observation work is recorded as INT-01J complete. INT-01I remains open for a live CLI-driven ESME `submit_sm` exchange; INT-01G remains open for anonymized deployed-peer evidence.
 - PR #8 remains Draft/open and unmerged. No release tag was created.
+
+
+## ESME peer Unbind capability follow-up — 2026-11-08
+
+- User confirmed the external ESME simulator does not support SMPP Unbind. In the latest live run, the probe successfully completed TRX bind, enquire_link, synthetic deliver_sm/deliver_sm_resp, and the operator-triggered ESME submit_sm; the sanitized candidate contains the matching submit_sm_resp. The only FAIL was the probe's server-initiated Unbind timeout (8s), which is expected for this peer and not evidence of a go-smpp library defect.
+- Reviewed `go-smpp-interop.avJydg.tar.gz`: sanitized run log/report/manifest candidate only; no password or raw PDU file. The final candidate frame is go-smpp's `unbind` request with no ESME `unbind_resp`.
+- Test-only probe change on the existing feature branch: ESME/server mode now skips server-initiated Unbind by default and emits `unbind=UNSUPPORTED` with `operation=not_attempted`, `request_sent=false`, and `response_observed=false`; the local session is then closed. The event is informational and does not change the core phase result. Strict exchange remains available via `SMPP_INTEROP_ATTEMPT_ESME_UNBIND=true` or `-attempt-esme-unbind=true` for a peer known to support Unbind. The go-smpp library's Unbind semantics are unchanged.
+- Added regression tests proving the default skip does not invoke Unbind, explicit opt-in invokes it and can pass, and strict timeout remains FAIL. Updated docs and task/plan tracking. CI validation pending.
+- Remaining: run CI for the new probe/config/tests; then ask for one repeat ESME-mode run to verify the default output reports core PASS plus `unbind UNSUPPORTED` without an 8-second wait. SMSC-mode external Unbind behavior remains separately observed/strict; INT-01G, PERF-01 and REL-01 remain open. PR #8 remains Draft/open.
