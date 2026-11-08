@@ -27,10 +27,10 @@ import (
 )
 
 const (
-	StatusPass    = "PASS"
-	StatusFail    = "FAIL"
-	StatusBlocked    = "BLOCKED"
-	StatusNotSeen    = "NOT_OBSERVED"
+	StatusPass        = "PASS"
+	StatusFail        = "FAIL"
+	StatusBlocked     = "BLOCKED"
+	StatusNotSeen     = "NOT_OBSERVED"
 	StatusUnsupported = "UNSUPPORTED"
 )
 
@@ -51,11 +51,11 @@ type Config struct {
 	DestinationAddress string
 	Message            string
 
-	RequestTimeout time.Duration
-	PeerWait       time.Duration
-	DLRWait            time.Duration
-	SubmitWait         time.Duration
-	AttemptESMEUnbind  bool
+	RequestTimeout    time.Duration
+	PeerWait          time.Duration
+	DLRWait           time.Duration
+	SubmitWait        time.Duration
+	AttemptESMEUnbind bool
 }
 
 type Report struct {
