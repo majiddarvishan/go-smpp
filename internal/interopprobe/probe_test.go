@@ -282,6 +282,60 @@ func TestUnbindEventDetailsRecognizesSMSCInitiatedResponse(t *testing.T) {
 	}
 }
 
+func TestESMEUnbindUnsupportedSkipsRequest(t *testing.T) {
+	called := false
+	event := esmeUnbindEvent(false, func() error {
+		called = true
+		return nil
+	}, nil)
+
+	if called {
+		t.Fatal("Unbind operation was called for a peer that does not support it")
+	}
+	if event.Name != "unbind" || event.Status != StatusUnsupported {
+		t.Fatalf("event = %+v, want unbind UNSUPPORTED", event)
+	}
+	for key, want := range map[string]string{
+		"reason":            "peer_capability_not_supported",
+		"operation":         "not_attempted",
+		"peer_capability":   "unbind",
+		"request_sent":      "false",
+		"response_observed": "false",
+	} {
+		if event.Details[key] != want {
+			t.Fatalf("%s = %q, want %q (details=%v)", key, event.Details[key], want, event.Details)
+		}
+	}
+}
+
+func TestESMEUnbindCanBeOptedIn(t *testing.T) {
+	called := false
+	event := esmeUnbindEvent(true, func() error {
+		called = true
+		return nil
+	}, nil)
+
+	if !called {
+		t.Fatal("Unbind operation was not called when explicitly enabled")
+	}
+	if event.Name != "unbind" || event.Status != StatusPass {
+		t.Fatalf("event = %+v, want unbind PASS", event)
+	}
+}
+
+func TestESMEUnbindOptInPreservesMissingResponseFailure(t *testing.T) {
+	timeout := &session.TimeoutError{
+		Kind: session.TimeoutResponse, Command: protocol.CommandUnbind, Sequence: 3, After: 8 * time.Second,
+	}
+	event := esmeUnbindEvent(true, func() error { return timeout }, nil)
+	if event.Status != StatusFail {
+		t.Fatalf("event status = %q, want FAIL", event.Status)
+	}
+	if event.Details["timeout_kind"] != "response" || event.Details["peer_response"] != "not_observed" {
+		t.Fatalf("missing response details were not preserved: %v", event.Details)
+	}
+}
+
 func newProbeTestSession(t *testing.T) (*session.Session, net.Conn) {
 	t.Helper()
 	serverConn, peerConn := net.Pipe()
