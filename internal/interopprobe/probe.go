@@ -5,6 +5,7 @@ package interopprobe
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/majiddarvishan/go-smpp/protocol"
 	"github.com/majiddarvishan/go-smpp/server"
 	"github.com/majiddarvishan/go-smpp/session"
+	"github.com/majiddarvishan/go-smpp/transport"
 )
 
 const (
@@ -32,6 +34,7 @@ const (
 	StatusBlocked     = "BLOCKED"
 	StatusNotSeen     = "NOT_OBSERVED"
 	StatusUnsupported = "UNSUPPORTED"
+	StatusObserved    = "OBSERVED"
 )
 
 type Config struct {
@@ -150,15 +153,244 @@ type deliveryObservation struct {
 }
 
 type submitObservation struct {
-	sess    *session.Session
-	details map[string]string
+	sess         *session.Session
+	connectionID uint64
+	details      map[string]string
 }
 
 type bindAttempt struct {
-	sess   *session.Session
-	mode   session.BindMode
-	status protocol.CommandStatus
-	reason string
+	sess          *session.Session
+	connectionID  uint64
+	bindResponses <-chan protocol.CommandStatus
+	mode          session.BindMode
+	status        protocol.CommandStatus
+	reason        string
+}
+
+type tcpTrace struct {
+	mu       sync.Mutex
+	nextID   uint64
+	nextSeq  uint64
+	byRemote map[string]*trackedConn
+	events   []tcpTraceEvent
+}
+
+type tcpTraceEvent struct {
+	order         uint64
+	at            string
+	connectionID  uint64
+	name          string
+	direction     string
+	commandID     uint32
+	commandStatus uint32
+	sequence      uint32
+	length        int
+	errorType     string
+	networkError  string
+	priorIOError  string
+}
+
+type trackedConn struct {
+	net.Conn
+	trace         *tcpTrace
+	id            uint64
+	mu            sync.Mutex
+	readBuffer    []byte
+	writeBuffer   []byte
+	bindResponses chan protocol.CommandStatus
+	closeOnce     sync.Once
+	closeErr      error
+	lastIOError   string
+}
+
+type tcpTraceListener struct {
+	net.Listener
+	trace *tcpTrace
+}
+
+func newTCPTrace() *tcpTrace {
+	return &tcpTrace{byRemote: make(map[string]*trackedConn)}
+}
+
+func (t *tcpTrace) track(conn net.Conn) *trackedConn {
+	if t == nil || conn == nil {
+		return nil
+	}
+	t.mu.Lock()
+	t.nextID++
+	tracked := &trackedConn{
+		Conn:          conn,
+		trace:         t,
+		id:            t.nextID,
+		bindResponses: make(chan protocol.CommandStatus, 1),
+	}
+	if remote := conn.RemoteAddr(); remote != nil {
+		t.byRemote[remote.String()] = tracked
+	}
+	t.mu.Unlock()
+	t.record(tcpTraceEvent{connectionID: tracked.id, name: "tcp_accepted"})
+	return tracked
+}
+
+func (l *tcpTraceListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return l.trace.track(conn), nil
+}
+
+func (t *tcpTrace) connectionFor(sess *session.Session) *trackedConn {
+	if t == nil || sess == nil || sess.RemoteAddr() == nil {
+		return nil
+	}
+	t.mu.Lock()
+	tracked := t.byRemote[sess.RemoteAddr().String()]
+	t.mu.Unlock()
+	return tracked
+}
+
+func (t *tcpTrace) record(event tcpTraceEvent) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.nextSeq++
+	event.order = t.nextSeq
+	event.at = time.Now().UTC().Format(time.RFC3339Nano)
+	t.events = append(t.events, event)
+	t.mu.Unlock()
+}
+
+func (t *tcpTrace) reportEvents() []Event {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	items := append([]tcpTraceEvent(nil), t.events...)
+	t.mu.Unlock()
+	sort.Slice(items, func(i, j int) bool { return items[i].order < items[j].order })
+	result := make([]Event, 0, len(items))
+	for _, item := range items {
+		details := map[string]string{
+			"order":         fmt.Sprint(item.order),
+			"at":            item.at,
+			"connection_id": fmt.Sprint(item.connectionID),
+		}
+		if item.direction != "" {
+			details["direction"] = item.direction
+		}
+		if item.commandID != 0 {
+			details["command_id"] = fmt.Sprintf("0x%08x", item.commandID)
+			details["command_status"] = fmt.Sprintf("0x%08x", item.commandStatus)
+			details["sequence_number"] = fmt.Sprint(item.sequence)
+			details["pdu_length"] = fmt.Sprint(item.length)
+		}
+		if item.errorType != "" {
+			details["error_type"] = item.errorType
+		}
+		if item.networkError != "" {
+			details["network_error"] = item.networkError
+		}
+		if item.priorIOError != "" {
+			details["prior_io_error"] = item.priorIOError
+		}
+		result = append(result, Event{Name: item.name, Status: StatusObserved, Details: details})
+	}
+	return result
+}
+
+func (c *trackedConn) observeBytes(direction string, data []byte) {
+	if c == nil || c.trace == nil || len(data) == 0 {
+		return
+	}
+	c.mu.Lock()
+	buffer := &c.readBuffer
+	name := "tcp_pdu_read"
+	if direction == "smsc_to_peer" {
+		buffer = &c.writeBuffer
+		name = "tcp_pdu_written"
+	}
+	*buffer = append(*buffer, data...)
+	for len(*buffer) >= 4 {
+		length := int(binary.BigEndian.Uint32((*buffer)[:4]))
+		if length < 16 || length > 1<<20 {
+			c.trace.record(tcpTraceEvent{connectionID: c.id, name: "tcp_invalid_pdu_length", direction: direction})
+			*buffer = nil
+			break
+		}
+		if len(*buffer) < length {
+			break
+		}
+		frame := (*buffer)[:length]
+		commandID := binary.BigEndian.Uint32(frame[4:8])
+		commandStatus := binary.BigEndian.Uint32(frame[8:12])
+		sequence := binary.BigEndian.Uint32(frame[12:16])
+		c.trace.record(tcpTraceEvent{
+			connectionID: c.id, name: name, direction: direction,
+			commandID: commandID, commandStatus: commandStatus,
+			sequence: sequence, length: length,
+		})
+		if direction == "smsc_to_peer" && commandID == uint32(protocol.CommandBindTransceiverResp) {
+			select {
+			case c.bindResponses <- protocol.CommandStatus(commandStatus):
+			default:
+			}
+		}
+		*buffer = (*buffer)[length:]
+	}
+	c.mu.Unlock()
+}
+
+func (c *trackedConn) Read(buffer []byte) (int, error) {
+	n, err := c.Conn.Read(buffer)
+	if n > 0 {
+		c.observeBytes("peer_to_smsc", buffer[:n])
+	}
+	if err != nil {
+		c.recordIOError("read", err)
+	}
+	return n, err
+}
+
+func (c *trackedConn) Write(buffer []byte) (int, error) {
+	n, err := c.Conn.Write(buffer)
+	if n > 0 {
+		c.observeBytes("smsc_to_peer", buffer[:n])
+	}
+	if err != nil {
+		c.recordIOError("write", err)
+	}
+	return n, err
+}
+
+func (c *trackedConn) recordIOError(direction string, err error) {
+	details := safeErrorDetails(err)
+	networkError := details["network_error"]
+	if networkError == "" {
+		networkError = details["reason"]
+	}
+	if networkError == "" {
+		networkError = "other"
+	}
+	c.mu.Lock()
+	c.lastIOError = direction + ":" + networkError
+	c.mu.Unlock()
+	c.trace.record(tcpTraceEvent{
+		connectionID: c.id, name: "tcp_" + direction + "_error",
+		direction: direction, errorType: fmt.Sprintf("%T", err), networkError: networkError,
+	})
+}
+
+func (c *trackedConn) Close() error {
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		prior := c.lastIOError
+		c.mu.Unlock()
+		c.trace.record(tcpTraceEvent{connectionID: c.id, name: "tcp_local_close", priorIOError: prior})
+		c.closeErr = c.Conn.Close()
+	})
+	return c.closeErr
 }
 
 func Run(ctx context.Context, cfg Config, output io.Writer) Report {
