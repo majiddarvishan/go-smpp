@@ -29,8 +29,9 @@ import (
 const (
 	StatusPass    = "PASS"
 	StatusFail    = "FAIL"
-	StatusBlocked = "BLOCKED"
-	StatusNotSeen = "NOT_OBSERVED"
+	StatusBlocked    = "BLOCKED"
+	StatusNotSeen    = "NOT_OBSERVED"
+	StatusUnsupported = "UNSUPPORTED"
 )
 
 type Config struct {
@@ -52,8 +53,9 @@ type Config struct {
 
 	RequestTimeout time.Duration
 	PeerWait       time.Duration
-	DLRWait        time.Duration
-	SubmitWait     time.Duration
+	DLRWait            time.Duration
+	SubmitWait         time.Duration
+	AttemptESMEUnbind  bool
 }
 
 type Report struct {
@@ -552,14 +554,14 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		}
 	}
 
-	unbindCtx, cancelUnbind := context.WithTimeout(ctx, cfg.RequestTimeout)
-	unbindErr := attempt.sess.Unbind(unbindCtx)
-	cancelUnbind()
-	if unbindErr != nil {
-		result.addEvent("unbind", StatusFail, unbindEventDetails(unbindErr, packetCapture))
+	unbindEvent := esmeUnbindEvent(cfg.AttemptESMEUnbind, func() error {
+		unbindCtx, cancelUnbind := context.WithTimeout(ctx, cfg.RequestTimeout)
+		defer cancelUnbind()
+		return attempt.sess.Unbind(unbindCtx)
+	}, packetCapture)
+	result.Events = append(result.Events, unbindEvent)
+	if unbindEvent.Status == StatusFail {
 		result.setStatus(StatusFail)
-	} else {
-		result.addEvent("unbind", StatusPass, unbindEventDetails(nil, packetCapture))
 	}
 	_ = attempt.sess.Close()
 	attempt.sess.Wait()
@@ -715,6 +717,34 @@ func (c *capture) hasCommand(direction string, command protocol.CommandID) bool 
 		}
 	}
 	return false
+}
+
+func esmeUnbindEvent(attempt bool, unbind func() error, packetCapture *capture) Event {
+	if !attempt {
+		return Event{
+			Name:   "unbind",
+			Status: StatusUnsupported,
+			Details: map[string]string{
+				"reason":            "peer_capability_not_supported",
+				"operation":         "not_attempted",
+				"peer_capability":   "unbind",
+				"request_sent":      "false",
+				"response_observed": "false",
+			},
+		}
+	}
+	if unbind == nil {
+		return Event{
+			Name:    "unbind",
+			Status:  StatusFail,
+			Details: map[string]string{"reason": "unbind_operation_missing"},
+		}
+	}
+	err := unbind()
+	if err != nil {
+		return Event{Name: "unbind", Status: StatusFail, Details: unbindEventDetails(err, packetCapture)}
+	}
+	return Event{Name: "unbind", Status: StatusPass, Details: unbindEventDetails(nil, packetCapture)}
 }
 
 func unbindEventDetails(err error, packetCapture *capture) map[string]string {
