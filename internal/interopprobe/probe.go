@@ -37,9 +37,13 @@ const (
 	StatusObserved    = "OBSERVED"
 )
 
-// interopMessageID is intentionally decimal-only for the peer interoperability
-// fixture. SMPP still encodes message_id as a NUL-terminated C-Octet String.
-const interopMessageID = "12345678901234567890"
+// Interop message IDs are decimal-only test values. The submit response and
+// unrelated synthetic delivery receipt use distinct IDs. SMPP still encodes
+// message_id as a NUL-terminated C-Octet String.
+const (
+	interopSubmitResponseMessageID = "12345678901234567890"
+	interopDeliveryReceiptMessageID = "9876543210987654321"
+)
 
 type Config struct {
 	Mode string
@@ -697,7 +701,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		case submits <- observation:
 		default:
 		}
-		return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte(interopMessageID)}, nil
+		return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte(interopSubmitResponseMessageID)}, nil
 	})
 
 	listener, err := transport.ListenTCP(ctx, "tcp", cfg.ESMEListenAddress, nil)
@@ -830,7 +834,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}
 	result.addEvent("session_health_after_enquire_link", healthStatus, health)
 
-	dlrText := []byte(fmt.Sprintf("id:%s sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe", interopMessageID))
+	dlrText := []byte(fmt.Sprintf("id:%s sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe", interopDeliveryReceiptMessageID))
 	if sessionIsDone(attempt.sess) || health["server_owns_session"] != "true" {
 		details := sessionHealthDetails(srv, attempt.sess)
 		if attempt.connectionID > 0 {
