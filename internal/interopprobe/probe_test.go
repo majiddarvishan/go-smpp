@@ -308,15 +308,15 @@ func TestESMEUnbindUnsupportedSkipsRequest(t *testing.T) {
 		t.Fatalf("event = %+v, want unbind UNSUPPORTED", event)
 	}
 	for key, want := range map[string]string{
-		"reason":             "peer_capability_not_supported",
-		"operation":          "not_attempted",
-		"operation_kind":     "server_initiated_unbind",
-		"initiator_role":     "smsc",
-		"peer_role":          "esme",
-		"request_direction":  "smsc_to_esme",
-		"peer_capability":    "server_initiated_unbind",
-		"request_sent":       "false",
-		"response_observed":  "false",
+		"reason":            "peer_capability_not_supported",
+		"operation":         "not_attempted",
+		"operation_kind":    "server_initiated_unbind",
+		"initiator_role":    "smsc",
+		"peer_role":         "esme",
+		"request_direction": "smsc_to_esme",
+		"peer_capability":   "server_initiated_unbind",
+		"request_sent":      "false",
+		"response_observed": "false",
 	} {
 		if event.Details[key] != want {
 			t.Fatalf("%s = %q, want %q (details=%v)", key, event.Details[key], want, event.Details)
