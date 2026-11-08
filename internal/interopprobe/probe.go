@@ -37,6 +37,10 @@ const (
 	StatusObserved    = "OBSERVED"
 )
 
+// interopMessageID is intentionally decimal-only for the peer interoperability
+// fixture. SMPP still encodes message_id as a NUL-terminated C-Octet String.
+const interopMessageID = "12345678901234567890"
+
 type Config struct {
 	Mode string
 
@@ -173,6 +177,7 @@ type tcpTrace struct {
 	nextSeq  uint64
 	byRemote map[string]*trackedConn
 	events   []tcpTraceEvent
+	shutdown bool
 }
 
 type tcpTraceEvent struct {
@@ -188,6 +193,11 @@ type tcpTraceEvent struct {
 	errorType     string
 	networkError  string
 	priorIOError  string
+	probeShutdown bool
+	attemptedCommandID     uint32
+	attemptedCommandStatus uint32
+	attemptedSequence      uint32
+	attemptedLength        int
 }
 
 type trackedConn struct {
@@ -262,6 +272,25 @@ func (t *tcpTrace) record(event tcpTraceEvent) {
 	t.mu.Unlock()
 }
 
+func (t *tcpTrace) markShutdown() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.shutdown = true
+	t.mu.Unlock()
+}
+
+func (t *tcpTrace) shutdownStarted() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	started := t.shutdown
+	t.mu.Unlock()
+	return started
+}
+
 func (t *tcpTrace) reportEvents() []Event {
 	if t == nil {
 		return nil
@@ -294,6 +323,15 @@ func (t *tcpTrace) reportEvents() []Event {
 		}
 		if item.priorIOError != "" {
 			details["prior_io_error"] = item.priorIOError
+		}
+		if item.probeShutdown {
+			details["probe_shutdown_started"] = "true"
+		}
+		if item.attemptedCommandID != 0 {
+			details["attempted_command_id"] = fmt.Sprintf("0x%08x", item.attemptedCommandID)
+			details["attempted_command_status"] = fmt.Sprintf("0x%08x", item.attemptedCommandStatus)
+			details["attempted_sequence_number"] = fmt.Sprint(item.attemptedSequence)
+			details["attempted_pdu_length"] = fmt.Sprint(item.attemptedLength)
 		}
 		result = append(result, Event{Name: item.name, Status: StatusObserved, Details: details})
 	}
@@ -348,7 +386,7 @@ func (c *trackedConn) Read(buffer []byte) (int, error) {
 		c.observeBytes("peer_to_smsc", buffer[:n], false)
 	}
 	if err != nil {
-		c.recordIOError("read", err)
+		c.recordIOError("read", err, nil)
 	}
 	return n, err
 }
@@ -359,12 +397,12 @@ func (c *trackedConn) Write(buffer []byte) (int, error) {
 		c.observeBytes("smsc_to_peer", buffer[:n], err == nil)
 	}
 	if err != nil {
-		c.recordIOError("write", err)
+		c.recordIOError("write", err, buffer)
 	}
 	return n, err
 }
 
-func (c *trackedConn) recordIOError(direction string, err error) {
+func (c *trackedConn) recordIOError(direction string, err error, attempted []byte) {
 	details := safeErrorDetails(err)
 	networkError := details["network_error"]
 	if networkError == "" {
@@ -376,10 +414,24 @@ func (c *trackedConn) recordIOError(direction string, err error) {
 	c.mu.Lock()
 	c.lastIOError = direction + ":" + networkError
 	c.mu.Unlock()
-	c.trace.record(tcpTraceEvent{
+
+	event := tcpTraceEvent{
 		connectionID: c.id, name: "tcp_" + direction + "_error",
 		direction: direction, errorType: fmt.Sprintf("%T", err), networkError: networkError,
-	})
+	}
+	// A failed Write is not a transmitted PDU. Record only its attempted SMPP
+	// header when the complete header and declared frame length are available.
+	// Never retain the payload or any raw PDU bytes.
+	if direction == "write" && len(attempted) >= 16 {
+		length := int(binary.BigEndian.Uint32(attempted[:4]))
+		if length >= 16 && length <= len(attempted) {
+			event.attemptedCommandID = binary.BigEndian.Uint32(attempted[4:8])
+			event.attemptedCommandStatus = binary.BigEndian.Uint32(attempted[8:12])
+			event.attemptedSequence = binary.BigEndian.Uint32(attempted[12:16])
+			event.attemptedLength = length
+		}
+	}
+	c.trace.record(event)
 }
 
 func (c *trackedConn) Close() error {
@@ -387,7 +439,7 @@ func (c *trackedConn) Close() error {
 		c.mu.Lock()
 		prior := c.lastIOError
 		c.mu.Unlock()
-		c.trace.record(tcpTraceEvent{connectionID: c.id, name: "tcp_local_close", priorIOError: prior})
+		c.trace.record(tcpTraceEvent{connectionID: c.id, name: "tcp_local_close", priorIOError: prior, probeShutdown: c.trace.shutdownStarted()})
 		c.closeErr = c.Conn.Close()
 	})
 	return c.closeErr
@@ -645,7 +697,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		case submits <- observation:
 		default:
 		}
-		return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte("interop-submit-001")}, nil
+		return server.SubmitResult{Status: protocol.StatusOK, MessageID: []byte(interopMessageID)}, nil
 	})
 
 	listener, err := transport.ListenTCP(ctx, "tcp", cfg.ESMEListenAddress, nil)
@@ -682,6 +734,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	serveErrors := make(chan error, 1)
 	serveDone := make(chan struct{})
 	closeAndTrace := func() {
+		connectionTrace.markShutdown()
 		closeProbeServer(srv)
 		<-serveDone // Ensure the accept loop cannot add another tracked connection after the final trace snapshot.
 		result.Events = append(result.Events, connectionTrace.reportEvents()...)
@@ -777,7 +830,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	}
 	result.addEvent("session_health_after_enquire_link", healthStatus, health)
 
-	dlrText := []byte("id:interop-001 sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe")
+	dlrText := []byte(fmt.Sprintf("id:%s sub:001 dlvrd:001 submit date:2611071200 done date:2611071201 stat:DELIVRD err:000 text:go-smpp interop probe", interopMessageID))
 	if sessionIsDone(attempt.sess) || health["server_owns_session"] != "true" {
 		details := sessionHealthDetails(srv, attempt.sess)
 		if attempt.connectionID > 0 {
