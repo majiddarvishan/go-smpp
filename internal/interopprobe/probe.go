@@ -679,7 +679,7 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	})
 	defer srv.Close()
 	closeAndTrace := func() {
-		closeAndTrace()
+		closeProbeServer(srv)
 		result.Events = append(result.Events, connectionTrace.reportEvents()...)
 	}
 
