@@ -513,11 +513,7 @@ func runSMSC(ctx context.Context, cfg Config) (PhaseResult, *Fixture) {
 	err = c.EnquireLink(linkCtx)
 	cancelLink()
 	if err != nil {
-		details := safeErrorDetails(err)
-		if attempt.connectionID > 0 {
-			details["connection_id"] = fmt.Sprint(attempt.connectionID)
-		}
-		result.addEvent("enquire_link", StatusFail, details)
+		result.addEvent("enquire_link", StatusFail, safeErrorDetails(err))
 		result.setStatus(StatusFail)
 	} else {
 		result.addEvent("enquire_link", StatusPass, nil)
@@ -758,7 +754,11 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 	err = attempt.sess.EnquireLink(linkCtx)
 	cancelLink()
 	if err != nil {
-		result.addEvent("enquire_link", StatusFail, safeErrorDetails(err))
+		details := safeErrorDetails(err)
+		if attempt.connectionID > 0 {
+			details["connection_id"] = fmt.Sprint(attempt.connectionID)
+		}
+		result.addEvent("enquire_link", StatusFail, details)
 		result.setStatus(StatusFail)
 	} else {
 		result.addEvent("enquire_link", StatusPass, nil)
