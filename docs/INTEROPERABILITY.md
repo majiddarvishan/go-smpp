@@ -204,7 +204,7 @@ The test-only probe now:
 
 For the next run, a `tcp_write_error` with `attempted_command_id=0x80000009` will confirm that the failed write was a `bind_transceiver_resp`; because the write error follows the read EOF and local Close, it remains a consequence of the already-closed Session. The `probe_shutdown_started` field should identify whether connection 2 was closed during early-return cleanup.
 
-The interop probe now uses decimal-only `MessageID=12345678901234567890` in its application-supplied `submit_sm_resp` and the matching synthetic DLR. The SMPP field remains a NUL-terminated C-Octet String. This is a test fixture requirement, not a generic library restriction: applications supply `server.SubmitResult.MessageID`, and the generic DLR parser preserves external peer IDs as opaque strings.
+The interop probe uses distinct decimal-only IDs: `12345678901234567890` for the application-supplied `submit_sm_resp` and `9876543210987654321` for the unrelated synthetic DLR. The SMPP field remains a NUL-terminated C-Octet String. These are test fixture values, not a generic library restriction: applications supply `server.SubmitResult.MessageID`, and the generic DLR parser preserves external peer IDs as opaque strings.
 
 To explain why the ESME closes immediately after Bind, collect the ESME simulator's local log around the bind attempt. If that is insufficient, capture only FIN/RST packet headers on loopback (no payload), because bind requests carry credentials. Do not export a raw PCAP or packet payload into the repository.
 
