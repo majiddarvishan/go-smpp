@@ -446,7 +446,6 @@ func TestWaitForBindResponsePreservesPeerCloseCause(t *testing.T) {
 	}
 }
 
-
 type probeReadErrorConn struct {
 	net.Conn
 	readErr error
