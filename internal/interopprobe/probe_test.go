@@ -381,6 +381,17 @@ func TestSessionHealthDetailsPreservesPeerCloseCause(t *testing.T) {
 	}
 }
 
+func TestSafeErrorDetailsClassifiesReceivedTCPResetWithoutAttributingItsSender(t *testing.T) {
+	err := &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}
+	details := safeErrorDetails(err)
+	if details["network_operation"] != "read" || details["network_error"] != "connection_reset" {
+		t.Fatalf("TCP reset classification = %v", details)
+	}
+	if details["reason"] != "tcp_reset_received" {
+		t.Fatalf("TCP reset reason = %q, want tcp_reset_received", details["reason"])
+	}
+}
+
 func TestSafeErrorDetailsClassifiesBrokenPipe(t *testing.T) {
 	err := &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}
 	details := safeErrorDetails(err)
