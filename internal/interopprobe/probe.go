@@ -678,13 +678,16 @@ func runESME(ctx context.Context, cfg Config, output io.Writer) (PhaseResult, *F
 		},
 	})
 	defer srv.Close()
-	closeAndTrace := func() {
-		closeProbeServer(srv)
-		result.Events = append(result.Events, connectionTrace.reportEvents()...)
-	}
 
 	serveErrors := make(chan error, 1)
+	serveDone := make(chan struct{})
+	closeAndTrace := func() {
+		closeProbeServer(srv)
+		<-serveDone // Ensure the accept loop cannot add another tracked connection after the final trace snapshot.
+		result.Events = append(result.Events, connectionTrace.reportEvents()...)
+	}
 	go func() {
+		defer close(serveDone)
 		serveErrors <- srv.Serve(ctx)
 	}()
 	result.addEvent("listen", StatusPass, map[string]string{"transport": "tcp", "tls": "false", "max_sessions": "1"})
