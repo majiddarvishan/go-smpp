@@ -439,3 +439,13 @@ Items intentionally deferred from the first submit/deliver milestone are tracked
 The follow-up archive `go-smpp-interop.nmFaln.tar.gz` reproduces the earlier peer-close-before-BindResp symptom after the successful `2KhVNK` exchange. The report contains no PCAP or ESME-side logs. On connection 1, the 45-byte Bind was read at `13:41:15.971049832Z`; peer EOF arrived at `13:41:15.971342852Z` (293 µs later). The authenticator accepted the Bind. No BindResp was written; the local session closed after the peer EOF, and the later BindResp write failed with `local_connection_closed`. Connection 2 was accepted only during probe shutdown and carried no observed PDU; its initiator is unknown.
 
 This makes the symptom intermittent rather than resolved. The evidence does not justify changing public Session/Transport behavior. INT-01L is reopened and requires ESME-side logs for the exact bind attempt, or a FIN/RST-only loopback packet summary if simulator logs are unavailable. Never capture SMPP payloads or credentials. PR #8 remains Draft/open; no merge or release.
+
+
+### Follow-up FIN/RST-only capture — 2026-11-08 (18:01 local)
+
+- The supplied capture was filtered to FIN/RST only and includes no SYN or ordinary ACK packets; no simultaneous probe `report.json` or ESME console log was provided. Therefore ephemeral ports cannot be mapped to probe `connection_id` values or to a specific Bind attempt.
+- At `18:01:40.274839`, client-side `127.0.0.1:46680` sent FIN to server `127.0.0.1:4000`. At `18:01:40.275994`, the server sent FIN back to `46680`. This tuple is consistent with a graceful close initiated by the client side.
+- A distinct tuple `4000 → 46686` shows server FIN at `18:01:40.275480` followed by server RST at `18:01:40.275770`; without the earlier handshake and ACK sequence, the reason is undetermined.
+- Other server-originated RSTs target different ephemeral ports at `18:01:31`, `18:01:34`, and `18:01:37`. They may be connection attempts/refusals or stale traffic; the present filter cannot establish which process initiated them.
+- This capture supports that at least one client-side TCP endpoint initiated a graceful close, but does not yet prove that it is the same socket/session as the reported Bind EOF. No code change is justified.
+- Next capture: include only TCP SYN/FIN/RST flags (no payload), and run it concurrently with one ESME probe while saving the sanitized probe report. Correlate timestamps and client ephemeral ports. Ask for ESME console diagnostics around the same attempt if available.

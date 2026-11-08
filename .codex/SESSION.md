@@ -199,3 +199,13 @@ Do not treat the 2-second CI smoke as the 60-second performance acceptance. Keep
 - `connection_id=2` was accepted at `13:41:15.971848340Z` and closed at `13:41:15.971857921Z` while probe shutdown was already marked. No PDU was read on it; the report does not establish which local process initiated that connection.
 - This reproduces the earlier `wvS2vr` failure after the successful same-pair run `2KhVNK`. Therefore the event is intermittent; do not mark INT-01L complete. The current evidence does not justify a public Session/Transport behavior change.
 - Next required evidence: ESME simulator console/diagnostic log for this exact bind attempt. If the simulator cannot provide it, capture only FIN/RST packet summaries on loopback (no payload, no PCAP containing SMPP data or credentials). Keep PR #8 Draft/open; no merge or release.
+
+
+### Follow-up FIN/RST-only capture — 2026-11-08 (18:01 local)
+
+- The supplied capture was filtered to FIN/RST only and includes no SYN or ordinary ACK packets; no simultaneous probe `report.json` or ESME console log was provided. Therefore ephemeral ports cannot be mapped to probe `connection_id` values or to a specific Bind attempt.
+- At `18:01:40.274839`, client-side `127.0.0.1:46680` sent FIN to server `127.0.0.1:4000`. At `18:01:40.275994`, the server sent FIN back to `46680`. This tuple is consistent with a graceful close initiated by the client side.
+- A distinct tuple `4000 → 46686` shows server FIN at `18:01:40.275480` followed by server RST at `18:01:40.275770`; without the earlier handshake and ACK sequence, the reason is undetermined.
+- Other server-originated RSTs target different ephemeral ports at `18:01:31`, `18:01:34`, and `18:01:37`. They may be connection attempts/refusals or stale traffic; the present filter cannot establish which process initiated them.
+- This capture supports that at least one client-side TCP endpoint initiated a graceful close, but does not yet prove that it is the same socket/session as the reported Bind EOF. No code change is justified.
+- Next capture: include only TCP SYN/FIN/RST flags (no payload), and run it concurrently with one ESME probe while saving the sanitized probe report. Correlate timestamps and client ephemeral ports. Ask for ESME console diagnostics around the same attempt if available.
