@@ -466,6 +466,84 @@ func (c *probeReadErrorConn) Read([]byte) (int, error) {
 	return 0, c.readErr
 }
 
+func TestInteropMessageIDIsNumericAndMatchesReceipt(t *testing.T) {
+	if interopMessageID == "" || strings.Trim(interopMessageID, "0123456789") != "" {
+		t.Fatalf("interop MessageID %q is not decimal-only", interopMessageID)
+	}
+	receipt, err := message.ParseDeliveryReceipt(protocol.DeliverSM{
+		ESMClass:     0x04,
+		ShortMessage: []byte("id:" + interopMessageID + " stat:DELIVRD"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.MessageID != interopMessageID {
+		t.Fatalf("DLR MessageID = %q, want submit_sm_resp MessageID %q", receipt.MessageID, interopMessageID)
+	}
+}
+
+type probeWriteErrorConn struct {
+	net.Conn
+	writeErr error
+}
+
+func (c *probeWriteErrorConn) Write([]byte) (int, error) {
+	return 0, c.writeErr
+}
+
+func TestTCPTraceWriteErrorRecordsAttemptedPDUHeaderOnly(t *testing.T) {
+	trace := newTCPTrace()
+	local, peer := net.Pipe()
+	defer peer.Close()
+	tracked := trace.track(local)
+	tracked.Conn = &probeWriteErrorConn{Conn: local, writeErr: syscall.EPIPE}
+
+	frame := make([]byte, 16)
+	binary.BigEndian.PutUint32(frame[0:4], uint32(len(frame)))
+	binary.BigEndian.PutUint32(frame[4:8], uint32(protocol.CommandBindTransceiverResp))
+	binary.BigEndian.PutUint32(frame[8:12], uint32(protocol.StatusOK))
+	binary.BigEndian.PutUint32(frame[12:16], 91)
+	if _, err := tracked.Write(frame); !errors.Is(err, syscall.EPIPE) {
+		t.Fatalf("tracked Write error = %v, want EPIPE", err)
+	}
+
+	events := trace.reportEvents()
+	if len(events) != 2 || events[1].Name != "tcp_write_error" {
+		t.Fatalf("write error trace = %+v", events)
+	}
+	details := events[1].Details
+	if details["attempted_command_id"] != "0x80000009" ||
+		details["attempted_command_status"] != "0x00000000" ||
+		details["attempted_sequence_number"] != "91" ||
+		details["attempted_pdu_length"] != "16" {
+		t.Fatalf("attempted PDU header metadata = %v", details)
+	}
+	for _, forbidden := range []string{"payload", "short_message", "raw_pdu", "password"} {
+		if _, ok := details[forbidden]; ok {
+			t.Fatalf("write error trace unexpectedly contains %q: %v", forbidden, details)
+		}
+	}
+}
+
+func TestTCPTraceMarksCloseDuringProbeShutdown(t *testing.T) {
+	trace := newTCPTrace()
+	local, peer := net.Pipe()
+	defer peer.Close()
+	tracked := trace.track(local)
+
+	trace.markShutdown()
+	if err := tracked.Close(); err != nil {
+		t.Fatal(err)
+	}
+	events := trace.reportEvents()
+	if len(events) != 2 || events[1].Name != "tcp_local_close" {
+		t.Fatalf("shutdown close trace = %+v", events)
+	}
+	if events[1].Details["probe_shutdown_started"] != "true" {
+		t.Fatalf("local close was not marked as probe shutdown: %v", events[1].Details)
+	}
+}
+
 func TestTCPTraceDoesNotCorrelateBindResponseWhenSocketWriteFails(t *testing.T) {
 	trace := newTCPTrace()
 	local, peer := net.Pipe()
