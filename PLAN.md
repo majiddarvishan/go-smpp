@@ -512,3 +512,8 @@ The `oagXgd` ESME interoperability run reported:
 ### Phase 17 evidence verification — 2026-11-10
 
 PERF-02: **DONE for the agreed nine-file text artifact bundle**. Independently inspected archive `go-smpp-phase17-evidence.tar.gz` (SHA-256 `3190baafa81397c08daa850c45808c8355df39cab3c65799028283186ac3d1b9`), validating current-candidate clean SHA, exact kernel/Go/host config, race PASS, 60s throughput/response/resource PASS, minimum session 1, benchmark metrics and matching build IDs across the CPU, heap, mutex and block textual summaries. See `docs/PERFORMANCE.md` for measurements and limitations. Binary `.pprof` files were not supplied and should remain available locally if deeper diagnosis is needed. PERF-01 and PERF-02 are complete; INT-01G, INT-01L and REL-01 remain open; PR #8 stays Draft/unmerged. Do not merge or tag solely because performance passed.
+
+
+### INT-01O — deterministic post-Bind peer-disconnect regression (registered 2026-11-10)
+
+- [ ] **INT-01O:** Test the generic SMSC server with `MaxSessions=1` when an SMPP peer sends a syntactically valid TRX Bind and disconnects (normal close and TCP reset) while the authenticator is holding the response, and when it disconnects after a completed successful Bind. Use only synthetic addresses and credentials; assert bounded session cleanup and successful replacement TRX Bind without restarting the server. Do not assert that a BindResp write must succeed after peer close, and do not infer the external simulator's disconnect reason. Keep this test in the generic `server` package; no production Session/Transport behavior change absent a failing invariant. Verify Go 1.25.x/1.27.x CI including race.
