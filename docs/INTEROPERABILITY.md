@@ -291,3 +291,25 @@ The `oagXgd` ESME interoperability run reported:
 - The candidate manifest's six sanitized frames were checked for declared length, command ID, status, and sequence consistency; all checks passed. The candidate has `sanitization.reviewed=false` and reuses ID `simulator-esme-peer-002` / evidence `INT-01-PEER-002-001`, which **already belongs to an existing reviewed fixture from another run**. Do not overwrite/re-import it. The existing `simulator-esme-peer-002-submit` fixture already covers this exact six-command exchange; this independent run is recorded as further evidence, not a redundant fixture.
 - Compared with earlier `oagXgd`, a valid successful 37-byte BindResp shows that matching credentials make the normal exchange succeed. This does **not** prove how the peer decoder handles a nonzero-status, 16-byte BindResp; keep those questions separate. Earlier intermittent post-Bind EOF remains open as INT-01L, while the local ESME interoperability success path is verified. Do not modify public codec, Session, authentication or Transport on the basis of this passing run.
 - PR #8 remains Draft/open. No merge, tag, or release. Reference-host 60-second performance acceptance and deployed-peer evidence are still pending.
+
+
+### 2026-11-10 repeat: rejected Bind, not the earlier intermittent accepted-Bind EOF
+
+Sanitized bundle `go-smpp-interop.kJ8WOk.tar.gz` (SHA-256 `93bfa889f3e5fb74e029016949567238044185c07893b07cc2a062713f89d402`) was inspected; it contains `run.log`, `report.json` and an empty candidate manifest. The ESME/server phase is **FAIL**, with 0 safe non-Bind fixture frames and 2 credential-bearing Bind frames excluded. No fixture should be imported.
+
+- At `2026-11-10T14:36:55.030143504Z`, TCP connection 1 was accepted: loopback client port `42590`, server port `4000`. The server received a complete 45-octet TRX `bind_transceiver` at `14:36:55.030329872Z`, sequence `3716153344`.
+- The opt-in authenticator rejected the request with `password_mismatch` (`ESME_RINVPASWD`, `0x0000000e`). At `14:36:55.030411177Z` the server successfully wrote a **16-octet, header-only** `bind_transceiver_resp` (`0x80000009`) with the exact same sequence and nonzero status. The ESME reported `SmppBindResp.cpp:191` decode-offset mismatch after reading those response bytes. This is consistent with (not proof of) a peer decoder requiring a success-only body on an error response. The immediate, evidenced cause of this probe failure is the mismatch between the ESME's configured Bind password and the probe-side expected value. Do not include credentials in any report.
+- The probe began teardown on this rejected bind; it recorded `tcp_local_close` at `14:36:55.030494061Z` with `probe_shutdown_started=true`, followed by `tcp_read_error=local_connection_closed`. This is cleanup, not a demonstrated spontaneous peer disconnect after an **accepted** Bind.
+- The concurrent loopback trace shows packets with the same `42590 → 4000` tuple at `18:06:55` local time (UTC+03:30), matching the probe's UTC event times and port correlation. However, its `tcpdump -q` output printed only `tcp 0`, **not TCP flag labels**. The BPF selected SYN/FIN/RST packets, but the record cannot distinguish which individual packet carried which flag. Do not infer FIN-vs-RST or initiator from these `-q` lines. Other tuples are not evidence about connection 1 without matching probe IDs.
+
+**Safe, repeatable capture correction (INT-01Q):** start this separately *before* the probe; the helper does not save raw frames or read credentials:
+
+```bash
+bash scripts/interop-tcp-flags.sh 4000 | tee /tmp/go-smpp-int01l-tcp-flags.txt
+```
+
+The helper uses IPv4 loopback `lo`, `-nn -tttt -l -s 54`, and the filter `tcp port 4000 and (tcp[13] & 0x07 != 0)`; critically it **does not use `-q`**, so TCP `Flags [S]`, `Flags [F.]` and `Flags [R.]` will be visible. It neither performs a PCAP write nor displays packet payloads. `-tttt` uses local host time; align with `report.json` UTC using the host's actual offset.
+
+In another terminal, invoke `SMPP_INTEROP_SUBMIT_WAIT=30s bash scripts/interop-local.sh esme`. Configure the ESME simulator's Bind password to match the value supplied **privately** to the probe's hidden `ESME simulator bind password` prompt; never paste either password into logs/chat or commit it. Keep the ESME stopped until `READY`; only issue one CLI `submit_sm` after `OBSERVE` appears. Stop the capture with Ctrl+C when the probe exits. If a future attempt still shows EOF after an accepted Bind, correlate `connection_id`, TCP ports, UTC and visible flags with peer-side logs before hypothesizing cause.
+
+This latest rejected-Bind run does **not** close INT-01L, does not contradict the earlier matched-password passing exchange, and does not justify changing the library's standard-compliant error BindResp framing or authentication policy.
