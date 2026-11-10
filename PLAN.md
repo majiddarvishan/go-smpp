@@ -235,7 +235,7 @@ This file is the source of truth for implementation progress. Every completed ph
 
 ## Phase 17 — Performance acceptance and optimization
 
-> Historical reference acceptance passed on the documented `smpp-reference` 8-core/10-GB Linux/amd64 runner. A fresh 60-second run on the combined current HEAD after later library additions remains a separate P1 release-regression gate.
+> The historical 2026-10-06 reference run passed; the separate clean-candidate reference-host 60-second rerun also **PASSED on 2026-11-10 at commit `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`**. The generated artifact audit and any executable-code integration rerun remain release considerations.
 
 - [x] Sustain 100,000 aggregate bidirectional **request** PDUs/s on the reference machine.
 - [x] Include required SMPP response processing in the end-to-end load.
@@ -246,7 +246,7 @@ This file is the source of truth for implementation progress. Every completed ph
 - [x] Profile before every significant optimization.
 - [x] Keep implementation free of `unsafe` unless a later measured bottleneck justifies a separately reviewed decision.
 
-**Reference acceptance evidence:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md) records the 2026-10-06 Linux/amd64 reference run at 713,932 request-PDU/s for 60 seconds with one session. The report documents a local acceptance-script edit caveat; recorded parameters match current defaults, and no library source changed between the measured commit and the subsequent Go directive/docs-only commits. A new combined-HEAD run after later library additions remains a separate pre-release regression task.
+**Reference acceptance evidence:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md) records the 2026-10-06 Linux/amd64 reference run at 713,932 request-PDU/s for 60 seconds with one session. The report documents a local acceptance-script edit caveat; recorded parameters match current defaults, and no library source changed between the measured commit and the subsequent Go directive/docs-only commits. The combined-candidate 2026-11-10 reference run passed at 683,465 request PDUs/s for 60 seconds with one session (see the current-candidate section of `docs/PERFORMANCE.md`); the local artifact audit remains open as PERF-02.
 
 ## Phase 18 — Reliability, fuzzing and chaos
 
@@ -500,4 +500,11 @@ The `oagXgd` ESME interoperability run reported:
 - `scripts/acceptance.sh --preflight` now checks Linux/amd64, Go 1.27.x, 8+ logical CPUs, 10+ GiB RAM, and clean Git working tree without creating files or running the workload. The full acceptance enforces the same checks, records `source_clean=true` and the exact commit, then runs the 60s bidirectional TCP workload with full responses, resource checks and profiles. `.bench/` is excluded from Git.
 - CI validates `bash -n scripts/acceptance.sh`; the `SMPP reference performance acceptance` workflow will invoke preflight before the long run. This workflow requires a self-hosted `smpp-reference` runner. Connected GitHub actions cannot dispatch workflows or inspect runner inventory; there is no verified current-head reference result yet.
 - Local operator command on the eligible reference host: `scripts/acceptance.sh --preflight` followed by `scripts/acceptance.sh .bench/phase17-reference`. Preserve `environment.txt`, `acceptance-sessions-N.txt`, `minimum-session-count.txt` and the profiling outputs. Do not claim release PASS from CI smoke or the old reference result.
-- PERF-01 and REL-01 remain open. PR #8 remains Draft/open and unmerged. After integration, retest if the executable tree changes.
+- This pre-run status was superseded by the completed 2026-11-10 current-candidate 60-second acceptance below. PR #8 remains Draft/open and unmerged. After integration, retest if executable source changes.
+
+### Clean-candidate 60-second reference acceptance — 2026-11-10 (supersedes earlier pending status)
+
+- On a clean candidate commit `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`, the maintainer-reported `scripts/acceptance.sh --preflight` **PASSED** (Linux/amd64, Go 1.27.0, 12 logical CPUs, 32,649,508 KiB RAM, 60s, 128 callers, TX batch 32, `GOMAXPROCS=8`).
+- `scripts/acceptance.sh .bench/phase17-reference` **PASSED**: race verification for session/client/server, a one-session 60-second sustained result of **683,465 request PDUs/s** against the >=100,000 target, 41,008,269 requests/41,008,269 responses, 41,008,141 timed completed, 8 baseline/136 max goroutines, 3 MiB peak heap, 0 MiB retained growth, 64 maximum pending/window. Minimum passing sessions **1**. Diagnostic profile benchmark: **723,710 request PDUs/s**, 1,382 ns/op, 896 B/op, 9 allocs/op.
+- The local runner stated that evidence was written to `.bench/phase17-reference`; the generated files have **not been attached or independently checked**. PERF-01 is complete based on the reported terminal output; PERF-02 remains for the release artifact audit and complete kernel/time/profile provenance. Do not treat the older 2026-10-06 measurement as this current candidate run.
+- **REL-01 remains open**. The PR stays Draft/Open and unmerged; do not tag or release before artifact audit, release checklist and remaining interoperability decisions. Re-run performance if an integration modifies executable source.
