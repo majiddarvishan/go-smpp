@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -669,5 +670,100 @@ func TestTCPTraceCorrelatesBindResponseAndOrdersResetBeforeLocalClose(t *testing
 	}
 	if events[3].Details["prior_io_error"] != "read:connection_reset" {
 		t.Fatalf("local close ordering = %v, want read reset before local close", events[3].Details)
+	}
+}
+
+func TestTCPTraceRecordsOnlyLoopbackTCPPorts(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	peer, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	accepted, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accepted.Close()
+
+	trace := newTCPTrace()
+	trace.track(accepted)
+	events := trace.reportEvents()
+	if len(events) != 1 || events[0].Name != "tcp_accepted" {
+		t.Fatalf("unexpected trace events: %+v", events)
+	}
+	details := events[0].Details
+	localPort := strconv.Itoa(accepted.LocalAddr().(*net.TCPAddr).Port)
+	peerPort := strconv.Itoa(accepted.RemoteAddr().(*net.TCPAddr).Port)
+	if details["local_tcp_port"] != localPort || details["peer_tcp_port"] != peerPort {
+		t.Fatalf("loopback port correlation = %v, want local=%s peer=%s", details, localPort, peerPort)
+	}
+	for key, value := range details {
+		if strings.Contains(value, "127.0.0.1") || strings.Contains(value, "::1") {
+			t.Fatalf("trace leaked loopback address in %q", key)
+		}
+	}
+	for _, key := range []string{"local_addr", "remote_addr", "local_ip", "peer_ip", "payload", "password"} {
+		if _, present := details[key]; present {
+			t.Fatalf("trace unexpectedly records %q", key)
+		}
+	}
+}
+
+// Simulates a non-loopback endpoint without opening an external connection.
+type probeAddressOverrideConn struct {
+	net.Conn
+	local  net.Addr
+	remote net.Addr
+}
+
+func (c *probeAddressOverrideConn) LocalAddr() net.Addr  { return c.local }
+func (c *probeAddressOverrideConn) RemoteAddr() net.Addr { return c.remote }
+
+func TestTCPTraceOmitsPortsForNonLoopbackAndNonTCP(t *testing.T) {
+	cases := []struct {
+		name  string
+		local net.Addr
+		peer  net.Addr
+	}{
+		{
+			name:  "non_loopback_tcp",
+			local: &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 4000},
+			peer:  &net.TCPAddr{IP: net.ParseIP("192.0.2.11"), Port: 51000},
+		},
+		{
+			name:  "mixed_loopback_tcp",
+			local: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 4000},
+			peer:  &net.TCPAddr{IP: net.ParseIP("192.0.2.11"), Port: 51000},
+		},
+		{
+			name:  "non_tcp",
+			local: &net.UnixAddr{Name: "local", Net: "unix"},
+			peer:  &net.UnixAddr{Name: "peer", Net: "unix"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			local, remote := net.Pipe()
+			defer local.Close()
+			defer remote.Close()
+			trace := newTCPTrace()
+			trace.track(&probeAddressOverrideConn{Conn: local, local: tc.local, remote: tc.peer})
+			events := trace.reportEvents()
+			if len(events) != 1 {
+				t.Fatalf("events = %+v, want one", events)
+			}
+			if _, exists := events[0].Details["local_tcp_port"]; exists {
+				t.Fatalf("non-loopback/non-TCP local port leaked: %v", events[0].Details)
+			}
+			if _, exists := events[0].Details["peer_tcp_port"]; exists {
+				t.Fatalf("non-loopback/non-TCP peer port leaked: %v", events[0].Details)
+			}
+		})
 	}
 }
