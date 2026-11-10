@@ -524,7 +524,7 @@ PERF-02: **DONE for the agreed nine-file text artifact bundle**. Independently i
 
 ### INT-01Q — reproducible privacy-safe TCP flag capture (registered 2026-11-10)
 
-- [ ] **INT-01Q:** Fix the previous operator-facing tcpdump invocation: `-q` suppresses TCP flag rendering even if BPF selects SYN/FIN/RST, leaving unhelpful `tcp 0` lines. Supply a small explicit opt-in loopback IPv4 SYN/FIN/RST *header-only* command/script (no `-q`, no payload hex/ASCII, no PCAP writer; minimal snaplen), document correct `-tttt` local-time correlation against UTC probe timestamps and numeric TCP ports, and add a repeatable syntax/option guard. The script must not record or request credentials; it cannot infer TCP flags from the existing suppressed output. No production SMPP library/API changes.
+- [x] **INT-01Q:** Added opt-in `scripts/interop-tcp-flags.sh` for IPv4 loopback TCP SYN/FIN/RST textual summaries, using `-i lo -nn -tttt -l -s 54` and *no `-q`*, raw/ASCII packet dump or PCAP export. It validates the port and offers a no-capture dry-run. Added the syntax/argument/unsafe-option guard to dual-Go CI, with a verified **PASS** on Go 1.25.x and Go 1.27.x at `b1760046d53f78aa8e16f0ad834bbca73e65a261` ([run 42837641031](https://github.com/majiddarvishan/go-smpp/actions/runs/42837641031)). The sanitized 2026-11-10 `kJ8WOk` rejected-Bind evidence and the original `-q` limitation are recorded in `docs/INTEROPERABILITY.md`, `PLAN.md` and `.codex/SESSION.md`. No public library or SMPP semantics changed; INT-01L remains open.
 
 
 ### INT-01L follow-up: password rejection and sanitized TCP correlation — 2026-11-10
