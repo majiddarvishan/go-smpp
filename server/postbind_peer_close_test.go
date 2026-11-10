@@ -20,9 +20,9 @@ import (
 // deliberately makes no claim about the external peer's reason for closing.
 func TestServerPostBindPeerDisconnectReclaimsSessionSlot(t *testing.T) {
 	cases := []struct {
-		name               string
+		name                string
 		closeBeforeResponse bool
-		reset              bool
+		reset               bool
 	}{
 		{name: "peer_fin_while_bind_response_pending", closeBeforeResponse: true},
 		{name: "peer_rst_while_bind_response_pending", closeBeforeResponse: true, reset: true},
