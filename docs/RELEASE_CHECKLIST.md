@@ -15,3 +15,9 @@ Phase 19 release readiness is complete only when every item below is true.
 - Only after the reference evidence is published is the first production-ready tag created.
 
 The first production-ready tag establishes the v1 semantic-version compatibility line. Do not create that tag from an unverified reference-performance state.
+
+## Current evidence status — 2026-11-10
+
+The clean candidate `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9` passed `scripts/acceptance.sh --preflight`, race checks and the required 60-second reference acceptance with one TCP session at 683,465 request PDUs/s (100,000 required). See `docs/PERFORMANCE.md` for all reported load, resource and response measurements.
+
+**Still to verify before tagging:** inspect/retain the `.bench/phase17-reference` generated evidence (including exact kernel/time, race log, one-session acceptance log and profiles); complete release checklist and outstanding deployed-peer/interop decisions. No artifact upload or independent profile inspection is claimed. PR #8 stays Draft/Open; no merge, Ready transition or release tag is authorized by this performance PASS alone.
