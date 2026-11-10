@@ -77,26 +77,43 @@ func TestServerBindPasswordRejectionWireFormat(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantLen := codec.HeaderSize + len(tc.body)
 			if header.CommandID != protocol.CommandBindTransceiverResp ||
 				header.CommandStatus != tc.status ||
-				header.SequenceNumber != 0xadc00008 ||
-				header.CommandLength != uint32(wantLen) {
-				t.Fatalf("unexpected BindResp wire header: %+v, want status=%v length=%d", header, tc.status, wantLen)
+				header.SequenceNumber != 0xadc00008 {
+				t.Fatalf("unexpected BindResp wire header: %+v, want status=%v", header, tc.status)
+			}
+			// Failure is header-only. Successful BindResp may also include an
+			// sc_interface_version TLV after the required system_id C-string.
+			if tc.status != protocol.StatusOK && header.CommandLength != codec.HeaderSize {
+				t.Fatalf("failed BindResp length=%d, want header-only %d", header.CommandLength, codec.HeaderSize)
+			}
+			if tc.status == protocol.StatusOK && header.CommandLength < uint32(codec.HeaderSize+len(tc.body)) {
+				t.Fatalf("successful BindResp length=%d, missing system_id", header.CommandLength)
+			}
+			if header.CommandLength > 1024 {
+				t.Fatalf("oversized BindResp length=%d", header.CommandLength)
 			}
 			frame := append([]byte(nil), headerBytes...)
-			if len(tc.body) > 0 {
-				body := make([]byte, len(tc.body))
+			bodyLength := int(header.CommandLength) - codec.HeaderSize
+			if bodyLength > 0 {
+				body := make([]byte, bodyLength)
 				if _, err := io.ReadFull(conn, body); err != nil {
 					t.Fatalf("read BindResp body: %v", err)
 				}
-				if !bytes.Equal(body, tc.body) {
-					t.Fatalf("unexpected BindResp body %x, want %x", body, tc.body)
+				if !bytes.HasPrefix(body, tc.body) {
+					t.Fatalf("BindResp body %x missing expected prefix %x", body, tc.body)
 				}
 				frame = append(frame, body...)
 			}
-			if _, err := codec.DecodePDU(frame, registry); err != nil {
+			decoded, err := codec.DecodePDU(frame, registry)
+			if err != nil {
 				t.Fatalf("DecodePDU rejected server BindResp: %v", err)
+			}
+			if tc.status == protocol.StatusOK {
+				bind, ok := decoded.Body.(protocol.BindResponse)
+				if !ok || !bytes.Equal(bind.SystemID, []byte("smsc")) {
+					t.Fatalf("unexpected successful BindResp body: %#v", decoded.Body)
+				}
 			}
 		})
 	}
