@@ -33,7 +33,7 @@ reproducing the run should use the current script.
 
 The timed `completed` count is sampled at the 60-second deadline, before workers finish their current requests, whereas aggregate `requests` and `responses` counters are read after the workers join (`internal/perflab/acceptance_test.go`). The extra 128 matched request/response pairs in this result are therefore consistent with the in-flight drain, **not** a response-loss finding. The reference acceptance rate uses only the timed completed count.
 
-The runner reported `Phase 17 reference artifacts written to .bench/phase17-reference`. The performance result and clean-tree preflight are supported by the operator's output; **the generated `environment.txt`, `minimum-session-count.txt`, race log and profiles have not been independently inspected or archived in this review**. Inspect those local artifacts and record exact kernel/date/profile provenance before release tagging. No production implementation change is required from this acceptance result.
+The runner reported `Phase 17 reference artifacts written to .bench/phase17-reference`. The subsequently supplied nine-file text-evidence archive was independently audited and its provenance is recorded in the PERF-02 section below. Binary `.pprof` files were not supplied. No production implementation change is required from this acceptance result.
 
 ## Historical result — 2026-10-06
 
@@ -122,3 +122,16 @@ From `environment.txt` of the run.
 
 The recorded commit predates two later commits, `3b9e685` (`go.mod` to `go 1.25`) and documentation-only changes; no
 library source changed between them.
+
+## Reference evidence archive audit — 2026-11-10 (PERF-02)
+
+**PASS for the supplied text-evidence bundle** `go-smpp-phase17-evidence.tar.gz`, SHA-256 `3190baafa81397c08daa850c45808c8355df39cab3c65799028283186ac3d1b9` (3,456 compressed bytes; nine regular files, 12,903 bytes of decoded text). The bundle was read without extracting archive paths. It contains all nine files requested for the release review: `environment.txt`, `race.txt`, `acceptance-sessions-1.txt`, `minimum-session-count.txt`, `profile-benchmark.txt`, `cpu-top.txt`, `heap-top.txt`, `mutex-top.txt`, and `block-top.txt`.
+
+- **Provenance:** `environment.txt` records `timestamp=2026-11-10T10:42:31Z`, exact source `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`, `source_clean=true`, `go1.27.0`, `Linux 6.8.0-147-generic x86_64 GNU/Linux`, 12 logical CPUs, 32,649,508 KiB RAM, `GOMAXPROCS=8`, 60 seconds, 128 callers, TX batch 32, session candidates 1/2/4 and minimum 100,000 request PDUs/s.
+- **Verification:** Race output PASS for `session`/`client`/`server`; one-session 60s acceptance PASS at 683,465 request PDUs/s, `completed=41008141`, `requests=41008269`, `responses=41008269`, baseline/max goroutines 8/136, peak heap 3 MiB, retained heap growth 0 MiB, pending/window max 64/64. `minimum-session-count.txt` contains `1`. The extra 128 matched request/response pairs were counted after stopping the timed completion counter and draining workers; this is consistent with the test implementation and not missing responses.
+- **Profiling benchmark:** 723,710 request PDUs/s (8,034,726 iterations; 1,382 ns/op, 896 B/op, 9 allocs/op), 1 session. All four text profiles are readable and refer to the same `perflab.test` build ID `0a2d7b2a4f4afb04596d2042343d7a4f90d2cff3`. CPU samples total 66.76 CPU-seconds across ~12.63s wall time; heap output is `alloc_space` (7,786.70 MB cumulative allocations, **not retained heap**). Block-profile delays sum over concurrently blocked goroutines (1,393.48s, **not elapsed runtime**).
+- **Hotspots for future measurement, not a defect:** CPU samples include `Syscall6` 15.04%, `runtime.procyieldAsm` 9.78%, and `runtime.selectgo` 3.06% flat. Alloc-space is led by `session.(*Session).request` 37.36%, followed by message APIs/codec decode. These alone do not justify optimization or a production behavior change while acceptance exceeds target by 6.83x.
+
+**Scope of audit:** Nine requested text files and their cross-file consistency, chronology, commit/toolchain, results and profile summaries were verified. The binary `cpu.pprof`, `heap.pprof`, `mutex.pprof` and `block.pprof` were **not supplied** or independently opened. Preserve those raw profiles locally for optional future diagnosis; do not claim a raw-profile analysis or commit binary profiles to Git. The 12-second profile benchmark is a separate experiment, not a substitute for the independently passing 60-second acceptance. The uploaded evidence resides in the conversation and maintainer's local ignored `.bench/` directory; no release evidence binaries were committed to the repository.
+
+**PERF-02 is complete for the agreed text-artifact review.** The remaining release decisions concern PR review/CI, unresolved interop findings (INT-01G and INT-01L) and release checklist, not a performance acceptance failure. PR #8 remains Draft and unmerged. If integration changes executable source, repeat the performance gate before tagging.
