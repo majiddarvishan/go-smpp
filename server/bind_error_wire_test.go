@@ -23,7 +23,7 @@ func TestServerBindPasswordRejectionWireFormat(t *testing.T) {
 		Address:       "127.0.0.1:0",
 		SessionConfig: quietSessionConfig(),
 		Authenticator: server.AuthenticatorFunc(func(_ context.Context, _ *session.Session, _ session.BindMode, request protocol.BindRequest) (server.BindResult, error) {
-			if string(request.Password) != "valid-test-password" {
+			if string(request.Password) != "good1234" {
 				return server.BindResult{Status: protocol.StatusInvalidPassword}, nil
 			}
 			return server.BindResult{Status: protocol.StatusOK, SystemID: []byte("smsc")}, nil
@@ -45,8 +45,8 @@ func TestServerBindPasswordRejectionWireFormat(t *testing.T) {
 		status   protocol.CommandStatus
 		body     []byte
 	}{
-		{"invalid_password", "wrong-test-password", protocol.StatusInvalidPassword, nil},
-		{"valid_password", "valid-test-password", protocol.StatusOK, []byte{'s', 'm', 's', 'c', 0}},
+		{"invalid_password", "bad1234", protocol.StatusInvalidPassword, nil},
+		{"valid_password", "good1234", protocol.StatusOK, []byte{'s', 'm', 's', 'c', 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			conn, err := net.DialTimeout("tcp", srv.Addr().String(), 2*time.Second)
