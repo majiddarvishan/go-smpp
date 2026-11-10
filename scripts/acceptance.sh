@@ -2,16 +2,28 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+MODE=accept
 OUT=${1:-"$ROOT/.bench/phase17-acceptance"}
+if [[ "${1:-}" == "--preflight" ]]; then
+  MODE=preflight
+  OUT=""
+fi
 DURATION=${SMPP_ACCEPTANCE_DURATION:-60s}
 MIN_RPS=${SMPP_ACCEPTANCE_MIN_RPS:-100000}
 CALLERS=${SMPP_ACCEPTANCE_CALLERS:-128}
 SESSION_COUNTS=${SMPP_ACCEPTANCE_SESSIONS:-1,2,4}
 TX_BATCH=${SMPP_BENCH_TX_BATCH:-32}
 
-mkdir -p "$OUT"
 cd "$ROOT"
 
+if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
+  echo "Phase 17 reference acceptance requires Linux/amd64" >&2
+  exit 2
+fi
+if ! command -v go >/dev/null 2>&1; then
+  echo "Phase 17 reference acceptance requires Go 1.27.x on PATH" >&2
+  exit 2
+fi
 GO_VERSION=$(go env GOVERSION)
 if [[ "$GO_VERSION" != go1.27* ]]; then
   echo "Phase 17 acceptance requires Go 1.27.x; found $GO_VERSION" >&2
@@ -30,13 +42,31 @@ if (( MEM_KB < MIN_MEM_KB )); then
   exit 2
 fi
 
+# A previous reference result was obtained with local modifications, so the
+# tested source could not be reproduced from its recorded commit alone.
+# Refuse dirty source rather than treating that result as release evidence.
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+  echo "Phase 17 reference acceptance requires a clean Git working tree. Commit or isolate local changes before the run." >&2
+  exit 2
+fi
+SOURCE_COMMIT=$(git rev-parse HEAD)
+
 export GOMAXPROCS=${GOMAXPROCS:-8}
 export SMPP_BENCH_PARALLELISM=${SMPP_BENCH_PARALLELISM:-16}
 export SMPP_BENCH_TX_BATCH="$TX_BATCH"
 
+if [[ "$MODE" == "preflight" ]]; then
+  printf 'PHASE17_PREFLIGHT=PASS commit=%s go=%s linux_amd64=true logical_cpus=%s mem_total_kib=%s duration=%s min_request_pdu_s=%s callers=%s session_candidates=%s tx_batch=%s gomaxprocs=%s\n' \
+    "$SOURCE_COMMIT" "$GO_VERSION" "$CORES" "$MEM_KB" "$DURATION" "$MIN_RPS" "$CALLERS" "$SESSION_COUNTS" "$TX_BATCH" "$GOMAXPROCS"
+  exit 0
+fi
+
+mkdir -p "$OUT"
+
 {
   echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "commit=$(git rev-parse HEAD)"
+  echo "commit=$SOURCE_COMMIT"
+  echo "source_clean=true"
   echo "go_version=$GO_VERSION"
   echo "kernel=$(uname -srmo)"
   echo "host_cpus=$CORES"
