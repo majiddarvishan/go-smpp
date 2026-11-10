@@ -31,6 +31,8 @@ reproducing the run should use the current script.
 | Diagnostic benchmark | 723,710 request PDUs/s, 1,382 ns/op, 896 B/op, 9 allocs/op, sessions=1 |
 | Output directory | `.bench/phase17-reference` (ignored by Git) |
 
+The timed `completed` count is sampled at the 60-second deadline, before workers finish their current requests, whereas aggregate `requests` and `responses` counters are read after the workers join (`internal/perflab/acceptance_test.go`). The extra 128 matched request/response pairs in this result are therefore consistent with the in-flight drain, **not** a response-loss finding. The reference acceptance rate uses only the timed completed count.
+
 The runner reported `Phase 17 reference artifacts written to .bench/phase17-reference`. The performance result and clean-tree preflight are supported by the operator's output; **the generated `environment.txt`, `minimum-session-count.txt`, race log and profiles have not been independently inspected or archived in this review**. Inspect those local artifacts and record exact kernel/date/profile provenance before release tagging. No production implementation change is required from this acceptance result.
 
 ## Historical result — 2026-10-06
