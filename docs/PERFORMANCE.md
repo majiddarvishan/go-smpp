@@ -2,7 +2,7 @@
 
 ## Status
 
-**Historical reference-machine acceptance PASS (2026-10-06):** the result below comes from the maintainer's older `scripts/acceptance.sh` run. **Current candidate reference acceptance remains PENDING:** that earlier source commit does not verify the present branch HEAD. The historical result, resource bounds and environment are documented below.
+**Historical reference-machine acceptance PASS (2026-10-06):** the result below comes from the maintainer's older `scripts/acceptance.sh` run. **A newer 2026-11-10 clean-candidate acceptance is now PASS and documented first below.** The 2026-10-06 run remains historical and does not verify the candidate by itself. The historical result, resource bounds and environment are documented below.
 
 **Reference toolchain: Go 1.27.x.** The run used go1.27.0. The maintainer confirmed that he had modified `scripts/acceptance.sh` locally for the run, and
 said he does not want Go 1.26 as the reference, so the edit was presumably the toolchain check, which then required Go 1.26.x. The
@@ -11,7 +11,29 @@ not seen, so that nothing besides the version check differed (thresholds, durati
 the parameters in `environment.txt` match the script's defaults; and the recorded commit predates the script change, so a reader
 reproducing the run should use the current script.
 
-## Result
+## Current-candidate reference acceptance — 2026-11-10
+
+**PASS on clean candidate `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`**, based on the maintainer's terminal output from `scripts/acceptance.sh --preflight` and `scripts/acceptance.sh .bench/phase17-reference`. This is the required 60-second reference-host run, not the older historical result and not a hosted-CI smoke.
+
+| Measurement | Current candidate |
+| --- | --- |
+| Preflight | PASS, exact commit above; Linux/amd64; go1.27.0 |
+| Reference host | 12 logical CPUs, 32,649,508 KiB RAM, `GOMAXPROCS=8` |
+| Configuration | 60 s, 128 callers, TX batch 32, session candidates 1 / 2 / 4, minimum 100,000 request PDUs/s |
+| Race gate | PASS for `session`, `client`, `server` |
+| Sustained acceptance | PASS, 683,465 request PDUs/s (6.83x target) |
+| Minimum tested passing sessions | **1**; 2 and 4 not required |
+| Timed completed count | 41,008,141 |
+| Requests / responses | 41,008,269 / 41,008,269 (equal) |
+| Goroutines | baseline 8; maximum 136 |
+| Heap | peak 3 MiB; retained growth 0 MiB |
+| Pending / window maximum | 64 / 64 |
+| Diagnostic benchmark | 723,710 request PDUs/s, 1,382 ns/op, 896 B/op, 9 allocs/op, sessions=1 |
+| Output directory | `.bench/phase17-reference` (ignored by Git) |
+
+The runner reported `Phase 17 reference artifacts written to .bench/phase17-reference`. The performance result and clean-tree preflight are supported by the operator's output; **the generated `environment.txt`, `minimum-session-count.txt`, race log and profiles have not been independently inspected or archived in this review**. Inspect those local artifacts and record exact kernel/date/profile provenance before release tagging. No production implementation change is required from this acceptance result.
+
+## Historical result — 2026-10-06
 
 | | |
 | --- | --- |
@@ -82,7 +104,7 @@ Artifacts written to the output directory:
 | `minimum-session-count.txt` | the first passing session count |
 | `profile-benchmark.txt`, `*.pprof`, `*-top.txt` | profiles of the passing configuration |
 
-## Environment
+## Historical environment — 2026-10-06
 
 From `environment.txt` of the run.
 
