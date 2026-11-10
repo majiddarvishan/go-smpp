@@ -37,6 +37,9 @@ jobs:
             exit 1
           fi
 
+      - name: Check reference acceptance script syntax
+        run: bash -n scripts/acceptance.sh
+
       # golangci-lint v1 cannot read Go 1.26+ export data and action v7 only accepts v2,
       # so this is v2. Once per run, on the newest toolchain.
       - name: Lint
