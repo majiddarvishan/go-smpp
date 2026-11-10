@@ -61,3 +61,8 @@ Task registration was committed before source or documentation cleanup.
 3. Keep public APIs additive/backward-compatible unless a correctness, security or protocol-compliance defect requires a reviewed exception.
 4. Do not add dependencies, `unsafe`, per-PDU goroutines, unbounded queues, or consumer-specific behavior.
 5. Mark tasks complete only after tests/evidence pass. Record exact commits and CI runs in `.codex/SESSION.md`.
+
+
+### INT-01O — deterministic post-Bind peer-disconnect regression (registered 2026-11-10)
+
+- [ ] **INT-01O:** Test the generic SMSC server with `MaxSessions=1` when an SMPP peer sends a syntactically valid TRX Bind and disconnects (normal close and TCP reset) while the authenticator is holding the response, and when it disconnects after a completed successful Bind. Use only synthetic addresses and credentials; assert bounded session cleanup and successful replacement TRX Bind without restarting the server. Do not assert that a BindResp write must succeed after peer close, and do not infer the external simulator's disconnect reason. Keep this test in the generic `server` package; no production Session/Transport behavior change absent a failing invariant. Verify Go 1.25.x/1.27.x CI including race.
