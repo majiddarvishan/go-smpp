@@ -189,6 +189,8 @@ type tcpTraceEvent struct {
 	at                     string
 	connectionID           uint64
 	name                   string
+	localTCPPort           string
+	peerTCPPort            string
 	direction              string
 	commandID              uint32
 	commandStatus          uint32
@@ -242,8 +244,30 @@ func (t *tcpTrace) track(conn net.Conn) *trackedConn {
 		t.byRemote[remote.String()] = tracked
 	}
 	t.mu.Unlock()
-	t.record(tcpTraceEvent{connectionID: tracked.id, name: "tcp_accepted"})
+	event := tcpTraceEvent{connectionID: tracked.id, name: "tcp_accepted"}
+	if localPort, peerPort, ok := loopbackTCPPorts(conn); ok {
+		event.localTCPPort = localPort
+		event.peerTCPPort = peerPort
+	}
+	t.record(event)
 	return tracked
+}
+
+// loopbackTCPPorts exposes only numeric ports from two loopback TCP endpoints.
+// It deliberately omits IP addresses and all non-loopback or non-TCP peers.
+// Port correlation is for local FIN/RST header-only diagnostics, not identity.
+func loopbackTCPPorts(conn net.Conn) (string, string, bool) {
+	if conn == nil {
+		return "", "", false
+	}
+	local, localOK := conn.LocalAddr().(*net.TCPAddr)
+	peer, peerOK := conn.RemoteAddr().(*net.TCPAddr)
+	if !localOK || !peerOK || local == nil || peer == nil ||
+		!local.IP.IsLoopback() || !peer.IP.IsLoopback() ||
+		local.Port <= 0 || local.Port > 65535 || peer.Port <= 0 || peer.Port > 65535 {
+		return "", "", false
+	}
+	return fmt.Sprint(local.Port), fmt.Sprint(peer.Port), true
 }
 
 func (l *tcpTraceListener) Accept() (net.Conn, error) {
@@ -309,6 +333,10 @@ func (t *tcpTrace) reportEvents() []Event {
 			"order":         fmt.Sprint(item.order),
 			"at":            item.at,
 			"connection_id": fmt.Sprint(item.connectionID),
+		}
+		if item.localTCPPort != "" && item.peerTCPPort != "" {
+			details["local_tcp_port"] = item.localTCPPort
+			details["peer_tcp_port"] = item.peerTCPPort
 		}
 		if item.direction != "" {
 			details["direction"] = item.direction
