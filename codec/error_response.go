@@ -12,6 +12,12 @@ import (
 // reads exactly that and nothing more, so the encoder writes exactly that. Writing the
 // body's mandatory fields as well (a message_id, a count) produced a frame this
 // package's own decoder then rejected as a truncated TLV header; fuzzing found it.
+// SMPP 3.4 Issue 1.2 sections 4.1.2 and 4.1.4 explicitly omit system_id
+// from failed bind_transmitter_resp and bind_receiver_resp; the shared bind
+// response codec applies the same error-body convention to bind_transceiver_resp.
+// Thus a failed BindResp with command_length=16 is a complete error response,
+// not a truncated successful BindResp. Do not inject a C-string terminator merely
+// to satisfy a peer decoder that expects success-body fields on an error.
 //
 // The body is still validated by the command's own encoder first, so a body of the
 // wrong type, or one with an invalid field, is an error as before. What changes is

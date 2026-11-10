@@ -33,6 +33,27 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "The following files are not gofmt-clean:"
             echo "$unformatted"
+            gofmt -d $unformatted
+            exit 1
+          fi
+
+      - name: Check reference acceptance script syntax
+        run: bash -n scripts/acceptance.sh
+
+      - name: Validate safe loopback TCP flag capture helper
+        run: |
+          bash -n scripts/interop-tcp-flags.sh
+          dry="$(SMPP_INTEROP_TCP_FLAGS_DRY_RUN=1 bash scripts/interop-tcp-flags.sh 4000)"
+          grep -Fxq 'command=tcpdump' <<< "$dry"
+          grep -Fxq 'arg=-s' <<< "$dry"
+          grep -Fxq 'arg=54' <<< "$dry"
+          grep -Fxq 'arg=ip and tcp port 4000 and (tcp[13] & 0x07 != 0)' <<< "$dry"
+          if grep -Eq '^arg=-(q|A|X|w|W|xx)$' <<< "$dry"; then
+            echo 'Unsafe flag: suppressed TCP flags or raw payload output' >&2
+            exit 1
+          fi
+          if SMPP_INTEROP_TCP_FLAGS_DRY_RUN=1 bash scripts/interop-tcp-flags.sh invalid; then
+            echo 'Invalid TCP port unexpectedly accepted' >&2
             exit 1
           fi
 
@@ -48,6 +69,11 @@ jobs:
         run: |
           set -o pipefail
           go test ./... 2>&1 | tee "$RUNNER_TEMP/unit.log"
+
+      - name: Opt-in interoperability probe tests
+        run: |
+          go test -tags=interop -count=1 ./internal/interopprobe
+          go test -tags=interop -run='a^' ./cmd/interop-probe
 
       # The step log is awkward to read outside the web UI; surface failing tests as an annotation.
       - name: Report failing unit tests
@@ -80,6 +106,7 @@ jobs:
           go test ./codec -run '^$' -fuzz='^FuzzDecodePDU$' -fuzztime=2s
           go test ./codec -run '^$' -fuzz='^FuzzFramerChunked$' -fuzztime=2s
           go test ./codec -run '^$' -fuzz='^FuzzDecodePDU50$' -fuzztime=2s
+          go test ./message -run '^$' -fuzz='^FuzzParseDeliveryReceipt$' -fuzztime=2s
 
       - name: Protocol and codec benchmarks
         run: go test -run '^$' -bench=. -benchmem ./protocol ./codec

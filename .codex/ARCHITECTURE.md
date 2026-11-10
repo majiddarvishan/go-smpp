@@ -389,3 +389,11 @@ Keep these distinguishable:
 - reconnect/session-loss ambiguity
 
 Applications need enough metadata to decide whether a message is safe to retry.
+
+## Product-neutrality and dependency boundary
+
+`go-smpp` is a reusable protocol library, not an application framework. Its public packages must not import, name, or encode assumptions for downstream products. Reusable SMPP behavior belongs in `protocol`, `codec`, `transport`, `session`, `client`, `server`, `encoding`, or `message` according to the existing dependency DAG.
+
+Application policies such as workload generation, adaptive test scheduling, run lifecycle, delayed-ACK queues, message correlation/retention, billing, UI and CLI orchestration belong to the consumer. Do not add those concepts to the public API.
+
+The standalone `cmd/smpp-sim` is a generic SMSC peer for local development/performance measurements only. It is outside the public package DAG and must not become a dependency of the library or a source of product-specific requirements.

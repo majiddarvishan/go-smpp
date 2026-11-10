@@ -2,9 +2,7 @@
 
 ## Status
 
-**The Phase 17 reference-machine acceptance has been run and passed** (maintainer's run of
-`scripts/acceptance.sh` on 2026-10-06). The result and resource bounds are in the Result table and the exact
-environment is in the Environment table, both taken from that run's console output and `environment.txt`.
+**Historical reference-machine acceptance PASS (2026-10-06):** the result below comes from the maintainer's older `scripts/acceptance.sh` run. **A newer 2026-11-10 clean-candidate acceptance is now PASS and documented first below.** The 2026-10-06 run remains historical and does not verify the candidate by itself. The historical result, resource bounds and environment are documented below.
 
 **Reference toolchain: Go 1.27.x.** The run used go1.27.0. The maintainer confirmed that he had modified `scripts/acceptance.sh` locally for the run, and
 said he does not want Go 1.26 as the reference, so the edit was presumably the toolchain check, which then required Go 1.26.x. The
@@ -13,7 +11,31 @@ not seen, so that nothing besides the version check differed (thresholds, durati
 the parameters in `environment.txt` match the script's defaults; and the recorded commit predates the script change, so a reader
 reproducing the run should use the current script.
 
-## Result
+## Current-candidate reference acceptance — 2026-11-10
+
+**PASS on clean candidate `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`**, based on the maintainer's terminal output from `scripts/acceptance.sh --preflight` and `scripts/acceptance.sh .bench/phase17-reference`. This is the required 60-second reference-host run, not the older historical result and not a hosted-CI smoke.
+
+| Measurement | Current candidate |
+| --- | --- |
+| Preflight | PASS, exact commit above; Linux/amd64; go1.27.0 |
+| Reference host | 12 logical CPUs, 32,649,508 KiB RAM, `GOMAXPROCS=8` |
+| Configuration | 60 s, 128 callers, TX batch 32, session candidates 1 / 2 / 4, minimum 100,000 request PDUs/s |
+| Race gate | PASS for `session`, `client`, `server` |
+| Sustained acceptance | PASS, 683,465 request PDUs/s (6.83x target) |
+| Minimum tested passing sessions | **1**; 2 and 4 not required |
+| Timed completed count | 41,008,141 |
+| Requests / responses | 41,008,269 / 41,008,269 (equal) |
+| Goroutines | baseline 8; maximum 136 |
+| Heap | peak 3 MiB; retained growth 0 MiB |
+| Pending / window maximum | 64 / 64 |
+| Diagnostic benchmark | 723,710 request PDUs/s, 1,382 ns/op, 896 B/op, 9 allocs/op, sessions=1 |
+| Output directory | `.bench/phase17-reference` (ignored by Git) |
+
+The timed `completed` count is sampled at the 60-second deadline, before workers finish their current requests, whereas aggregate `requests` and `responses` counters are read after the workers join (`internal/perflab/acceptance_test.go`). The extra 128 matched request/response pairs in this result are therefore consistent with the in-flight drain, **not** a response-loss finding. The reference acceptance rate uses only the timed completed count.
+
+The runner reported `Phase 17 reference artifacts written to .bench/phase17-reference`. The subsequently supplied nine-file text-evidence archive was independently audited and its provenance is recorded in the PERF-02 section below. Binary `.pprof` files were not supplied. No production implementation change is required from this acceptance result.
+
+## Historical result — 2026-10-06
 
 | | |
 | --- | --- |
@@ -60,12 +82,16 @@ session count; the script then captures CPU, heap, mutex and block profiles for 
 
 ## Running it
 
-On the reference host:
+On the Linux/amd64 reference host, check out the exact candidate commit with a clean Git working tree:
 
 ```sh
-scripts/acceptance.sh                      # writes artifacts under .bench/phase17-acceptance
-scripts/acceptance.sh /path/to/outdir      # or somewhere else
+scripts/acceptance.sh --preflight          # read-only; no benchmark or files
+scripts/acceptance.sh .bench/phase17-reference
 ```
+
+The read-only preflight checks Linux/amd64, Go 1.27.x, 8+ logical CPUs, 10+ GiB memory, and a clean Git tree; it emits `PHASE17_PREFLIGHT=PASS` plus the commit and selected parameters or exits 2. The full run rechecks these constraints, records `source_clean=true` and the exact commit in `environment.txt`, and writes the 60-second performance evidence to the ignored `.bench/` directory. Diagnostic runs below 60 seconds do **not** satisfy release acceptance.
+
+The optional `SMPP reference performance acceptance` GitHub Actions workflow supports manual dispatch against the candidate branch when a self-hosted runner labeled `smpp-reference` is registered and online. Hosted-runner smoke is not equivalent. PR #8 does not need to be merged before testing the candidate; if integration changes executable source, rerun the reference gate on that integrated commit.
 
 Or, once CI is wired up, dispatch the `SMPP reference performance acceptance` workflow on a self-hosted
 runner labelled `smpp-reference` (`.github/workflows/reference-acceptance.yml`).
@@ -80,7 +106,7 @@ Artifacts written to the output directory:
 | `minimum-session-count.txt` | the first passing session count |
 | `profile-benchmark.txt`, `*.pprof`, `*-top.txt` | profiles of the passing configuration |
 
-## Environment
+## Historical environment — 2026-10-06
 
 From `environment.txt` of the run.
 
@@ -96,3 +122,16 @@ From `environment.txt` of the run.
 
 The recorded commit predates two later commits, `3b9e685` (`go.mod` to `go 1.25`) and documentation-only changes; no
 library source changed between them.
+
+## Reference evidence archive audit — 2026-11-10 (PERF-02)
+
+**PASS for the supplied text-evidence bundle** `go-smpp-phase17-evidence.tar.gz`, SHA-256 `3190baafa81397c08daa850c45808c8355df39cab3c65799028283186ac3d1b9` (3,456 compressed bytes; nine regular files, 12,903 bytes of decoded text). The bundle was read without extracting archive paths. It contains all nine files requested for the release review: `environment.txt`, `race.txt`, `acceptance-sessions-1.txt`, `minimum-session-count.txt`, `profile-benchmark.txt`, `cpu-top.txt`, `heap-top.txt`, `mutex-top.txt`, and `block-top.txt`.
+
+- **Provenance:** `environment.txt` records `timestamp=2026-11-10T10:42:31Z`, exact source `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`, `source_clean=true`, `go1.27.0`, `Linux 6.8.0-147-generic x86_64 GNU/Linux`, 12 logical CPUs, 32,649,508 KiB RAM, `GOMAXPROCS=8`, 60 seconds, 128 callers, TX batch 32, session candidates 1/2/4 and minimum 100,000 request PDUs/s.
+- **Verification:** Race output PASS for `session`/`client`/`server`; one-session 60s acceptance PASS at 683,465 request PDUs/s, `completed=41008141`, `requests=41008269`, `responses=41008269`, baseline/max goroutines 8/136, peak heap 3 MiB, retained heap growth 0 MiB, pending/window max 64/64. `minimum-session-count.txt` contains `1`. The extra 128 matched request/response pairs were counted after stopping the timed completion counter and draining workers; this is consistent with the test implementation and not missing responses.
+- **Profiling benchmark:** 723,710 request PDUs/s (8,034,726 iterations; 1,382 ns/op, 896 B/op, 9 allocs/op), 1 session. All four text profiles are readable and refer to the same `perflab.test` build ID `0a2d7b2a4f4afb04596d2042343d7a4f90d2cff3`. CPU samples total 66.76 CPU-seconds across ~12.63s wall time; heap output is `alloc_space` (7,786.70 MB cumulative allocations, **not retained heap**). Block-profile delays sum over concurrently blocked goroutines (1,393.48s, **not elapsed runtime**).
+- **Hotspots for future measurement, not a defect:** CPU samples include `Syscall6` 15.04%, `runtime.procyieldAsm` 9.78%, and `runtime.selectgo` 3.06% flat. Alloc-space is led by `session.(*Session).request` 37.36%, followed by message APIs/codec decode. These alone do not justify optimization or a production behavior change while acceptance exceeds target by 6.83x.
+
+**Scope of audit:** Nine requested text files and their cross-file consistency, chronology, commit/toolchain, results and profile summaries were verified. The binary `cpu.pprof`, `heap.pprof`, `mutex.pprof` and `block.pprof` were **not supplied** or independently opened. Preserve those raw profiles locally for optional future diagnosis; do not claim a raw-profile analysis or commit binary profiles to Git. The 12-second profile benchmark is a separate experiment, not a substitute for the independently passing 60-second acceptance. The uploaded evidence resides in the conversation and maintainer's local ignored `.bench/` directory; no release evidence binaries were committed to the repository.
+
+**PERF-02 is complete for the agreed text-artifact review.** The remaining release decisions concern PR review/CI, unresolved interop findings (INT-01G and INT-01L) and release checklist, not a performance acceptance failure. PR #8 remains Draft and unmerged. If integration changes executable source, repeat the performance gate before tagging.

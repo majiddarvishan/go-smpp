@@ -34,9 +34,10 @@ const (
 	// point on, though the session keeps running.
 	EventWindowUnderflow
 	// EventPanicRecovered is emitted when the session recovered a panic instead
-	// of letting it crash the process. Reason holds the *protocol.PanicError
-	// text, which names the source; the stack is in the session's log. An
-	// Observer that itself panicked is not told about its own panic.
+	// of letting it crash the process. Reason holds the sanitized
+	// protocol.PanicError text (source and value type, never the panic value);
+	// the stack is in the session's log. An Observer that itself panicked is not
+	// told about its own panic.
 	EventPanicRecovered
 )
 
@@ -121,9 +122,11 @@ const (
 
 // PacketTrace is emitted only when Config.PacketTracer is non-nil. RawPDU is
 // nil by default. If Config.TraceRawPDU is explicitly enabled, RawPDU is an
-// owned copy of the complete wire PDU and contains credentials (bind and
-// outbind passwords, in clear text) and message content; callers are
-// responsible for protecting it appropriately. See PacketTracer.
+// owned copy of the complete, unredacted wire PDU. It may contain clear-text
+// bind/outbind passwords, system IDs, addresses, message bodies, message IDs,
+// arbitrary optional parameters and vendor TLVs. Treat the entire byte slice
+// as secret material; the generic library cannot safely redact unknown or
+// peer-specific fields. See PacketTracer for capture guidance.
 type PacketTrace struct {
 	Direction PacketDirection
 	At        time.Time
@@ -132,25 +135,36 @@ type PacketTrace struct {
 	RawPDU    []byte
 }
 
-// PacketTracer receives optional packet traces. Packet tracing is disabled by
+// PacketTracer receives optional packet traces synchronously on the session's
+// RX or TX goroutine. It must return promptly and must not perform blocking I/O;
+// the session does not add a worker or queue. Packet tracing is disabled by
 // default and is intentionally outside the base performance target.
 //
-// SECURITY: with Config.TraceRawPDU enabled, every trace carries the complete
-// wire PDU, and SMPP sends credentials in clear text. bind_transmitter,
-// bind_receiver, bind_transceiver and outbind PDUs contain the password (up to
-// 8 octets, unencrypted at the SMPP layer), and submit_sm, deliver_sm and
-// data_sm carry message content. Anything that stores or forwards RawPDU
-// (logs, files, a tracing backend, a support bundle) therefore stores the
-// credentials and the traffic. Treat the destination as secret material:
-// restrict access, do not ship it to third parties, and redact or drop bind and
-// outbind PDUs (check PacketTrace.Header.CommandID) before persisting. Leave
-// TraceRawPDU off in production unless you are actively debugging.
+// SECURITY: Config.TraceRawPDU is not a redaction mode. When enabled, every
+// trace carries an owned copy of the complete, unredacted wire PDU. SMPP bind
+// and outbind passwords are sent in clear text; other fields can contain
+// system IDs, source/destination addresses, message bodies, message IDs,
+// optional parameters and arbitrary vendor TLVs. A generic library cannot
+// reliably identify every sensitive vendor/peer field, so treat every RawPDU
+// as secret material. Do not write raw traces to ordinary logs, shared
+// telemetry, support bundles or third-party services.
 //
-// With TraceRawPDU off (the default) a trace carries only the header and
-// length, never a payload. This package's own logs, observer events and errors
-// never contain a password; that is pinned by
-// server.TestPasswordNeverReachesLogsEventsOrErrors, and raw tracing is the one
-// deliberate exception.
+// Prefer the default metadata-only trace (direction, timestamp, header and
+// length). If raw capture is essential, use synthetic data where possible and
+// a short-lived, isolated local capture with restricted access, encryption at
+// rest and prompt deletion. Drop bind_transmitter, bind_receiver,
+// bind_transceiver and outbind frames entirely before persistence; sanitize
+// other frames with a peer-aware allowlist that removes addresses, message
+// content, identifiers and unknown/vendor TLVs. If a trustworthy sanitizer is
+// unavailable, discard RawPDU and retain only metadata. Do not rely on a
+// fixed byte offset or password-only mask.
+//
+// With TraceRawPDU off (the default), RawPDU is nil and a configured tracer
+// receives only metadata. Config.TraceRawPDU has no effect unless
+// Config.PacketTracer is also non-nil. Library-owned logs, Observer events and
+// default error strings do not format caller-controlled panic values, callback/
+// decoder error text or protocol Reason fields; see protocol errors and
+// docs/INTEROPERABILITY.md.
 type PacketTracer interface {
 	TracePacket(PacketTrace)
 }

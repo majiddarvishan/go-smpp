@@ -394,3 +394,19 @@ All implementation-side Phase 17 work is complete. The only open acceptance item
 - record the minimum practical TCP session count, starting at one session and increasing only if necessary.
 
 The authoritative command remains `scripts/acceptance.sh .bench/phase17-reference`. The GitHub workflow `SMPP reference performance acceptance` targets the self-hosted label `smpp-reference`; a passing run is required before those two PLAN checkboxes are changed to `[x]`. Standard public GitHub-hosted Linux runners currently provide 4 CPUs, so they are intentionally treated as development evidence rather than a substitute for the 8-core reference gate.
+
+
+### Current candidate reference acceptance preflight — 2026-11-10
+
+- The feature branch is ahead of `main` by 206 commits and behind by 0 at this checkpoint; performance can be verified on the candidate SHA **before** any PR merge. The reference result from 2026-10-06 (713,932 request PDUs/s) is historical and does not cover these library additions.
+- `scripts/acceptance.sh --preflight` now checks Linux/amd64, Go 1.27.x, 8+ logical CPUs, 10+ GiB RAM, and clean Git working tree without creating files or running the workload. The full acceptance enforces the same checks, records `source_clean=true` and the exact commit, then runs the 60s bidirectional TCP workload with full responses, resource checks and profiles. `.bench/` is excluded from Git.
+- CI validates `bash -n scripts/acceptance.sh`; the `SMPP reference performance acceptance` workflow will invoke preflight before the long run. This workflow requires a self-hosted `smpp-reference` runner. Connected GitHub actions cannot dispatch workflows or inspect runner inventory; there is no verified current-head reference result yet.
+- Local operator command on the eligible reference host: `scripts/acceptance.sh --preflight` followed by `scripts/acceptance.sh .bench/phase17-reference`. Preserve `environment.txt`, `acceptance-sessions-N.txt`, `minimum-session-count.txt` and the profiling outputs. Do not claim release PASS from CI smoke or the old reference result.
+- This was the pre-run status. It is superseded by the 2026-11-10 clean-candidate result below. PR #8 remains Draft/open and unmerged; after integration, retest if the executable tree changes.
+
+### Clean-candidate 60-second reference acceptance — 2026-11-10 (supersedes earlier pending status)
+
+- On a clean candidate commit `ebf28340fbe7a49b9ab6a8a0a9a34d7ba924dee9`, the maintainer-reported `scripts/acceptance.sh --preflight` **PASSED** (Linux/amd64, Go 1.27.0, 12 logical CPUs, 32,649,508 KiB RAM, 60s, 128 callers, TX batch 32, `GOMAXPROCS=8`).
+- `scripts/acceptance.sh .bench/phase17-reference` **PASSED**: race verification for session/client/server, a one-session 60-second sustained result of **683,465 request PDUs/s** against the >=100,000 target, 41,008,269 requests/41,008,269 responses, 41,008,141 timed completed, 8 baseline/136 max goroutines, 3 MiB peak heap, 0 MiB retained growth, 64 maximum pending/window. Minimum passing sessions **1**. Diagnostic profile benchmark: **723,710 request PDUs/s**, 1,382 ns/op, 896 B/op, 9 allocs/op.
+- The local runner stated that evidence was written to `.bench/phase17-reference`; the generated files have **not been attached or independently checked**. PERF-01 is complete based on the reported terminal output; PERF-02 remains for the release artifact audit and complete kernel/time/profile provenance. Do not treat the older 2026-10-06 measurement as this current candidate run.
+- **REL-01 remains open**. The PR stays Draft/Open and unmerged; do not tag or release before artifact audit, release checklist and remaining interoperability decisions. Re-run performance if an integration modifies executable source.

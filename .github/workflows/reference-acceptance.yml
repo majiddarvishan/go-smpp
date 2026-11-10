@@ -43,6 +43,9 @@ jobs:
           go-version: '1.27.x'
           cache: false
 
+      - name: Verify reference host and clean source
+        run: ./scripts/acceptance.sh --preflight
+
       - name: Run reference acceptance
         run: ./scripts/acceptance.sh .bench/phase17-reference
 

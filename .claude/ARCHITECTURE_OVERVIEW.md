@@ -39,7 +39,7 @@ Performance target: 100,000 aggregate bidirectional request PDUs/s on Linux/amd6
 | `client` | ESME lifecycle — dial, bind, reconnect with exponential backoff, rebind. |
 | `server` | SMSC lifecycle — accept loop, session cap, handler dispatch. |
 | `internal/perflab` | Throughput and resource-bound acceptance harness. |
-| `cmd/smpp-sim` | Standalone SMSC simulator. |
+| `cmd/smpp-sim` | Standalone generic SMSC peer for local development/performance measurements; not a public library package. |
 | `examples/esme`, `examples/smsc` | Minimal runnable examples. |
 
 ### Dependency DAG
@@ -203,17 +203,18 @@ both the encode and decode directions, which many implementations skip.
 
 ## Testing and CI
 
-CI runs on ubuntu-latest with Go 1.26.x:
+CI runs on ubuntu-latest with a Go 1.25.x / 1.27.x matrix:
 
-1. `go test ./...`
-2. `go test -race ./...`
-3. Fuzz smoke — `FuzzFramer` and `FuzzDecodePDU`, 2 s each
-4. `protocol` and `codec` benchmarks
-5. Phase 17 perf smoke
-6. A 2 s resource-bound acceptance run
-7. A 60 s 100k-RPS soak, gated on `[soak]` in the commit message
-8. An `unsafe`-import ban check
-9. `[profile]` / `[batch]` gated profiling runs
+1. Enforce `gofmt` and run `go test ./...`
+2. Run `go test -race ./...`
+3. Run five 2-second fuzz smokes: `FuzzFramer`, `FuzzDecodePDU`, `FuzzFramerChunked`, `FuzzDecodePDU50`, and `FuzzParseDeliveryReceipt`
+4. Run `protocol` and `codec` benchmarks
+5. Run Phase 17 session/perflab performance smokes
+6. Run a 2-second resource-bound acceptance smoke
+7. Run `golangci-lint` and the coverage floor on Go 1.27.x
+8. Enforce the direct-`unsafe` import ban
+9. A 60-second 100k-RPS soak remains separately gated on `[soak]` on `main`; it is not part of ordinary PR CI.
+10. `[profile]` / `[batch]` gated profiling runs remain available on `main`.
 
 The fuzz targets sit on exactly the right surface — the framer and the PDU decoder are where
 hostile input lands first.

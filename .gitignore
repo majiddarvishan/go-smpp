@@ -4,6 +4,8 @@
 coverage.txt
 
 # Profiling artifacts
+# Generated acceptance reports can contain host and source metadata.
+/.bench/
 *.prof
 *.pprof
 cpu.out
