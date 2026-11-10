@@ -2,9 +2,7 @@
 
 ## Status
 
-**The Phase 17 reference-machine acceptance has been run and passed** (maintainer's run of
-`scripts/acceptance.sh` on 2026-10-06). The result and resource bounds are in the Result table and the exact
-environment is in the Environment table, both taken from that run's console output and `environment.txt`.
+**Historical reference-machine acceptance PASS (2026-10-06):** the result below comes from the maintainer's older `scripts/acceptance.sh` run. **Current candidate reference acceptance remains PENDING:** that earlier source commit does not verify the present branch HEAD. The historical result, resource bounds and environment are documented below.
 
 **Reference toolchain: Go 1.27.x.** The run used go1.27.0. The maintainer confirmed that he had modified `scripts/acceptance.sh` locally for the run, and
 said he does not want Go 1.26 as the reference, so the edit was presumably the toolchain check, which then required Go 1.26.x. The
@@ -60,12 +58,16 @@ session count; the script then captures CPU, heap, mutex and block profiles for 
 
 ## Running it
 
-On the reference host:
+On the Linux/amd64 reference host, check out the exact candidate commit with a clean Git working tree:
 
 ```sh
-scripts/acceptance.sh                      # writes artifacts under .bench/phase17-acceptance
-scripts/acceptance.sh /path/to/outdir      # or somewhere else
+scripts/acceptance.sh --preflight          # read-only; no benchmark or files
+scripts/acceptance.sh .bench/phase17-reference
 ```
+
+The read-only preflight checks Linux/amd64, Go 1.27.x, 8+ logical CPUs, 10+ GiB memory, and a clean Git tree; it emits `PHASE17_PREFLIGHT=PASS` plus the commit and selected parameters or exits 2. The full run rechecks these constraints, records `source_clean=true` and the exact commit in `environment.txt`, and writes the 60-second performance evidence to the ignored `.bench/` directory. Diagnostic runs below 60 seconds do **not** satisfy release acceptance.
+
+The optional `SMPP reference performance acceptance` GitHub Actions workflow supports manual dispatch against the candidate branch when a self-hosted runner labeled `smpp-reference` is registered and online. Hosted-runner smoke is not equivalent. PR #8 does not need to be merged before testing the candidate; if integration changes executable source, rerun the reference gate on that integrated commit.
 
 Or, once CI is wired up, dispatch the `SMPP reference performance acceptance` workflow on a self-hosted
 runner labelled `smpp-reference` (`.github/workflows/reference-acceptance.yml`).

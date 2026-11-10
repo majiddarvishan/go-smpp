@@ -252,3 +252,12 @@ The `oagXgd` ESME interoperability run reported:
 - Added generic `server/prebind_peer_close_test.go`: server `MaxSessions=1`; five consecutive connections accepted then closed without any PDU, each slot reclaimed; a subsequent TRX Bind succeeds. No production code changed.
 - Full Go 1.25.x/1.27.x CI for source commit `5a1d2500a362fc0d405d5aed8d02d2e2550001ea` passed in [run 42788172657](https://github.com/majiddarvishan/go-smpp/actions/runs/42788172657) attempt 2. Initial Go 1.25 fuzz smoke failed with `context deadline exceeded` on `FuzzFramerChunked` during a 2s fuzz run; unit/race passed. A rerun of only the failed job succeeded. No thresholds or fuzz algorithms were changed.
 - INT-01N complete. INT-01L remains open because the earlier occasional **post-Bind** peer EOF is a distinct unresolved event. Local simulator interoperability is verified; deployed-peer evidence and 60-second reference-host performance acceptance remain outstanding. PR #8 stays Draft/open; no release/tag.
+
+
+### Current candidate reference acceptance preflight — 2026-11-10
+
+- The feature branch is ahead of `main` by 206 commits and behind by 0 at this checkpoint; performance can be verified on the candidate SHA **before** any PR merge. The reference result from 2026-10-06 (713,932 request PDUs/s) is historical and does not cover these library additions.
+- `scripts/acceptance.sh --preflight` now checks Linux/amd64, Go 1.27.x, 8+ logical CPUs, 10+ GiB RAM, and clean Git working tree without creating files or running the workload. The full acceptance enforces the same checks, records `source_clean=true` and the exact commit, then runs the 60s bidirectional TCP workload with full responses, resource checks and profiles. `.bench/` is excluded from Git.
+- CI validates `bash -n scripts/acceptance.sh`; the `SMPP reference performance acceptance` workflow will invoke preflight before the long run. This workflow requires a self-hosted `smpp-reference` runner. Connected GitHub actions cannot dispatch workflows or inspect runner inventory; there is no verified current-head reference result yet.
+- Local operator command on the eligible reference host: `scripts/acceptance.sh --preflight` followed by `scripts/acceptance.sh .bench/phase17-reference`. Preserve `environment.txt`, `acceptance-sessions-N.txt`, `minimum-session-count.txt` and the profiling outputs. Do not claim release PASS from CI smoke or the old reference result.
+- PERF-01 and REL-01 remain open. PR #8 remains Draft/open and unmerged. After integration, retest if the executable tree changes.
